@@ -40,6 +40,8 @@ import {
   handleWorkspaceCleanup,
   handleWorkspaceStats,
 } from './handlers/workspace-handlers.js';
+import { handleDoctor } from './handlers/doctor-handlers.js';
+import { checkAndNotifyUpdates } from './utils/update-checker.js';
 import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
 import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
 import inquirer from 'inquirer';
@@ -3436,6 +3438,15 @@ export const commands: Command[] = [
       await handleUndoCommand(ctx, args);
     },
   },
+  {
+    name: 'doctor',
+    aliases: ['dr', 'health'],
+    description: 'Run comprehensive health checks for APEX environment',
+    usage: '/doctor',
+    handler: async (ctx, args) => {
+      await handleDoctor(ctx, args);
+    },
+  },
 ];
 
 // ============================================================================
@@ -4614,6 +4625,11 @@ async function startREPL(): Promise<void> {
   console.clear();
   console.log(chalk.cyan(banner));
   console.log(chalk.gray(`  v${VERSION}\n`));
+
+  // Check for available updates (non-blocking)
+  checkAndNotifyUpdates().catch(() => {
+    // Silently fail - update checking is non-critical
+  });
 
   // Check initialization
   ctx.initialized = await isApexInitialized(ctx.cwd);

@@ -1,0 +1,549 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import chalk from 'chalk';
+import boxen from 'boxen';
+import {
+  DoctorCheckResult,
+  HealthReport,
+  CheckStatus,
+  ApexConfig,
+  satisfiesVersion,
+  parseVersionOutput,
+  createDoctorCheckResult,
+  createHealthReport,
+  queryNpmRegistry,
+  getLatestPackageVersion,
+} from '@apexcli/core';
+import type { ApexContext } from '../index.js';
+
+const execAsync = promisify(exec);
+
+// ============================================================================
+// Individual Health Checks
+// ============================================================================
+
+/**
+ * Check Node.js version compatibility
+ */
+async function checkNodeVersion(): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const check = createDoctorCheckResult({
+    id: 'node-version',
+    name: 'Node.js Version',
+    category: 'toolchain',
+    description: 'Verify Node.js meets minimum version requirements',
+  });
+
+  try {
+    const nodeVersion = process.version;
+    const minVersion = '18.0.0';
+    const cleanVersion = parseVersionOutput(nodeVersion);
+
+    if (!cleanVersion) {
+      return {
+        ...check,
+        status: 'fail',
+        severity: 'error',
+        message: `Could not determine Node.js version from: ${nodeVersion}`,
+        suggestion: 'Ensure Node.js is properly installed',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    const isCompatible = satisfiesVersion(cleanVersion, minVersion);
+
+    return {
+      ...check,
+      status: isCompatible ? 'pass' : 'fail',
+      severity: isCompatible ? 'info' : 'error',
+      message: isCompatible
+        ? `Node.js ${cleanVersion} meets requirement >= ${minVersion}`
+        : `Node.js ${cleanVersion} does not meet requirement >= ${minVersion}`,
+      suggestion: isCompatible ? undefined : `Please upgrade Node.js to version ${minVersion} or higher`,
+      toolchain: {
+        name: 'node',
+        currentVersion: cleanVersion,
+        requiredVersion: minVersion,
+        location: process.execPath,
+        required: true,
+      },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      ...check,
+      status: 'fail',
+      severity: 'error',
+      message: `Error checking Node.js version: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      suggestion: 'Ensure Node.js is properly installed',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+/**
+ * Check npm version and availability
+ */
+async function checkNpmVersion(): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const check = createDoctorCheckResult({
+    id: 'npm-version',
+    name: 'npm Package Manager',
+    category: 'toolchain',
+    description: 'Verify npm is available and meets minimum requirements',
+  });
+
+  try {
+    const { stdout } = await execAsync('npm --version');
+    const npmVersion = parseVersionOutput(stdout.trim());
+    const minVersion = '8.0.0';
+
+    if (!npmVersion) {
+      return {
+        ...check,
+        status: 'fail',
+        severity: 'error',
+        message: `Could not determine npm version from: ${stdout.trim()}`,
+        suggestion: 'Ensure npm is properly installed',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    const isCompatible = satisfiesVersion(npmVersion, minVersion);
+
+    return {
+      ...check,
+      status: isCompatible ? 'pass' : 'fail',
+      severity: isCompatible ? 'info' : 'warning',
+      message: isCompatible
+        ? `npm ${npmVersion} meets recommendation >= ${minVersion}`
+        : `npm ${npmVersion} is below recommended version ${minVersion}`,
+      suggestion: isCompatible ? undefined : `Consider upgrading npm: npm install -g npm@latest`,
+      toolchain: {
+        name: 'npm',
+        currentVersion: npmVersion,
+        requiredVersion: minVersion,
+        required: true,
+      },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      ...check,
+      status: 'fail',
+      severity: 'error',
+      message: 'npm is not available',
+      suggestion: 'Install npm: npm is typically included with Node.js',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+/**
+ * Check Git availability and version
+ */
+async function checkGitVersion(): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const check = createDoctorCheckResult({
+    id: 'git-version',
+    name: 'Git Version Control',
+    category: 'toolchain',
+    description: 'Verify Git is available for version control operations',
+  });
+
+  try {
+    const { stdout } = await execAsync('git --version');
+    const gitVersion = parseVersionOutput(stdout.trim());
+    const minVersion = '2.0.0';
+
+    if (!gitVersion) {
+      return {
+        ...check,
+        status: 'skip',
+        severity: 'warning',
+        message: 'Git version could not be determined, but is available',
+        suggestion: 'Git is available but version parsing failed - this is usually fine',
+        toolchain: {
+          name: 'git',
+          currentVersion: 'unknown',
+          requiredVersion: minVersion,
+          required: false,
+        },
+        durationMs: Date.now() - start,
+      };
+    }
+
+    const isCompatible = satisfiesVersion(gitVersion, minVersion);
+
+    return {
+      ...check,
+      status: isCompatible ? 'pass' : 'fail',
+      severity: isCompatible ? 'info' : 'warning',
+      message: isCompatible
+        ? `Git ${gitVersion} is available`
+        : `Git ${gitVersion} is quite old (minimum recommended: ${minVersion})`,
+      suggestion: isCompatible ? undefined : 'Consider upgrading Git for best compatibility',
+      toolchain: {
+        name: 'git',
+        currentVersion: gitVersion,
+        requiredVersion: minVersion,
+        required: false,
+      },
+      durationMs: Date.now() - start,
+    };
+  } catch (error) {
+    return {
+      ...check,
+      status: 'skip',
+      severity: 'info',
+      message: 'Git is not available (optional for APEX operation)',
+      suggestion: 'Install Git if you plan to use version control features',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+/**
+ * Check APEX configuration validity
+ */
+async function checkApexConfig(ctx: ApexContext): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const check = createDoctorCheckResult({
+    id: 'apex-config',
+    name: 'APEX Configuration',
+    category: 'config',
+    description: 'Verify APEX project configuration is valid',
+  });
+
+  try {
+    if (!ctx.initialized) {
+      return {
+        ...check,
+        status: 'skip',
+        severity: 'info',
+        message: 'APEX not initialized in this directory',
+        suggestion: 'Run `apex init` to initialize APEX in this project',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    if (!ctx.config) {
+      return {
+        ...check,
+        status: 'fail',
+        severity: 'error',
+        message: 'APEX configuration could not be loaded',
+        suggestion: 'Check .apex/config.yaml for syntax errors',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // Basic validation - check required fields
+    const issues: string[] = [];
+    if (!ctx.config.project?.name) {
+      issues.push('Project name is missing');
+    }
+    if (!ctx.config.project?.language) {
+      issues.push('Project language is not specified');
+    }
+
+    if (issues.length > 0) {
+      return {
+        ...check,
+        status: 'fail',
+        severity: 'warning',
+        message: `Configuration issues: ${issues.join(', ')}`,
+        suggestion: 'Update .apex/config.yaml with missing required fields',
+        durationMs: Date.now() - start,
+      };
+    }
+
+    return {
+      ...check,
+      status: 'pass',
+      severity: 'info',
+      message: `APEX configuration valid for project "${ctx.config.project.name}"`,
+      durationMs: Date.now() - start,
+    };
+
+  } catch (error) {
+    return {
+      ...check,
+      status: 'fail',
+      severity: 'error',
+      message: `Error checking APEX configuration: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      suggestion: 'Verify .apex/config.yaml exists and is valid YAML',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+/**
+ * Check APEX dependencies and package.json
+ */
+async function checkApexDependencies(ctx: ApexContext): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const check = createDoctorCheckResult({
+    id: 'apex-dependencies',
+    name: 'APEX Dependencies',
+    category: 'config',
+    description: 'Check project dependencies and package.json setup',
+  });
+
+  try {
+    const packageJsonPath = path.join(ctx.cwd, 'package.json');
+
+    try {
+      const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
+      const packageJson = JSON.parse(packageJsonContent);
+
+      // Check for APEX-related dependencies
+      const apexPackages = ['@apexcli/core', '@apexcli/cli', '@apexcli/orchestrator'];
+      const foundPackages = apexPackages.filter(pkg =>
+        (packageJson.dependencies && packageJson.dependencies[pkg]) ||
+        (packageJson.devDependencies && packageJson.devDependencies[pkg])
+      );
+
+      if (foundPackages.length > 0) {
+        return {
+          ...check,
+          status: 'pass',
+          severity: 'info',
+          message: `Found APEX packages: ${foundPackages.join(', ')}`,
+          durationMs: Date.now() - start,
+        };
+      } else {
+        return {
+          ...check,
+          status: 'skip',
+          severity: 'info',
+          message: 'No APEX packages found in package.json (this is normal for standalone usage)',
+          durationMs: Date.now() - start,
+        };
+      }
+
+    } catch (fileError) {
+      return {
+        ...check,
+        status: 'skip',
+        severity: 'info',
+        message: 'No package.json found (not required for APEX operation)',
+        durationMs: Date.now() - start,
+      };
+    }
+
+  } catch (error) {
+    return {
+      ...check,
+      status: 'fail',
+      severity: 'warning',
+      message: `Error checking dependencies: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+/**
+ * Check write permissions in APEX directory
+ */
+async function checkApexPermissions(ctx: ApexContext): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const check = createDoctorCheckResult({
+    id: 'apex-permissions',
+    name: 'File System Permissions',
+    category: 'permissions',
+    description: 'Verify write permissions for APEX operations',
+  });
+
+  try {
+    const apexDir = path.join(ctx.cwd, '.apex');
+
+    if (!ctx.initialized) {
+      // Check if we can create the directory
+      try {
+        await fs.access(ctx.cwd, fs.constants.W_OK);
+        return {
+          ...check,
+          status: 'pass',
+          severity: 'info',
+          message: 'Write permissions available for APEX initialization',
+          durationMs: Date.now() - start,
+        };
+      } catch {
+        return {
+          ...check,
+          status: 'fail',
+          severity: 'error',
+          message: 'No write permissions in current directory',
+          suggestion: 'Ensure you have write permissions to create .apex directory',
+          durationMs: Date.now() - start,
+        };
+      }
+    }
+
+    // Check if we can write to the .apex directory
+    try {
+      await fs.access(apexDir, fs.constants.W_OK);
+      return {
+        ...check,
+        status: 'pass',
+        severity: 'info',
+        message: 'Write permissions available in .apex directory',
+        durationMs: Date.now() - start,
+      };
+    } catch {
+      return {
+        ...check,
+        status: 'fail',
+        severity: 'error',
+        message: 'No write permissions in .apex directory',
+        suggestion: 'Check file permissions for .apex directory',
+        durationMs: Date.now() - start,
+      };
+    }
+
+  } catch (error) {
+    return {
+      ...check,
+      status: 'fail',
+      severity: 'error',
+      message: `Error checking permissions: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+// ============================================================================
+// Health Report Display Functions
+// ============================================================================
+
+/**
+ * Display a colorized health report to the console
+ */
+function displayHealthReport(report: HealthReport): void {
+  console.log();
+
+  // Header
+  const statusColor = report.overallStatus === 'pass' ? 'green' :
+                     report.overallStatus === 'fail' ? 'red' : 'yellow';
+
+  const statusIcon = report.overallStatus === 'pass' ? '✅' :
+                     report.overallStatus === 'fail' ? '❌' : '⚠️';
+
+  const header = `${statusIcon} APEX Health Report - ${report.overallStatus.toUpperCase()}`;
+  console.log(boxen(chalk[statusColor].bold(header), {
+    padding: 1,
+    margin: 1,
+    borderStyle: 'round',
+    borderColor: statusColor,
+  }));
+
+  // Summary
+  console.log(chalk.cyan('\n📊 Summary:'));
+  console.log(`  Total Checks: ${report.summary.total}`);
+  console.log(`  ${chalk.green('✅ Passed:')} ${report.summary.passed}`);
+  console.log(`  ${chalk.red('❌ Failed:')} ${report.summary.failed}`);
+  console.log(`  ${chalk.yellow('⚠️  Warnings:')} ${report.summary.warnings}`);
+  console.log(`  ${chalk.gray('⏭️  Skipped:')} ${report.summary.skipped}`);
+  console.log(`  Duration: ${report.durationMs}ms`);
+
+  // System Info
+  console.log(chalk.cyan('\n💻 System Information:'));
+  console.log(`  Platform: ${report.system.platform} (${report.system.arch})`);
+  console.log(`  Node.js: ${report.system.nodeVersion}`);
+  console.log(`  APEX Version: ${report.apexVersion}`);
+  console.log(`  Working Directory: ${report.system.cwd}`);
+
+  // Detailed Results
+  console.log(chalk.cyan('\n🔍 Detailed Results:'));
+  for (const check of report.checks) {
+    const icon = check.status === 'pass' ? '✅' :
+                 check.status === 'fail' ? '❌' :
+                 check.status === 'skip' ? '⏭️' : '❓';
+
+    const color = check.status === 'pass' ? 'green' :
+                  check.status === 'fail' ? 'red' :
+                  check.severity === 'warning' ? 'yellow' : 'gray';
+
+    console.log(`\n  ${icon} ${chalk[color](check.name)}`);
+    console.log(`     ${check.message}`);
+
+    if (check.suggestion) {
+      console.log(`     ${chalk.dim('💡 Suggestion:')} ${check.suggestion}`);
+    }
+
+    if (check.toolchain) {
+      console.log(`     ${chalk.dim('🔧 Tool:')} ${check.toolchain.name} v${check.toolchain.currentVersion}`);
+    }
+  }
+
+  // Footer
+  if (report.summary.failed > 0) {
+    console.log(chalk.red('\n⚠️  Some checks failed. Please address the issues above.'));
+  } else if (report.summary.warnings > 0) {
+    console.log(chalk.yellow('\n⚠️  All critical checks passed, but there are warnings to consider.'));
+  } else {
+    console.log(chalk.green('\n🎉 All checks passed! Your APEX environment is healthy.'));
+  }
+
+  console.log();
+}
+
+// ============================================================================
+// Main Doctor Handler
+// ============================================================================
+
+/**
+ * Handle the doctor command - run comprehensive health checks
+ */
+export async function handleDoctor(ctx: ApexContext, args: string[]): Promise<void> {
+  console.log(chalk.cyan('🔍 Running APEX health diagnostics...\n'));
+
+  const startTime = Date.now();
+  const checks: DoctorCheckResult[] = [];
+
+  // Run all health checks in parallel for better performance
+  const checkPromises = [
+    checkNodeVersion(),
+    checkNpmVersion(),
+    checkGitVersion(),
+    checkApexConfig(ctx),
+    checkApexDependencies(ctx),
+    checkApexPermissions(ctx),
+  ];
+
+  try {
+    const results = await Promise.all(checkPromises);
+    checks.push(...results);
+  } catch (error) {
+    console.error(chalk.red('Error running health checks:'), error);
+    return;
+  }
+
+  // Generate and display the health report
+  const report = createHealthReport(checks, { apexVersion: '0.6.0' });
+  displayHealthReport(report);
+
+  // Check for available updates (non-blocking)
+  try {
+    const latestVersion = await getLatestPackageVersion('apex-cli', { timeout: 3000 });
+    if (latestVersion && latestVersion !== '0.6.0') {
+      console.log(boxen(
+        `${chalk.blue('💡 Update Available')}\n\n` +
+        `A newer version of APEX is available: ${chalk.green(latestVersion)}\n` +
+        `Current version: ${chalk.yellow('0.6.0')}\n\n` +
+        `Run ${chalk.cyan('npm install -g apex-cli')} to update`,
+        {
+          padding: 1,
+          margin: 1,
+          borderStyle: 'round',
+          borderColor: 'blue',
+        }
+      ));
+    }
+  } catch (error) {
+    // Silently fail update check - not critical
+  }
+}
