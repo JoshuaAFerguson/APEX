@@ -3442,7 +3442,7 @@ export const commands: Command[] = [
     name: 'doctor',
     aliases: ['dr', 'health'],
     description: 'Run comprehensive health checks for APEX environment',
-    usage: '/doctor',
+    usage: '/doctor [--quick] [--json] | /doctor --quick (skip slow checks) | /doctor --json (JSON output)',
     handler: async (ctx, args) => {
       await handleDoctor(ctx, args);
     },
@@ -5374,6 +5374,14 @@ fi
 // ============================================================================
 
 async function executeNonInteractiveCommand(cmdName: string, args: string[]): Promise<void> {
+  // Check for available updates (non-blocking) - only for user-facing commands
+  const isUserCommand = !['daemon', 'service', 'doctor', 'usage'].includes(cmdName);
+  if (isUserCommand) {
+    checkAndNotifyUpdates().catch(() => {
+      // Silently fail - update checking is non-critical
+    });
+  }
+
   // Initialize context
   ctx.initialized = await isApexInitialized(ctx.cwd);
 

@@ -305,6 +305,179 @@ describe('Doctor Handlers', () => {
       expect(consoleLogs).toContain('🔍 Running APEX health diagnostics...\n');
       expect(consoleErrors.length).toBeGreaterThan(0);
     });
+
+    it('should run in quick mode when --quick flag is provided', async () => {
+      const mockContext = createMockContext({
+        initialized: true,
+        config: {
+          project: { name: 'test-project', language: 'typescript' },
+        } as any,
+      });
+
+      // Mock file system access
+      mockedFs.access.mockResolvedValue(undefined);
+
+      await handleDoctor(mockContext, ['--quick']);
+
+      // Verify quick mode messaging
+      expect(consoleLogs).toContain('🔍 Running APEX health diagnostics...\n');
+      expect(consoleLogs).toContain('⚡ Quick mode enabled - skipping slower checks\n');
+
+      // In quick mode, npm and git version checks should be skipped
+      // Only verify basic functionality - exact call verification would be too brittle
+      expect(mockedExec).not.toHaveBeenCalledWith('npm --version');
+      expect(mockedExec).not.toHaveBeenCalledWith('git --version');
+    });
+
+    it('should output JSON format when --json flag is provided', async () => {
+      const mockContext = createMockContext({
+        initialized: true,
+        config: {
+          project: { name: 'test-project', language: 'typescript' },
+        } as any,
+      });
+
+      // Mock successful exec calls
+      mockedExec.mockImplementation(async (command: string) => {
+        if (command === 'npm --version') {
+          return { stdout: '8.19.2', stderr: '' };
+        }
+        if (command === 'git --version') {
+          return { stdout: 'git version 2.34.1', stderr: '' };
+        }
+        throw new Error(`Unexpected command: ${command}`);
+      });
+
+      // Mock file system access
+      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({
+        dependencies: { '@apexcli/core': '0.6.0' }
+      }));
+
+      await handleDoctor(mockContext, ['--json']);
+
+      // Should not display regular console output
+      expect(consoleLogs).not.toContain('🔍 Running APEX health diagnostics...\n');
+
+      // Should output JSON - look for JSON structure in output
+      const jsonOutput = consoleLogs.find(log => {
+        try {
+          const parsed = JSON.parse(log);
+          return parsed.id && parsed.overallStatus && parsed.summary && parsed.checks;
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonOutput).toBeDefined();
+    });
+
+    it('should combine --quick and --json flags correctly', async () => {
+      const mockContext = createMockContext({
+        initialized: true,
+        config: {
+          project: { name: 'test-project', language: 'typescript' },
+        } as any,
+      });
+
+      // Mock file system access
+      mockedFs.access.mockResolvedValue(undefined);
+
+      await handleDoctor(mockContext, ['--quick', '--json']);
+
+      // Should not display regular console output
+      expect(consoleLogs).not.toContain('🔍 Running APEX health diagnostics...\n');
+      expect(consoleLogs).not.toContain('⚡ Quick mode enabled - skipping slower checks\n');
+
+      // Should output JSON
+      const jsonOutput = consoleLogs.find(log => {
+        try {
+          const parsed = JSON.parse(log);
+          return parsed.id && parsed.overallStatus && parsed.summary && parsed.checks;
+        } catch {
+          return false;
+        }
+      });
+      expect(jsonOutput).toBeDefined();
+
+      // Should not run npm/git checks in quick mode
+      expect(mockedExec).not.toHaveBeenCalledWith('npm --version');
+      expect(mockedExec).not.toHaveBeenCalledWith('git --version');
+    });
+
+    it('should handle errors in JSON mode by outputting JSON error', async () => {
+      const mockContext = createMockContext();
+
+      // Mock Promise.all to reject
+      const originalPromiseAll = Promise.all;
+      Promise.all = vi.fn().mockRejectedValue(new Error('Check failed'));
+
+      await handleDoctor(mockContext, ['--json']);
+
+      // Restore Promise.all
+      Promise.all = originalPromiseAll;
+
+      // Should output JSON error instead of console.error
+      const errorJsonOutput = consoleLogs.find(log => {
+        try {
+          const parsed = JSON.parse(log);
+          return parsed.error && parsed.details;
+        } catch {
+          return false;
+        }
+      });
+      expect(errorJsonOutput).toBeDefined();
+      expect(consoleErrors.length).toBe(0);
+    });
+
+    it('should not check for updates in quick mode', async () => {
+      const mockContext = createMockContext({
+        initialized: true,
+        config: {
+          project: { name: 'test-project', language: 'typescript' },
+        } as any,
+      });
+      const { getLatestPackageVersion } = await import('@apexcli/core');
+
+      // Mock file system access
+      mockedFs.access.mockResolvedValue(undefined);
+
+      await handleDoctor(mockContext, ['--quick']);
+
+      // Should not call update check in quick mode
+      expect(getLatestPackageVersion).not.toHaveBeenCalled();
+    });
+
+    it('should not check for updates in JSON mode', async () => {
+      const mockContext = createMockContext({
+        initialized: true,
+        config: {
+          project: { name: 'test-project', language: 'typescript' },
+        } as any,
+      });
+      const { getLatestPackageVersion } = await import('@apexcli/core');
+
+      // Mock successful exec calls
+      mockedExec.mockImplementation(async (command: string) => {
+        if (command === 'npm --version') {
+          return { stdout: '8.19.2', stderr: '' };
+        }
+        if (command === 'git --version') {
+          return { stdout: 'git version 2.34.1', stderr: '' };
+        }
+        throw new Error(`Unexpected command: ${command}`);
+      });
+
+      // Mock file system access
+      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({
+        dependencies: { '@apexcli/core': '0.6.0' }
+      }));
+
+      await handleDoctor(mockContext, ['--json']);
+
+      // Should not call update check in JSON mode
+      expect(getLatestPackageVersion).not.toHaveBeenCalled();
+    });
   });
 
   describe('Individual Health Checks', () => {

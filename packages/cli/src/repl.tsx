@@ -39,6 +39,7 @@ import {
   type SessionContext
 } from './handlers/session-handlers.js';
 import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
+import { checkAndNotifyUpdates } from './utils/update-checker.js';
 
 // ============================================================================
 // Context
@@ -1895,6 +1896,11 @@ export async function startInkREPL(): Promise<void> {
   }
 
   const gitBranch = getGitBranch();
+
+  // Check for available updates (non-blocking)
+  checkAndNotifyUpdates().catch(() => {
+    // Silently fail - update checking is non-critical
+  });
 
   // Start the Ink app
   ctx.app = await startInkApp({

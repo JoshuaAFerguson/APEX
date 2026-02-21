@@ -183,6 +183,32 @@ describe('detectFrameworks() - Comprehensive Test Suite', () => {
       expect(nestjs!.detectionReasons).toContain('package.json dependency: @nestjs/core');
     });
 
+    it('should detect Fastify framework with correct details', async () => {
+      const packageJson = {
+        name: 'fastify-app',
+        dependencies: {
+          fastify: '^4.24.3',
+          '@fastify/cors': '^8.4.0'
+        }
+      };
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const fastify = detection.frameworks.find(f => f.name === 'Fastify');
+
+      expect(fastify).toBeDefined();
+      expect(fastify!.name).toBe('Fastify');
+      expect(fastify!.version).toBe('^4.24.3');
+      expect(fastify!.category).toBe('backend');
+      expect(fastify!.confidence).toBe('high');
+      expect(fastify!.language).toBe('javascript');
+      expect(fastify!.detectionReasons).toContain('package.json dependency: fastify');
+    });
+
     it('should detect at least 10 major frameworks from package.json', async () => {
       const packageJson = {
         name: 'multi-framework-app',
@@ -267,6 +293,482 @@ describe('detectFrameworks() - Comprehensive Test Suite', () => {
         expect(framework.detectionReasons).toBeDefined();
         expect(framework.detectionReasons!.length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe('Python Framework Detection', () => {
+    it('should detect Django from requirements.txt', async () => {
+      const requirementsTxt = `
+django==4.2.7
+psycopg2-binary==2.9.9
+djangorestframework==3.14.0
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'requirements.txt'),
+        requirementsTxt.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const django = detection.frameworks.find(f => f.name === 'Django');
+
+      expect(django).toBeDefined();
+      expect(django!.name).toBe('Django');
+      expect(django!.version).toBe('4.2.7');
+      expect(django!.category).toBe('backend');
+      expect(django!.confidence).toBe('high');
+      expect(django!.language).toBe('python');
+      expect(django!.detectionReasons).toContain('requirements.txt dependency: django');
+      expect(django!.detectedVia).toContain('requirements.txt dependency: django');
+    });
+
+    it('should detect Flask from requirements.txt', async () => {
+      const requirementsTxt = `
+flask>=2.3.0
+gunicorn==21.2.0
+python-dotenv==1.0.0
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'requirements.txt'),
+        requirementsTxt.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const flask = detection.frameworks.find(f => f.name === 'Flask');
+
+      expect(flask).toBeDefined();
+      expect(flask!.name).toBe('Flask');
+      expect(flask!.version).toBe('2.3.0');
+      expect(flask!.category).toBe('backend');
+      expect(flask!.confidence).toBe('high');
+      expect(flask!.language).toBe('python');
+      expect(flask!.detectionReasons).toContain('requirements.txt dependency: flask');
+    });
+
+    it('should detect FastAPI from requirements.txt', async () => {
+      const requirementsTxt = `
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'requirements.txt'),
+        requirementsTxt.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const fastapi = detection.frameworks.find(f => f.name === 'FastAPI');
+
+      expect(fastapi).toBeDefined();
+      expect(fastapi!.name).toBe('FastAPI');
+      expect(fastapi!.version).toBe('0.104.1');
+      expect(fastapi!.category).toBe('backend');
+      expect(fastapi!.confidence).toBe('high');
+      expect(fastapi!.language).toBe('python');
+      expect(fastapi!.detectionReasons).toContain('requirements.txt dependency: fastapi');
+    });
+
+    it('should detect Python frameworks from Pipfile', async () => {
+      const pipfile = `
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+django = "4.2.7"
+djangorestframework = "*"
+
+[dev-packages]
+pytest = "*"
+black = "*"
+
+[requires]
+python_version = "3.11"
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Pipfile'),
+        pipfile.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const django = detection.frameworks.find(f => f.name === 'Django');
+
+      expect(django).toBeDefined();
+      expect(django!.name).toBe('Django');
+      expect(django!.version).toBe('4.2.7');
+      expect(django!.category).toBe('backend');
+      expect(django!.confidence).toBe('high');
+      expect(django!.language).toBe('python');
+      expect(django!.detectionReasons).toContain('Pipfile dependency: django');
+      expect(django!.isDevDependency).toBe(false);
+    });
+
+    it('should detect Python frameworks from pyproject.toml', async () => {
+      const pyprojectToml = `
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.104.0"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+black = "^23.11.0"
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'pyproject.toml'),
+        pyprojectToml.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const fastapi = detection.frameworks.find(f => f.name === 'FastAPI');
+
+      expect(fastapi).toBeDefined();
+      expect(fastapi!.name).toBe('FastAPI');
+      expect(fastapi!.version).toBe('0.104.0');
+      expect(fastapi!.category).toBe('backend');
+      expect(fastapi!.confidence).toBe('high');
+      expect(fastapi!.language).toBe('python');
+      expect(fastapi!.detectionReasons).toContain('pyproject.toml dependency: fastapi');
+    });
+  });
+
+  describe('Ruby Framework Detection', () => {
+    it('should detect Ruby on Rails from Gemfile', async () => {
+      const gemfile = `
+source 'https://rubygems.org'
+git_source(:github) { |repo| "https://github.com/\#{repo}.git" }
+
+ruby '3.2.0'
+
+gem 'rails', '~> 7.1.0'
+gem 'sqlite3', '~> 1.4'
+gem 'puma', '>= 5.0'
+gem 'importmap-rails'
+
+group :development, :test do
+  gem 'debug', platforms: %i[ mri mingw x64_mingw ]
+  gem 'rspec-rails'
+end
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Gemfile'),
+        gemfile.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const rails = detection.frameworks.find(f => f.name === 'Ruby on Rails');
+
+      expect(rails).toBeDefined();
+      expect(rails!.name).toBe('Ruby on Rails');
+      expect(rails!.version).toBe('~> 7.1.0');
+      expect(rails!.category).toBe('backend');
+      expect(rails!.confidence).toBe('high');
+      expect(rails!.language).toBe('ruby');
+      expect(rails!.detectionReasons).toContain('Gemfile dependency: rails');
+      expect(rails!.isDevDependency).toBe(false);
+    });
+
+    it('should detect Sinatra from Gemfile', async () => {
+      const gemfile = `
+source 'https://rubygems.org'
+
+gem 'sinatra', '~> 3.1'
+gem 'thin'
+
+group :development do
+  gem 'shotgun'
+end
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Gemfile'),
+        gemfile.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const sinatra = detection.frameworks.find(f => f.name === 'Sinatra');
+
+      expect(sinatra).toBeDefined();
+      expect(sinatra!.name).toBe('Sinatra');
+      expect(sinatra!.version).toBe('~> 3.1');
+      expect(sinatra!.category).toBe('backend');
+      expect(sinatra!.confidence).toBe('high');
+      expect(sinatra!.language).toBe('ruby');
+      expect(sinatra!.detectionReasons).toContain('Gemfile dependency: sinatra');
+    });
+
+    it('should detect dev dependencies in Ruby projects', async () => {
+      const gemfile = `
+gem 'rails', '~> 7.1.0'
+
+group :development do
+  gem 'sinatra', '~> 3.1'
+end
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Gemfile'),
+        gemfile.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const sinatra = detection.frameworks.find(f => f.name === 'Sinatra');
+      const rails = detection.frameworks.find(f => f.name === 'Ruby on Rails');
+
+      expect(rails).toBeDefined();
+      expect(rails!.isDevDependency).toBe(false);
+
+      expect(sinatra).toBeDefined();
+      expect(sinatra!.isDevDependency).toBe(true);
+    });
+  });
+
+  describe('Java Framework Detection', () => {
+    it('should detect Spring Boot from Maven pom.xml', async () => {
+      const pomXml = `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>spring-boot-app</artifactId>
+  <version>1.0.0</version>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+      <version>3.2.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+      <version>3.2.0</version>
+    </dependency>
+  </dependencies>
+</project>`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'pom.xml'),
+        pomXml
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const springBoot = detection.frameworks.find(f => f.name === 'Spring Boot');
+
+      expect(springBoot).toBeDefined();
+      expect(springBoot!.name).toBe('Spring Boot');
+      expect(springBoot!.version).toBe('3.2.0');
+      expect(springBoot!.category).toBe('backend');
+      expect(springBoot!.confidence).toBe('high');
+      expect(springBoot!.language).toBe('java');
+      expect(springBoot!.detectionReasons).toContain('pom.xml dependency: spring-boot-starter');
+    });
+
+    it('should detect Spring Boot from Gradle build.gradle', async () => {
+      const buildGradle = `
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'build.gradle'),
+        buildGradle.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const springBoot = detection.frameworks.find(f => f.name === 'Spring Boot');
+
+      expect(springBoot).toBeDefined();
+      expect(springBoot!.name).toBe('Spring Boot');
+      expect(springBoot!.category).toBe('backend');
+      expect(springBoot!.confidence).toBe('high');
+      expect(springBoot!.language).toBe('java');
+      expect(springBoot!.detectionReasons).toContain('build.gradle dependency: org.springframework.boot');
+    });
+
+    it('should detect Spring Boot from Kotlin Gradle build.gradle.kts', async () => {
+      const buildGradleKts = `
+plugins {
+    kotlin("jvm") version "1.9.20"
+    id("org.springframework.boot") version "3.2.0"
+    id("io.spring.dependency-management") version "1.1.4"
+}
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+}
+`;
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'build.gradle.kts'),
+        buildGradleKts.trim()
+      );
+
+      const detection = await analyzer.detectFrameworks();
+      const springBoot = detection.frameworks.find(f => f.name === 'Spring Boot');
+
+      expect(springBoot).toBeDefined();
+      expect(springBoot!.name).toBe('Spring Boot');
+      expect(springBoot!.category).toBe('backend');
+      expect(springBoot!.confidence).toBe('high');
+      expect(springBoot!.language).toBe('java');
+      expect(springBoot!.detectionReasons).toContain('build.gradle.kts dependency: org.springframework.boot');
+    });
+  });
+
+  describe('Multi-Language Project Detection', () => {
+    it('should detect frameworks from multiple languages in the same project', async () => {
+      // Node.js package.json
+      const packageJson = {
+        name: 'multi-lang-app',
+        dependencies: {
+          react: '^18.2.0',
+          express: '^4.18.2'
+        }
+      };
+
+      await fs.promises.writeFile(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
+
+      // Python requirements.txt
+      const requirementsTxt = 'fastapi==0.104.1\nuvicorn==0.24.0';
+      await fs.promises.writeFile(
+        path.join(tempDir, 'requirements.txt'),
+        requirementsTxt
+      );
+
+      // Ruby Gemfile
+      const gemfile = "gem 'rails', '~> 7.1.0'";
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Gemfile'),
+        gemfile
+      );
+
+      // Java pom.xml
+      const pomXml = `<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+      <version>3.2.0</version>
+    </dependency>
+  </dependencies>
+</project>`;
+      await fs.promises.writeFile(
+        path.join(tempDir, 'pom.xml'),
+        pomXml
+      );
+
+      const detection = await analyzer.detectFrameworks();
+
+      // Should detect frameworks from all languages
+      expect(detection.frameworks.length).toBeGreaterThanOrEqual(6);
+
+      const frameworkNames = detection.frameworks.map(f => f.name);
+      expect(frameworkNames).toContain('React');
+      expect(frameworkNames).toContain('Express');
+      expect(frameworkNames).toContain('FastAPI');
+      expect(frameworkNames).toContain('Ruby on Rails');
+      expect(frameworkNames).toContain('Spring Boot');
+
+      // Verify language attribution
+      const react = detection.frameworks.find(f => f.name === 'React');
+      const fastapi = detection.frameworks.find(f => f.name === 'FastAPI');
+      const rails = detection.frameworks.find(f => f.name === 'Ruby on Rails');
+      const springBoot = detection.frameworks.find(f => f.name === 'Spring Boot');
+
+      expect(react!.language).toBe('javascript');
+      expect(fastapi!.language).toBe('python');
+      expect(rails!.language).toBe('ruby');
+      expect(springBoot!.language).toBe('java');
+    });
+  });
+
+  describe('Runtime Environment Detection', () => {
+    it('should detect python runtime for Python frameworks', async () => {
+      const requirementsTxt = 'django==4.2.7';
+      await fs.promises.writeFile(
+        path.join(tempDir, 'requirements.txt'),
+        requirementsTxt
+      );
+
+      const detection = await analyzer.detectFrameworks();
+
+      expect(detection.runtime).toBe('python');
+    });
+
+    it('should detect ruby runtime for Ruby frameworks', async () => {
+      const gemfile = "gem 'rails', '~> 7.1.0'";
+      await fs.promises.writeFile(
+        path.join(tempDir, 'Gemfile'),
+        gemfile
+      );
+
+      const detection = await analyzer.detectFrameworks();
+
+      expect(detection.runtime).toBe('ruby');
+    });
+
+    it('should detect jvm runtime for Java frameworks', async () => {
+      const pomXml = `<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+      <version>3.2.0</version>
+    </dependency>
+  </dependencies>
+</project>`;
+      await fs.promises.writeFile(
+        path.join(tempDir, 'pom.xml'),
+        pomXml
+      );
+
+      const detection = await analyzer.detectFrameworks();
+
+      expect(detection.runtime).toBe('jvm');
+    });
+
+    it('should prioritize node runtime when multiple runtimes are present', async () => {
+      // Node.js
+      const packageJson = {
+        dependencies: { express: '^4.18.2' }
+      };
+      await fs.promises.writeFile(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
+
+      // Python
+      await fs.promises.writeFile(
+        path.join(tempDir, 'requirements.txt'),
+        'django==4.2.7'
+      );
+
+      const detection = await analyzer.detectFrameworks();
+
+      // Node.js frameworks are checked first, so should get 'node' runtime
+      expect(detection.runtime).toBe('node');
     });
   });
 

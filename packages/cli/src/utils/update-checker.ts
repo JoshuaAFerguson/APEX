@@ -1,5 +1,4 @@
 import chalk from 'chalk';
-import boxen from 'boxen';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
@@ -68,9 +67,21 @@ function getUpdateType(current: string, latest: string): 'major' | 'minor' | 'pa
  * Get the cache file path for storing update check results
  */
 function getCacheFilePath(): string {
-  // Store in user's home directory or temp directory
+  // Store in ~/.apex directory as specified in requirements
   const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
-  return path.join(homeDir, '.apex-update-cache.json');
+  const apexDir = path.join(homeDir, '.apex');
+
+  // Ensure .apex directory exists
+  try {
+    if (!fs.existsSync(apexDir)) {
+      fs.mkdirSync(apexDir, { recursive: true });
+    }
+  } catch (error) {
+    // Fallback to home directory if .apex directory can't be created
+    return path.join(homeDir, '.apex-update-cache.json');
+  }
+
+  return path.join(apexDir, 'update-check.json');
 }
 
 /**
@@ -136,7 +147,7 @@ export async function checkForUpdates(options: {
 
   try {
     // Query npm registry for latest version
-    const latestVersion = await getLatestPackageVersion('apex-cli', { timeout });
+    const latestVersion = await getLatestPackageVersion('@apexcli/cli', { timeout });
 
     if (!latestVersion) {
       return null;
@@ -170,27 +181,10 @@ export function displayUpdateNotification(updateInfo: UpdateInfo): void {
     return;
   }
 
-  const updateTypeColor = updateInfo.updateType === 'major' ? 'red' :
-                         updateInfo.updateType === 'minor' ? 'yellow' : 'green';
+  // Non-intrusive colored notification as specified in requirements
+  const message = `Update available: ${chalk.yellow(updateInfo.currentVersion)} → ${chalk.green(updateInfo.latestVersion)}. Run ${chalk.cyan('npm update -g @apexcli/cli')}`;
 
-  const updateTypeEmoji = updateInfo.updateType === 'major' ? '🚨' :
-                         updateInfo.updateType === 'minor' ? '⚡' : '🔧';
-
-  const message =
-    `${updateTypeEmoji} ${chalk.blue('Update Available')}\n\n` +
-    `A newer version of APEX is available!\n` +
-    `Current: ${chalk.yellow(updateInfo.currentVersion)}\n` +
-    `Latest: ${chalk.green(updateInfo.latestVersion)} ${chalk[updateTypeColor](`(${updateInfo.updateType})`)}\n\n` +
-    `${chalk.dim('Run')} ${chalk.cyan('npm install -g apex-cli')} ${chalk.dim('to update')}\n` +
-    `${chalk.dim('or')} ${chalk.cyan('apex update')} ${chalk.dim('for more options')}`;
-
-  console.log(boxen(message, {
-    padding: 1,
-    margin: { top: 0, bottom: 1, left: 0, right: 0 },
-    borderStyle: 'round',
-    borderColor: updateTypeColor,
-    backgroundColor: updateInfo.updateType === 'major' ? 'bgRed' : undefined,
-  }));
+  console.log(chalk.blue(message) + '\n');
 }
 
 /**
@@ -204,6 +198,11 @@ export async function checkAndNotifyUpdates(options: {
   force?: boolean;
 } = {}): Promise<void> {
   const { silent = false, force = false } = options;
+
+  // Respect APEX_SKIP_UPDATE_CHECK environment variable
+  if (process.env.APEX_SKIP_UPDATE_CHECK === '1' || process.env.APEX_SKIP_UPDATE_CHECK === 'true') {
+    return;
+  }
 
   if (silent) {
     return;

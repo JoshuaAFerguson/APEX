@@ -146,7 +146,7 @@ describe('Update Checker', () => {
 
       await checkForUpdates({ timeout: 10000 });
 
-      expect(getLatestPackageVersion).toHaveBeenCalledWith('apex-cli', { timeout: 10000 });
+      expect(getLatestPackageVersion).toHaveBeenCalledWith('@apexcli/cli', { timeout: 10000 });
     });
 
     it('should use cache when available and not forced', async () => {
@@ -228,7 +228,7 @@ describe('Update Checker', () => {
       await checkForUpdates();
 
       expect(mockedFs.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining('.apex-update-cache.json'),
+        expect.stringContaining('update-check.json'),
         expect.stringContaining('"latestVersion":"0.7.0"'),
         'utf-8'
       );
@@ -246,7 +246,7 @@ describe('Update Checker', () => {
   });
 
   describe('displayUpdateNotification', () => {
-    it('should display minor update notification', () => {
+    it('should display update notification', () => {
       const updateInfo: UpdateInfo = {
         currentVersion: '0.6.0',
         latestVersion: '0.7.0',
@@ -256,48 +256,8 @@ describe('Update Checker', () => {
 
       displayUpdateNotification(updateInfo);
 
-      expect(mockedBoxen).toHaveBeenCalledWith(
-        expect.stringContaining('Update Available'),
-        expect.objectContaining({
-          borderColor: 'yellow',
-        })
-      );
-    });
-
-    it('should display major update notification with warning style', () => {
-      const updateInfo: UpdateInfo = {
-        currentVersion: '0.6.0',
-        latestVersion: '1.0.0',
-        hasUpdate: true,
-        updateType: 'major',
-      };
-
-      displayUpdateNotification(updateInfo);
-
-      expect(mockedBoxen).toHaveBeenCalledWith(
-        expect.stringContaining('Update Available'),
-        expect.objectContaining({
-          borderColor: 'red',
-          backgroundColor: 'bgRed',
-        })
-      );
-    });
-
-    it('should display patch update notification', () => {
-      const updateInfo: UpdateInfo = {
-        currentVersion: '0.6.0',
-        latestVersion: '0.6.1',
-        hasUpdate: true,
-        updateType: 'patch',
-      };
-
-      displayUpdateNotification(updateInfo);
-
-      expect(mockedBoxen).toHaveBeenCalledWith(
-        expect.stringContaining('Update Available'),
-        expect.objectContaining({
-          borderColor: 'green',
-        })
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Update available: 0.6.0 → 0.7.0. Run npm update -g @apexcli/cli')
       );
     });
 
@@ -311,10 +271,10 @@ describe('Update Checker', () => {
 
       displayUpdateNotification(updateInfo);
 
-      expect(mockedBoxen).not.toHaveBeenCalled();
+      expect(console.log).not.toHaveBeenCalled();
     });
 
-    it('should include version information in notification', () => {
+    it('should use correct colors for notification', () => {
       const updateInfo: UpdateInfo = {
         currentVersion: '0.6.0',
         latestVersion: '0.7.0',
@@ -324,25 +284,10 @@ describe('Update Checker', () => {
 
       displayUpdateNotification(updateInfo);
 
-      const notificationText = (mockedBoxen as jest.MockedFunction<any>).mock.calls[0][0];
-      expect(notificationText).toContain('Current: 0.6.0');
-      expect(notificationText).toContain('Latest: 0.7.0');
-      expect(notificationText).toContain('(minor)');
-    });
-
-    it('should include update instructions in notification', () => {
-      const updateInfo: UpdateInfo = {
-        currentVersion: '0.6.0',
-        latestVersion: '0.7.0',
-        hasUpdate: true,
-        updateType: 'minor',
-      };
-
-      displayUpdateNotification(updateInfo);
-
-      const notificationText = (mockedBoxen as jest.MockedFunction<any>).mock.calls[0][0];
-      expect(notificationText).toContain('npm install -g apex-cli');
-      expect(notificationText).toContain('apex update');
+      expect(mockedChalk.yellow).toHaveBeenCalledWith('0.6.0');
+      expect(mockedChalk.green).toHaveBeenCalledWith('0.7.0');
+      expect(mockedChalk.cyan).toHaveBeenCalledWith('npm update -g @apexcli/cli');
+      expect(mockedChalk.blue).toHaveBeenCalled();
     });
   });
 
@@ -354,10 +299,9 @@ describe('Update Checker', () => {
 
       await checkAndNotifyUpdates();
 
-      expect(getLatestPackageVersion).toHaveBeenCalledWith('apex-cli', { timeout: 3000 });
-      expect(mockedBoxen).toHaveBeenCalledWith(
-        expect.stringContaining('Update Available'),
-        expect.any(Object)
+      expect(getLatestPackageVersion).toHaveBeenCalledWith('@apexcli/cli', { timeout: 3000 });
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Update available: 0.6.0 → 0.7.0. Run npm update -g @apexcli/cli')
       );
     });
 
@@ -366,14 +310,14 @@ describe('Update Checker', () => {
 
       await checkAndNotifyUpdates();
 
-      expect(mockedBoxen).not.toHaveBeenCalled();
+      expect(console.log).not.toHaveBeenCalled();
     });
 
     it('should not check when silent option is true', async () => {
       await checkAndNotifyUpdates({ silent: true });
 
       expect(getLatestPackageVersion).not.toHaveBeenCalled();
-      expect(mockedBoxen).not.toHaveBeenCalled();
+      expect(console.log).not.toHaveBeenCalled();
     });
 
     it('should force check when force option is true', async () => {
@@ -402,7 +346,7 @@ describe('Update Checker', () => {
       // Should not throw
       await expect(checkAndNotifyUpdates()).resolves.not.toThrow();
 
-      expect(mockedBoxen).not.toHaveBeenCalled();
+      expect(console.log).not.toHaveBeenCalled();
     });
 
     it('should handle null update info gracefully', async () => {
@@ -410,7 +354,43 @@ describe('Update Checker', () => {
 
       await checkAndNotifyUpdates();
 
-      expect(mockedBoxen).not.toHaveBeenCalled();
+      expect(console.log).not.toHaveBeenCalled();
+    });
+
+    it('should respect APEX_SKIP_UPDATE_CHECK environment variable', async () => {
+      const originalEnv = process.env.APEX_SKIP_UPDATE_CHECK;
+
+      process.env.APEX_SKIP_UPDATE_CHECK = '1';
+
+      await checkAndNotifyUpdates();
+
+      expect(getLatestPackageVersion).not.toHaveBeenCalled();
+      expect(console.log).not.toHaveBeenCalled();
+
+      // Reset environment
+      if (originalEnv === undefined) {
+        delete process.env.APEX_SKIP_UPDATE_CHECK;
+      } else {
+        process.env.APEX_SKIP_UPDATE_CHECK = originalEnv;
+      }
+    });
+
+    it('should respect APEX_SKIP_UPDATE_CHECK=true environment variable', async () => {
+      const originalEnv = process.env.APEX_SKIP_UPDATE_CHECK;
+
+      process.env.APEX_SKIP_UPDATE_CHECK = 'true';
+
+      await checkAndNotifyUpdates();
+
+      expect(getLatestPackageVersion).not.toHaveBeenCalled();
+      expect(console.log).not.toHaveBeenCalled();
+
+      // Reset environment
+      if (originalEnv === undefined) {
+        delete process.env.APEX_SKIP_UPDATE_CHECK;
+      } else {
+        process.env.APEX_SKIP_UPDATE_CHECK = originalEnv;
+      }
     });
   });
 

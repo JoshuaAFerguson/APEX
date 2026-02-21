@@ -528,10 +528,18 @@ export class ProjectContextAnalyzer {
         detection.packageManager = packageManager;
       }
 
-      // Analyze package.json for dependencies
+      // Run all manifest analyses in parallel for better performance
       const packageJsonPath = path.join(this.projectPath, 'package.json');
-      const packageJsonFrameworks = await this.analyzePackageJson(packageJsonPath);
-      detection.frameworks.push(...packageJsonFrameworks);
+      const [nodeFrameworks, pythonFrameworks, rubyFrameworks, javaFrameworks] =
+        await Promise.all([
+          this.analyzePackageJson(packageJsonPath),
+          this.analyzePythonDependencies(),
+          this.analyzeGemfile(),
+          this.analyzeJavaDependencies(),
+        ]);
+
+      // Combine all framework detections
+      detection.frameworks.push(...nodeFrameworks, ...pythonFrameworks, ...rubyFrameworks, ...javaFrameworks);
 
       // Detect runtime environment
       const runtime = this.detectRuntime(detection.frameworks);
@@ -2015,23 +2023,476 @@ export class ProjectContextAnalyzer {
   }
 
   /**
+   * Analyze Python dependencies for framework detection
+   */
+  private async analyzePythonDependencies(): Promise<FrameworkInfo[]> {
+    const frameworks: FrameworkInfo[] = [];
+
+    // Python framework detection rules
+    const pythonFrameworkRules = [
+      { name: 'Django', packages: ['django', 'Django'], category: 'backend' as const },
+      { name: 'Flask', packages: ['flask', 'Flask'], category: 'backend' as const },
+      { name: 'FastAPI', packages: ['fastapi', 'FastAPI'], category: 'backend' as const },
+      { name: 'Tornado', packages: ['tornado'], category: 'backend' as const },
+      { name: 'Pyramid', packages: ['pyramid'], category: 'backend' as const },
+      { name: 'Starlette', packages: ['starlette'], category: 'backend' as const },
+    ];
+
+    try {
+      // Check requirements.txt
+      await this.analyzePythonManifest('requirements.txt', pythonFrameworkRules, frameworks);
+
+      // Check Pipfile (Pipenv)
+      await this.analyzePipfile(pythonFrameworkRules, frameworks);
+
+      // Check pyproject.toml (Poetry/PEP-517)
+      await this.analyzePyprojectToml(pythonFrameworkRules, frameworks);
+
+    } catch (error) {
+      // Python dependencies don't exist or are invalid
+    }
+
+    return frameworks;
+  }
+
+  /**
+   * Analyze a Python requirements file
+   */
+  private async analyzePythonManifest(
+    filename: string,
+    rules: Array<{name: string, packages: string[], category: 'backend'}>,
+    frameworks: FrameworkInfo[]
+  ): Promise<void> {
+    try {
+      const filePath = path.join(this.projectPath, filename);
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      const lines = content.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+
+      for (const rule of rules) {
+        const matchingPackage = rule.packages.find(pkg =>
+          lines.some(line => {
+            const packageName = line.split(/[>=<!\s]/)[0].toLowerCase();
+            return packageName === pkg.toLowerCase();
+          })
+        );
+
+        if (matchingPackage) {
+          // Extract version if available
+          const versionLine = lines.find(line => {
+            const packageName = line.split(/[>=<!\s]/)[0].toLowerCase();
+            return packageName === matchingPackage.toLowerCase();
+          });
+
+          const versionMatch = versionLine?.match(/[>=<]+([\d.]+)/);
+          const version = versionMatch ? versionMatch[1] : undefined;
+
+          frameworks.push({
+            name: rule.name,
+            version,
+            category: rule.category,
+            confidence: 'high',
+            detectedVia: `${filename} dependency: ${matchingPackage}`,
+            detectionReasons: [`${filename} dependency: ${matchingPackage}`],
+            language: 'python',
+            isDevDependency: false,
+          });
+        }
+      }
+    } catch (error) {
+      // File doesn't exist or is invalid
+    }
+  }
+
+  /**
+   * Analyze Pipfile for Python dependencies
+   */
+  private async analyzePipfile(
+    rules: Array<{name: string, packages: string[], category: 'backend'}>,
+    frameworks: FrameworkInfo[]
+  ): Promise<void> {
+    try {
+      const pipfilePath = path.join(this.projectPath, 'Pipfile');
+      const content = await fs.promises.readFile(pipfilePath, 'utf-8');
+
+      // Parse TOML-like content for dependencies
+      const dependencies: Record<string, string> = {};
+      const devDependencies: Record<string, string> = {};
+
+      let currentSection = '';
+      const lines = content.split('\n');
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('[packages]')) {
+          currentSection = 'packages';
+        } else if (trimmed.startsWith('[dev-packages]')) {
+          currentSection = 'dev-packages';
+        } else if (trimmed.startsWith('[')) {
+          currentSection = '';
+        } else if (currentSection && trimmed.includes('=')) {
+          const [packageName, versionSpec] = trimmed.split('=').map(s => s.trim().replace(/"/g, ''));
+          if (currentSection === 'packages') {
+            dependencies[packageName] = versionSpec;
+          } else if (currentSection === 'dev-packages') {
+            devDependencies[packageName] = versionSpec;
+          }
+        }
+      }
+
+      const allDeps = { ...dependencies, ...devDependencies };
+
+      for (const rule of rules) {
+        const matchingPackage = rule.packages.find(pkg => allDeps[pkg]);
+        if (matchingPackage) {
+          const isDevDependency = devDependencies[matchingPackage] !== undefined;
+          frameworks.push({
+            name: rule.name,
+            version: allDeps[matchingPackage] !== '*' ? allDeps[matchingPackage] : undefined,
+            category: rule.category,
+            confidence: 'high',
+            detectedVia: `Pipfile dependency: ${matchingPackage}`,
+            detectionReasons: [`Pipfile dependency: ${matchingPackage}`],
+            language: 'python',
+            isDevDependency,
+          });
+        }
+      }
+    } catch (error) {
+      // Pipfile doesn't exist or is invalid
+    }
+  }
+
+  /**
+   * Analyze pyproject.toml for Python dependencies
+   */
+  private async analyzePyprojectToml(
+    rules: Array<{name: string, packages: string[], category: 'backend'}>,
+    frameworks: FrameworkInfo[]
+  ): Promise<void> {
+    try {
+      const pyprojectPath = path.join(this.projectPath, 'pyproject.toml');
+      const content = await fs.promises.readFile(pyprojectPath, 'utf-8');
+
+      // Simple TOML parsing for dependencies
+      const dependencies: Record<string, string> = {};
+      const devDependencies: Record<string, string> = {};
+
+      // Look for [tool.poetry.dependencies] or [project.dependencies]
+      const dependencyMatches = content.match(/\[(?:tool\.poetry\.dependencies|project\.dependencies)\]([\s\S]*?)(?=\[|$)/);
+      if (dependencyMatches) {
+        const depSection = dependencyMatches[1];
+        const depLines = depSection.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
+
+        for (const line of depLines) {
+          const trimmed = line.trim();
+          if (trimmed.includes('=')) {
+            const [packageName, versionSpec] = trimmed.split('=').map(s => s.trim().replace(/"/g, ''));
+            dependencies[packageName] = versionSpec;
+          }
+        }
+      }
+
+      // Look for dev dependencies
+      const devDependencyMatches = content.match(/\[tool\.poetry\.group\.dev\.dependencies\]([\s\S]*?)(?=\[|$)/);
+      if (devDependencyMatches) {
+        const devDepSection = devDependencyMatches[1];
+        const devDepLines = devDepSection.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
+
+        for (const line of devDepLines) {
+          const trimmed = line.trim();
+          if (trimmed.includes('=')) {
+            const [packageName, versionSpec] = trimmed.split('=').map(s => s.trim().replace(/"/g, ''));
+            devDependencies[packageName] = versionSpec;
+          }
+        }
+      }
+
+      const allDeps = { ...dependencies, ...devDependencies };
+
+      for (const rule of rules) {
+        const matchingPackage = rule.packages.find(pkg => allDeps[pkg]);
+        if (matchingPackage) {
+          const isDevDependency = devDependencies[matchingPackage] !== undefined;
+          frameworks.push({
+            name: rule.name,
+            version: allDeps[matchingPackage]?.replace(/^[\^~]/, ''),
+            category: rule.category,
+            confidence: 'high',
+            detectedVia: `pyproject.toml dependency: ${matchingPackage}`,
+            detectionReasons: [`pyproject.toml dependency: ${matchingPackage}`],
+            language: 'python',
+            isDevDependency,
+          });
+        }
+      }
+    } catch (error) {
+      // pyproject.toml doesn't exist or is invalid
+    }
+  }
+
+  /**
+   * Analyze Gemfile for Ruby dependencies
+   */
+  private async analyzeGemfile(): Promise<FrameworkInfo[]> {
+    const frameworks: FrameworkInfo[] = [];
+
+    // Ruby framework detection rules
+    const rubyFrameworkRules = [
+      { name: 'Ruby on Rails', packages: ['rails'], category: 'backend' as const },
+      { name: 'Sinatra', packages: ['sinatra'], category: 'backend' as const },
+      { name: 'Hanami', packages: ['hanami'], category: 'backend' as const },
+      { name: 'Padrino', packages: ['padrino'], category: 'backend' as const },
+    ];
+
+    try {
+      const gemfilePath = path.join(this.projectPath, 'Gemfile');
+      const content = await fs.promises.readFile(gemfilePath, 'utf-8');
+
+      // Parse Gemfile for gem declarations
+      const lines = content.split('\n').map(line => line.trim()).filter(line => line);
+      const gems: Record<string, string> = {};
+      const devGems: Record<string, string> = {};
+
+      let inDevGroup = false;
+
+      for (const line of lines) {
+        // Skip comments
+        if (line.startsWith('#')) continue;
+
+        // Check for group blocks
+        if (line.match(/group\s+:development/)) {
+          inDevGroup = true;
+          continue;
+        } else if (line.match(/group\s+:test/)) {
+          inDevGroup = true;
+          continue;
+        } else if (line.match(/group\s+:production/)) {
+          inDevGroup = false;
+          continue;
+        } else if (line === 'end') {
+          inDevGroup = false;
+          continue;
+        }
+
+        // Parse gem declarations
+        const gemMatch = line.match(/gem\s+['"]([^'"]+)['"](?:,\s*['"]([^'"]+)['"])?/);
+        if (gemMatch) {
+          const gemName = gemMatch[1];
+          const version = gemMatch[2];
+
+          if (inDevGroup) {
+            devGems[gemName] = version || '*';
+          } else {
+            gems[gemName] = version || '*';
+          }
+        }
+      }
+
+      const allGems = { ...gems, ...devGems };
+
+      for (const rule of rubyFrameworkRules) {
+        const matchingPackage = rule.packages.find(pkg => allGems[pkg]);
+        if (matchingPackage) {
+          const isDevDependency = devGems[matchingPackage] !== undefined;
+          frameworks.push({
+            name: rule.name,
+            version: allGems[matchingPackage] !== '*' ? allGems[matchingPackage] : undefined,
+            category: rule.category,
+            confidence: 'high',
+            detectedVia: `Gemfile dependency: ${matchingPackage}`,
+            detectionReasons: [`Gemfile dependency: ${matchingPackage}`],
+            language: 'ruby',
+            isDevDependency,
+          });
+        }
+      }
+    } catch (error) {
+      // Gemfile doesn't exist or is invalid
+    }
+
+    return frameworks;
+  }
+
+  /**
+   * Analyze Java dependencies (Maven/Gradle) for framework detection
+   */
+  private async analyzeJavaDependencies(): Promise<FrameworkInfo[]> {
+    const frameworks: FrameworkInfo[] = [];
+
+    // Java framework detection rules
+    const javaFrameworkRules = [
+      {
+        name: 'Spring Boot',
+        packages: ['spring-boot-starter', 'org.springframework.boot'],
+        configFiles: ['application.properties', 'application.yml', 'application.yaml'],
+        category: 'backend' as const
+      },
+      {
+        name: 'Spring',
+        packages: ['org.springframework'],
+        configFiles: ['applicationContext.xml'],
+        category: 'backend' as const
+      },
+      {
+        name: 'Micronaut',
+        packages: ['io.micronaut'],
+        configFiles: ['application.yml'],
+        category: 'backend' as const
+      },
+      {
+        name: 'Quarkus',
+        packages: ['io.quarkus'],
+        configFiles: ['application.properties'],
+        category: 'backend' as const
+      },
+    ];
+
+    try {
+      // Check Maven (pom.xml)
+      await this.analyzeMavenDependencies(javaFrameworkRules, frameworks);
+
+      // Check Gradle (build.gradle, build.gradle.kts)
+      await this.analyzeGradleDependencies(javaFrameworkRules, frameworks);
+
+    } catch (error) {
+      // Java dependencies don't exist or are invalid
+    }
+
+    return frameworks;
+  }
+
+  /**
+   * Analyze Maven pom.xml for dependencies
+   */
+  private async analyzeMavenDependencies(
+    rules: Array<{name: string, packages: string[], configFiles?: string[], category: 'backend'}>,
+    frameworks: FrameworkInfo[]
+  ): Promise<void> {
+    try {
+      const pomPath = path.join(this.projectPath, 'pom.xml');
+      const content = await fs.promises.readFile(pomPath, 'utf-8');
+
+      for (const rule of rules) {
+        for (const packagePattern of rule.packages) {
+          // Look for dependency declarations containing the package pattern
+          const dependencyRegex = new RegExp(`<dependency>[\\s\\S]*?<(?:groupId|artifactId)>[^<]*${packagePattern}[^<]*</(?:groupId|artifactId)>[\\s\\S]*?</dependency>`, 'g');
+          const matches = content.match(dependencyRegex);
+
+          if (matches && matches.length > 0) {
+            // Extract version if available
+            let version: string | undefined;
+            const versionMatch = matches[0].match(/<version>([^<]+)<\/version>/);
+            if (versionMatch) {
+              version = versionMatch[1];
+            }
+
+            frameworks.push({
+              name: rule.name,
+              version,
+              category: rule.category,
+              confidence: 'high',
+              detectedVia: `pom.xml dependency: ${packagePattern}`,
+              detectionReasons: [`pom.xml dependency: ${packagePattern}`],
+              language: 'java',
+              isDevDependency: false,
+            });
+            break; // Found one match for this rule, move to next
+          }
+        }
+      }
+    } catch (error) {
+      // pom.xml doesn't exist or is invalid
+    }
+  }
+
+  /**
+   * Analyze Gradle build files for dependencies
+   */
+  private async analyzeGradleDependencies(
+    rules: Array<{name: string, packages: string[], configFiles?: string[], category: 'backend'}>,
+    frameworks: FrameworkInfo[]
+  ): Promise<void> {
+    try {
+      const buildFiles = ['build.gradle', 'build.gradle.kts'];
+
+      for (const buildFile of buildFiles) {
+        try {
+          const buildPath = path.join(this.projectPath, buildFile);
+          const content = await fs.promises.readFile(buildPath, 'utf-8');
+
+          for (const rule of rules) {
+            for (const packagePattern of rule.packages) {
+              // Look for dependency declarations
+              const dependencyRegex = new RegExp(`(?:implementation|api|compile|runtime)\\s*[("']([^"']*${packagePattern}[^"']*)[)"']`, 'g');
+              const matches = content.match(dependencyRegex);
+
+              if (matches && matches.length > 0) {
+                // Extract version if available from the dependency string
+                const fullDep = matches[0];
+                const versionMatch = fullDep.match(/[:@](\d+(?:\.\d+)*(?:-[A-Za-z0-9-]+)?)/);
+                const version = versionMatch ? versionMatch[1] : undefined;
+
+                frameworks.push({
+                  name: rule.name,
+                  version,
+                  category: rule.category,
+                  confidence: 'high',
+                  detectedVia: `${buildFile} dependency: ${packagePattern}`,
+                  detectionReasons: [`${buildFile} dependency: ${packagePattern}`],
+                  language: 'java',
+                  isDevDependency: false,
+                });
+                break; // Found one match for this rule, move to next
+              }
+            }
+          }
+        } catch (error) {
+          // This specific build file doesn't exist, continue to next
+          continue;
+        }
+      }
+    } catch (error) {
+      // No Gradle build files exist
+    }
+  }
+
+  /**
    * Detect runtime environment based on detected frameworks
    */
   private detectRuntime(frameworks: FrameworkInfo[]): string | undefined {
     const frameworkNames = frameworks.map(f => f.name.toLowerCase());
 
+    // Node.js runtime frameworks
     if (frameworkNames.some(name => ['next.js', 'express', 'fastify', 'nestjs'].includes(name))) {
       return 'node';
     }
 
+    // Browser runtime frameworks
     if (frameworkNames.some(name => ['react', 'vue', 'angular'].includes(name))) {
       return 'browser';
     }
 
+    // Python runtime frameworks
+    if (frameworkNames.some(name => ['django', 'flask', 'fastapi'].includes(name))) {
+      return 'python';
+    }
+
+    // Ruby runtime frameworks
+    if (frameworkNames.some(name => ['ruby on rails', 'sinatra'].includes(name))) {
+      return 'ruby';
+    }
+
+    // JVM runtime frameworks
+    if (frameworkNames.some(name => ['spring boot', 'spring', 'micronaut', 'quarkus'].includes(name))) {
+      return 'jvm';
+    }
+
+    // Mobile runtime
     if (frameworkNames.includes('react native')) {
       return 'mobile';
     }
 
+    // Desktop runtime
     if (frameworkNames.includes('electron')) {
       return 'desktop';
     }

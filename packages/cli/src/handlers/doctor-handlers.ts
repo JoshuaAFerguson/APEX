@@ -493,54 +493,120 @@ function displayHealthReport(report: HealthReport): void {
 // ============================================================================
 
 /**
+ * Display a health report as JSON output
+ */
+function displayHealthReportAsJson(report: HealthReport): void {
+  // Create a clean JSON representation of the health report
+  const jsonReport = {
+    id: report.id,
+    timestamp: report.timestamp,
+    overallStatus: report.overallStatus,
+    summary: report.summary,
+    system: report.system,
+    apexVersion: report.apexVersion,
+    durationMs: report.durationMs,
+    checks: report.checks.map(check => ({
+      id: check.id,
+      name: check.name,
+      category: check.category,
+      description: check.description,
+      status: check.status,
+      severity: check.severity,
+      message: check.message,
+      suggestion: check.suggestion,
+      toolchain: check.toolchain,
+      timestamp: check.timestamp,
+      durationMs: check.durationMs,
+      details: check.details,
+    }))
+  };
+
+  console.log(JSON.stringify(jsonReport, null, 2));
+}
+
+/**
  * Handle the doctor command - run comprehensive health checks
  */
 export async function handleDoctor(ctx: CliContext, args: string[]): Promise<void> {
-  console.log(chalk.cyan('🔍 Running APEX health diagnostics...\n'));
+  // Parse command line flags
+  const isQuickMode = args.includes('--quick');
+  const isJsonOutput = args.includes('--json');
+
+  if (!isJsonOutput) {
+    console.log(chalk.cyan('🔍 Running APEX health diagnostics...\n'));
+    if (isQuickMode) {
+      console.log(chalk.yellow('⚡ Quick mode enabled - skipping slower checks\n'));
+    }
+  }
 
   const startTime = Date.now();
   const checks: DoctorCheckResult[] = [];
 
-  // Run all health checks in parallel for better performance
-  const checkPromises = [
-    checkNodeVersion(),
-    checkNpmVersion(),
-    checkGitVersion(),
-    checkApexConfig(ctx),
-    checkApexDependencies(ctx),
-    checkApexPermissions(ctx),
-  ];
+  // Define check promises based on mode
+  let checkPromises: Promise<DoctorCheckResult>[];
+
+  if (isQuickMode) {
+    // Quick mode: skip slower checks like npm/git version checks and dependency scanning
+    checkPromises = [
+      checkNodeVersion(),        // Fast - uses process.version
+      checkApexConfig(ctx),      // Fast - config validation
+      checkApexPermissions(ctx), // Fast - file system check
+    ];
+  } else {
+    // Full mode: run all health checks
+    checkPromises = [
+      checkNodeVersion(),
+      checkNpmVersion(),         // Slower - executes npm --version
+      checkGitVersion(),         // Slower - executes git --version
+      checkApexConfig(ctx),
+      checkApexDependencies(ctx), // Slower - reads and parses package.json
+      checkApexPermissions(ctx),
+    ];
+  }
 
   try {
     const results = await Promise.all(checkPromises);
     checks.push(...results);
   } catch (error) {
-    console.error(chalk.red('Error running health checks:'), error);
+    if (!isJsonOutput) {
+      console.error(chalk.red('Error running health checks:'), error);
+    } else {
+      // Output error as JSON
+      console.log(JSON.stringify({ error: 'Error running health checks', details: error instanceof Error ? error.message : String(error) }, null, 2));
+    }
     return;
   }
 
-  // Generate and display the health report
+  // Generate the health report
   const report = createHealthReport(checks, { apexVersion: '0.6.0' });
-  displayHealthReport(report);
 
-  // Check for available updates (non-blocking)
-  try {
-    const latestVersion = await getLatestPackageVersion('apex-cli', { timeout: 3000 });
-    if (latestVersion && latestVersion !== '0.6.0') {
-      console.log(boxen(
-        `${chalk.blue('💡 Update Available')}\n\n` +
-        `A newer version of APEX is available: ${chalk.green(latestVersion)}\n` +
-        `Current version: ${chalk.yellow('0.6.0')}\n\n` +
-        `Run ${chalk.cyan('npm install -g apex-cli')} to update`,
-        {
-          padding: 1,
-          margin: 1,
-          borderStyle: 'round',
-          borderColor: 'blue',
+  // Display report based on output format
+  if (isJsonOutput) {
+    displayHealthReportAsJson(report);
+  } else {
+    displayHealthReport(report);
+
+    // Check for available updates (non-blocking) - only in non-JSON mode
+    if (!isQuickMode) {
+      try {
+        const latestVersion = await getLatestPackageVersion('apex-cli', { timeout: 3000 });
+        if (latestVersion && latestVersion !== '0.6.0') {
+          console.log(boxen(
+            `${chalk.blue('💡 Update Available')}\n\n` +
+            `A newer version of APEX is available: ${chalk.green(latestVersion)}\n` +
+            `Current version: ${chalk.yellow('0.6.0')}\n\n` +
+            `Run ${chalk.cyan('npm install -g apex-cli')} to update`,
+            {
+              padding: 1,
+              margin: 1,
+              borderStyle: 'round',
+              borderColor: 'blue',
+            }
+          ));
         }
-      ));
+      } catch (error) {
+        // Silently fail update check - not critical
+      }
     }
-  } catch (error) {
-    // Silently fail update check - not critical
   }
 }
