@@ -1301,6 +1301,176 @@ export class ProjectContextAnalyzer {
   }
 
   /**
+   * Detect test frameworks in the project
+   * Returns framework name, config file path, and test run command for detected test frameworks
+   * @returns Promise resolving to array of detected test framework information
+   */
+  async detectTestFrameworks(): Promise<Array<{
+    name: string;
+    configFile?: string;
+    runCommand: string;
+  }>> {
+    const detectedFrameworks: Array<{
+      name: string;
+      configFile?: string;
+      runCommand: string;
+    }> = [];
+
+    // Enhanced test framework detection rules with broader support
+    const testFrameworkRules = [
+      {
+        name: 'Jest',
+        packageNames: ['jest'],
+        configFiles: ['jest.config.js', 'jest.config.ts', 'jest.config.json', 'jest.config.mjs'],
+        runCommand: 'npm test',
+      },
+      {
+        name: 'Vitest',
+        packageNames: ['vitest'],
+        configFiles: ['vitest.config.js', 'vitest.config.ts', 'vitest.config.mjs', 'vite.config.js', 'vite.config.ts'],
+        runCommand: 'vitest',
+      },
+      {
+        name: 'Mocha',
+        packageNames: ['mocha'],
+        configFiles: ['.mocharc.js', '.mocharc.json', '.mocharc.yml', '.mocharc.yaml', 'mocha.opts'],
+        runCommand: 'mocha',
+      },
+      {
+        name: 'Pytest',
+        packageNames: ['pytest'],
+        configFiles: ['pytest.ini', 'pyproject.toml', 'tox.ini', 'setup.cfg'],
+        testIndicators: ['test_*.py', '*_test.py', 'tests/'],
+        runCommand: 'pytest',
+      },
+      {
+        name: 'Playwright',
+        packageNames: ['@playwright/test', 'playwright'],
+        configFiles: ['playwright.config.js', 'playwright.config.ts'],
+        runCommand: 'playwright test',
+      },
+      {
+        name: 'Cypress',
+        packageNames: ['cypress'],
+        configFiles: ['cypress.config.js', 'cypress.config.ts', 'cypress.json'],
+        runCommand: 'cypress run',
+      },
+      {
+        name: 'Karma',
+        packageNames: ['karma'],
+        configFiles: ['karma.conf.js'],
+        runCommand: 'karma start',
+      },
+      {
+        name: 'Jasmine',
+        packageNames: ['jasmine'],
+        configFiles: ['spec/support/jasmine.json'],
+        runCommand: 'jasmine',
+      },
+      {
+        name: 'AVA',
+        packageNames: ['ava'],
+        configFiles: ['ava.config.js', 'ava.config.mjs'],
+        runCommand: 'ava',
+      },
+      {
+        name: 'Tape',
+        packageNames: ['tape'],
+        configFiles: [],
+        runCommand: 'tape',
+      },
+      {
+        name: 'QUnit',
+        packageNames: ['qunit'],
+        configFiles: [],
+        runCommand: 'qunit',
+      },
+      {
+        name: 'Unittest',
+        packageNames: [],
+        configFiles: [],
+        testIndicators: ['test_*.py', '*_test.py', 'tests/'],
+        runCommand: 'python -m unittest',
+      },
+    ];
+
+    // Load package.json to check for dependencies
+    const packageJson = await this.loadPackageJson();
+
+    for (const rule of testFrameworkRules) {
+      let detected = false;
+      let configFile: string | undefined;
+
+      // Check if framework is in dependencies
+      if (packageJson && rule.packageNames.length > 0) {
+        const allDeps = {
+          ...packageJson.dependencies,
+          ...packageJson.devDependencies,
+          ...packageJson.peerDependencies,
+        };
+
+        for (const packageName of rule.packageNames) {
+          if (allDeps[packageName]) {
+            detected = true;
+            break;
+          }
+        }
+      }
+
+      // Check for configuration files
+      for (const configFileName of rule.configFiles) {
+        try {
+          await fs.promises.access(path.join(this.projectPath, configFileName));
+          configFile = configFileName;
+          detected = true;
+          break; // Use the first found config file
+        } catch {
+          // File doesn't exist
+        }
+      }
+
+      // For frameworks without npm packages (like Python unittest), check for test indicators
+      if (!detected && rule.testIndicators) {
+        for (const indicator of rule.testIndicators) {
+          if (indicator.endsWith('/')) {
+            // Check for directory
+            try {
+              const stats = await fs.promises.stat(path.join(this.projectPath, indicator));
+              if (stats.isDirectory()) {
+                detected = true;
+                break;
+              }
+            } catch {
+              // Directory doesn't exist
+            }
+          } else {
+            // Check for file patterns
+            try {
+              const matchedFiles = await this.findConfigFiles(indicator);
+              if (matchedFiles.length > 0) {
+                detected = true;
+                break;
+              }
+            } catch {
+              // Pattern matching failed
+            }
+          }
+        }
+      }
+
+      if (detected) {
+        detectedFrameworks.push({
+          name: rule.name,
+          configFile,
+          runCommand: rule.runCommand,
+        });
+      }
+    }
+
+    return detectedFrameworks;
+  }
+
+  /**
    * Get the project path being analyzed
    * @returns Project root path
    */
