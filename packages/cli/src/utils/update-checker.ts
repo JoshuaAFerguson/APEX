@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import boxen from 'boxen';
-import * as fs from 'fs/promises';
+import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import { getLatestPackageVersion, compareVersionStrings } from '@apexcli/core';
 
@@ -32,8 +33,15 @@ interface UpdateCache {
  * Get the current APEX version from package.json
  */
 export function getCurrentVersion(): string {
-  // Default to the version in development
-  return '0.6.0';
+  try {
+    // Try to find and read package.json from CLI package
+    const packageJsonPath = path.join(__dirname, '../../package.json');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    return packageJson.version || '0.6.0';
+  } catch {
+    // Fallback for development environment or if package.json can't be read
+    return '0.6.0';
+  }
 }
 
 /**
@@ -71,7 +79,7 @@ function getCacheFilePath(): string {
 async function loadUpdateCache(): Promise<UpdateCache | null> {
   try {
     const cacheFile = getCacheFilePath();
-    const cacheContent = await fs.readFile(cacheFile, 'utf-8');
+    const cacheContent = await fsPromises.readFile(cacheFile, 'utf-8');
     const cache = JSON.parse(cacheContent) as UpdateCache;
 
     // Cache is valid for 6 hours (6 * 60 * 60 * 1000 = 21600000 ms)
@@ -99,7 +107,7 @@ async function saveUpdateCache(updateInfo: UpdateInfo): Promise<void> {
     };
 
     const cacheFile = getCacheFilePath();
-    await fs.writeFile(cacheFile, JSON.stringify(cache, null, 2), 'utf-8');
+    await fsPromises.writeFile(cacheFile, JSON.stringify(cache, null, 2), 'utf-8');
   } catch (error) {
     // Silently fail - caching is not critical
   }

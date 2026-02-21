@@ -10703,6 +10703,69 @@ export const ConfigurationInfoSchema = z.object({
 });
 export type ConfigurationInfo = z.infer<typeof ConfigurationInfoSchema>;
 
+/**
+ * Information about a parsed configuration file with extracted settings
+ *
+ * @example
+ * ```typescript
+ * const parsedConfig: ParsedConfigurationInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   format: 'json',
+ *   purpose: 'typescript',
+ *   isValid: true,
+ *   parsed: {
+ *     compilerOptions: {
+ *       strict: true,
+ *       target: 'ES2022',
+ *       module: 'NodeNext'
+ *     }
+ *   },
+ *   compilerOptions: {
+ *     strict: true,
+ *     target: 'ES2022'
+ *   }
+ * };
+ * ```
+ */
+export const ParsedConfigurationInfoSchema = ConfigurationInfoSchema.extend({
+  /** Fully parsed configuration object */
+  parsed: z.record(z.string(), z.unknown()).optional(),
+
+  /** TypeScript compiler options (for tsconfig.json files) */
+  compilerOptions: z.record(z.string(), z.unknown()).optional(),
+
+  /** Build configuration settings (for webpack, vite, etc.) */
+  buildConfig: z.record(z.string(), z.unknown()).optional(),
+
+  /** Test configuration settings (for jest, vitest, etc.) */
+  testConfig: z.record(z.string(), z.unknown()).optional(),
+
+  /** Linting configuration settings (for eslint, prettier) */
+  lintConfig: z.record(z.string(), z.unknown()).optional(),
+
+  /** Scripts/commands defined in configuration */
+  scripts: z.record(z.string(), z.string()).optional(),
+
+  /** Dependencies information (from package.json) */
+  dependencies: z.object({
+    runtime: z.record(z.string(), z.string()).optional(),
+    development: z.record(z.string(), z.string()).optional(),
+    peer: z.record(z.string(), z.string()).optional(),
+    optional: z.record(z.string(), z.string()).optional(),
+  }).optional(),
+
+  /** Configuration inheritance/extension information */
+  extends: z.union([z.string(), z.array(z.string())]).optional(),
+
+  /** Environment variables or settings */
+  environment: z.record(z.string(), z.unknown()).optional(),
+
+  /** Parsing error details if configuration is malformed */
+  parseError: z.string().optional(),
+});
+export type ParsedConfigurationInfo = z.infer<typeof ParsedConfigurationInfoSchema>;
+
 // ============================================================================
 // Test Framework Detection Types (v0.6.0)
 // ============================================================================

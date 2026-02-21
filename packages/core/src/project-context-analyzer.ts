@@ -24,6 +24,8 @@ import {
   ProjectEntry,
   ConfigurationInfo,
   ConfigurationInfoSchema,
+  ParsedConfigurationInfo,
+  ParsedConfigurationInfoSchema,
   TestFrameworkInfo,
   TestFrameworkInfoSchema,
   FrameworkInfo,
@@ -40,6 +42,7 @@ export {
   GitStatusSchema,
   ProjectStructureSchema,
   ConfigurationInfoSchema,
+  ParsedConfigurationInfoSchema,
   TestFrameworkInfoSchema,
   FrameworkInfoSchema,
   FrameworkDetectionSchema,
@@ -661,7 +664,7 @@ export class ProjectContextAnalyzer {
               configInfo.keySettings = this.extractSafeSettings(parsed, config.purpose);
             } catch (parseError) {
               configInfo.isValid = false;
-              configInfo.validationError = `JSON parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`;
+              configInfo.parseError = `JSON parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`;
             }
           }
 
@@ -682,6 +685,475 @@ export class ProjectContextAnalyzer {
     });
 
     return configurations.map(config => ConfigurationInfoSchema.parse(config));
+  }
+
+  /**
+   * Parse configuration files and extract detailed settings
+   * @param configurations - Array of configuration information to parse
+   * @returns Promise resolving to array of parsed configuration information
+   */
+  async parseConfigurations(configurations?: ConfigurationInfo[]): Promise<ParsedConfigurationInfo[]> {
+    // If no configurations provided, get them first
+    const configsToProcess = configurations || await this.getConfigurationInfoList();
+    const parsedConfigurations: ParsedConfigurationInfo[] = [];
+
+    for (const config of configsToProcess) {
+      try {
+        const parsed = await this.parseIndividualConfiguration(config);
+        parsedConfigurations.push(parsed);
+      } catch (error) {
+        // Create a parsed configuration with error information
+        const errorConfig: ParsedConfigurationInfo = {
+          ...config,
+          isValid: false,
+          parseError: `Failed to parse ${config.name}: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        parsedConfigurations.push(errorConfig);
+      }
+    }
+
+    return parsedConfigurations;
+  }
+
+  /**
+   * Parse an individual configuration file
+   * @private
+   */
+  private async parseIndividualConfiguration(config: ConfigurationInfo): Promise<ParsedConfigurationInfo> {
+    const filePath = path.join(this.projectPath, config.path);
+
+    // Check if file exists
+    if (!await this.fileExists(filePath)) {
+      return {
+        ...config,
+        isValid: false,
+        parseError: `File not found: ${config.path}`,
+      };
+    }
+
+    // Read file content
+    let content: string;
+    try {
+      content = await fs.promises.readFile(filePath, 'utf-8');
+    } catch (error) {
+      return {
+        ...config,
+        isValid: false,
+        parseError: `Failed to read file: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+
+    // Parse based on format
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = await this.parseConfigurationContent(content, config.format, config.name);
+    } catch (error) {
+      return {
+        ...config,
+        isValid: false,
+        parseError: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    // Extract purpose-specific settings
+    const result: ParsedConfigurationInfo = {
+      ...config,
+      parsed,
+      isValid: true,
+    };
+
+    // Extract specific configuration sections based on purpose
+    this.extractPurposeSpecificSettings(result, parsed, config.purpose);
+
+    return result;
+  }
+
+  /**
+   * Parse configuration content based on format
+   * @private
+   */
+  private async parseConfigurationContent(
+    content: string,
+    format: 'json' | 'yaml' | 'toml' | 'javascript' | 'ini' | 'env' | 'xml' | 'other',
+    fileName: string
+  ): Promise<Record<string, unknown>> {
+    switch (format) {
+      case 'json':
+        return JSON.parse(content);
+
+      case 'yaml':
+        // For now, handle yaml as simple key-value pairs since we don't have yaml parser
+        return this.parseSimpleYaml(content);
+
+      case 'javascript':
+        // For JavaScript config files, extract CommonJS/ESM exports
+        return this.parseJavaScriptConfig(content, fileName);
+
+      case 'env':
+        return this.parseEnvFile(content);
+
+      case 'ini':
+        return this.parseIniFile(content);
+
+      case 'toml':
+        // Basic TOML parsing - just extract key-value pairs
+        return this.parseSimpleToml(content);
+
+      case 'other':
+      case 'xml':
+        // For other formats, return basic structure
+        return { content, format };
+
+      default:
+        return { content, format };
+    }
+  }
+
+  /**
+   * Extract purpose-specific settings from parsed configuration
+   * @private
+   */
+  private extractPurposeSpecificSettings(
+    result: ParsedConfigurationInfo,
+    parsed: Record<string, unknown>,
+    purpose: string
+  ): void {
+    switch (purpose) {
+      case 'typescript':
+        if (parsed.compilerOptions) {
+          result.compilerOptions = parsed.compilerOptions as Record<string, unknown>;
+        }
+        if (parsed.extends) {
+          result.extends = parsed.extends as string | string[];
+        }
+        break;
+
+      case 'package-manager':
+        if (parsed.scripts) {
+          result.scripts = parsed.scripts as Record<string, string>;
+        }
+        if (parsed.dependencies || parsed.devDependencies || parsed.peerDependencies || parsed.optionalDependencies) {
+          result.dependencies = {
+            runtime: parsed.dependencies as Record<string, string> || {},
+            development: parsed.devDependencies as Record<string, string> || {},
+            peer: parsed.peerDependencies as Record<string, string> || {},
+            optional: parsed.optionalDependencies as Record<string, string> || {},
+          };
+        }
+        break;
+
+      case 'build':
+        // Extract build configuration
+        result.buildConfig = this.extractBuildConfig(parsed);
+        break;
+
+      case 'testing':
+        // Extract test configuration
+        result.testConfig = this.extractTestConfig(parsed);
+        break;
+
+      case 'linting':
+        // Extract linting configuration
+        result.lintConfig = this.extractLintConfig(parsed);
+        break;
+
+      case 'environment':
+        // Environment variables
+        result.environment = parsed;
+        break;
+    }
+
+    // Always extract safe settings using existing method
+    result.keySettings = this.extractSafeSettings(parsed, purpose);
+  }
+
+  /**
+   * Extract build configuration settings
+   * @private
+   */
+  private extractBuildConfig(parsed: Record<string, unknown>): Record<string, unknown> {
+    const buildConfig: Record<string, unknown> = {};
+
+    // Common build settings
+    const buildKeys = ['entry', 'output', 'mode', 'target', 'plugins', 'module', 'resolve', 'optimization', 'devServer'];
+
+    for (const key of buildKeys) {
+      if (parsed[key]) {
+        buildConfig[key] = parsed[key];
+      }
+    }
+
+    return buildConfig;
+  }
+
+  /**
+   * Extract test configuration settings
+   * @private
+   */
+  private extractTestConfig(parsed: Record<string, unknown>): Record<string, unknown> {
+    const testConfig: Record<string, unknown> = {};
+
+    // Common test settings
+    const testKeys = ['testMatch', 'testIgnore', 'collectCoverage', 'coverageDirectory', 'setupFiles', 'testEnvironment'];
+
+    for (const key of testKeys) {
+      if (parsed[key]) {
+        testConfig[key] = parsed[key];
+      }
+    }
+
+    return testConfig;
+  }
+
+  /**
+   * Extract linting configuration settings
+   * @private
+   */
+  private extractLintConfig(parsed: Record<string, unknown>): Record<string, unknown> {
+    const lintConfig: Record<string, unknown> = {};
+
+    // Common lint settings
+    const lintKeys = ['extends', 'rules', 'plugins', 'env', 'parser', 'parserOptions', 'overrides'];
+
+    for (const key of lintKeys) {
+      if (parsed[key]) {
+        lintConfig[key] = parsed[key];
+      }
+    }
+
+    return lintConfig;
+  }
+
+  /**
+   * Parse simple YAML content (basic key-value pairs)
+   * @private
+   */
+  private parseSimpleYaml(content: string): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    const lines = content.split('\n');
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#') && trimmed.includes(':')) {
+        const [key, ...valueParts] = trimmed.split(':');
+        const value = valueParts.join(':').trim();
+        if (key && value) {
+          result[key.trim()] = this.parseYamlValue(value);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Parse YAML value to appropriate type
+   * @private
+   */
+  private parseYamlValue(value: string): unknown {
+    const trimmed = value.trim();
+
+    // Boolean values
+    if (trimmed === 'true') return true;
+    if (trimmed === 'false') return false;
+
+    // Numeric values
+    if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+    if (/^\d+\.\d+$/.test(trimmed)) return parseFloat(trimmed);
+
+    // Remove quotes
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      return trimmed.slice(1, -1);
+    }
+
+    return trimmed;
+  }
+
+  /**
+   * Parse JavaScript configuration files
+   * @private
+   */
+  private parseJavaScriptConfig(content: string, fileName: string): Record<string, unknown> {
+    // WARNING: This is a simplified parser for JavaScript config files
+    // It only supports basic object literals with simple key-value pairs
+    // Complex expressions, functions, or nested objects may not be parsed correctly
+    // For production use, consider using a proper JS parser like @babel/parser
+    const result: Record<string, unknown> = {};
+
+    // Try to extract module.exports or export default patterns
+    const moduleExportsMatch = content.match(/module\.exports\s*=\s*({[\s\S]*?});?\s*$/m);
+    const exportDefaultMatch = content.match(/export\s+default\s+({[\s\S]*?});?\s*$/m);
+
+    if (moduleExportsMatch || exportDefaultMatch) {
+      const configObject = moduleExportsMatch?.[1] || exportDefaultMatch?.[1];
+      if (configObject) {
+        try {
+          // Safer approach: only handle simple object literals
+          // Warning: This is a simplified parser that only supports basic object structures
+          let sanitized = configObject;
+
+          // Remove trailing commas (safer approach)
+          sanitized = sanitized.replace(/,(\s*[}\]])/g, '$1');
+
+          // Only quote unquoted keys if they don't appear to already be quoted
+          // This is still limited but safer than the previous approach
+          sanitized = sanitized.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
+
+          // Simple single quote replacement only outside of strings (very basic)
+          // This is still not perfect but better than global replacement
+          sanitized = sanitized.replace(/([:\s,\[{]\s*)'([^']*)'(\s*[,\]\}:\s])/g, '$1"$2"$3');
+
+          return JSON.parse(sanitized);
+        } catch {
+          // If parsing fails, return basic info
+          result.configType = 'javascript';
+          result.fileName = fileName;
+          result.hasModuleExports = !!moduleExportsMatch;
+          result.hasExportDefault = !!exportDefaultMatch;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Parse environment file content
+   * @private
+   */
+  private parseEnvFile(content: string): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    const lines = content.split('\n');
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+        const [key, ...valueParts] = trimmed.split('=');
+        const value = valueParts.join('=');
+        if (key) {
+          // Don't include sensitive environment variables
+          const lowerKey = key.toLowerCase();
+          if (!lowerKey.includes('password') && !lowerKey.includes('secret') &&
+              !lowerKey.includes('key') && !lowerKey.includes('token')) {
+            result[key.trim()] = value.trim();
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Parse INI file content
+   * @private
+   */
+  private parseIniFile(content: string): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    const lines = content.split('\n');
+    let currentSection = '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) {
+        continue;
+      }
+
+      // Section header
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        currentSection = trimmed.slice(1, -1);
+        result[currentSection] = {};
+        continue;
+      }
+
+      // Key-value pair
+      if (trimmed.includes('=')) {
+        const [key, ...valueParts] = trimmed.split('=');
+        const value = valueParts.join('=').trim();
+        if (key) {
+          const section = currentSection ? result[currentSection] as Record<string, unknown> : result;
+          section[key.trim()] = value;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Parse simple TOML content
+   * @private
+   */
+  private parseSimpleToml(content: string): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    const lines = content.split('\n');
+    let currentSection = '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue;
+      }
+
+      // Section header
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        currentSection = trimmed.slice(1, -1);
+        result[currentSection] = {};
+        continue;
+      }
+
+      // Key-value pair
+      if (trimmed.includes('=')) {
+        const [key, ...valueParts] = trimmed.split('=');
+        const value = valueParts.join('=').trim();
+        if (key) {
+          const section = currentSection ? result[currentSection] as Record<string, unknown> : result;
+          section[key.trim()] = this.parseTomlValue(value);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Parse TOML value to appropriate type
+   * @private
+   */
+  private parseTomlValue(value: string): unknown {
+    const trimmed = value.trim();
+
+    // Boolean values
+    if (trimmed === 'true') return true;
+    if (trimmed === 'false') return false;
+
+    // Numeric values
+    if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+    if (/^\d+\.\d+$/.test(trimmed)) return parseFloat(trimmed);
+
+    // String values (remove quotes)
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      return trimmed.slice(1, -1);
+    }
+    if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+      return trimmed.slice(1, -1);
+    }
+
+    return trimmed;
+  }
+
+  /**
+   * Check if file exists
+   * @private
+   */
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.promises.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
