@@ -8,6 +8,10 @@ import {
   getLatestPackageVersion,
   createDoctorCheckResult,
   createHealthReport,
+  detectTypeScript,
+  detectYarn,
+  detectPnpm,
+  detectClaudeApiKey,
   NpmPackageInfo,
 } from '../doctor-utils.js';
 import type { DoctorCheckResult, HealthReport } from '../types.js';

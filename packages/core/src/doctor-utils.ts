@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { compareVersions, parseSemver } from './utils';
-import type { DoctorCheckResult, HealthReport, CheckStatus } from './types';
+import type { DoctorCheckResult, HealthReport, CheckStatus, ToolchainCheck } from './types';
 
 // Use Node.js built-in fetch if available (Node 18+), otherwise use undici
 const fetchImpl = (() => {
@@ -309,6 +309,231 @@ export async function getLatestPackageVersion(
 ): Promise<string | null> {
   const info = await queryNpmRegistry(packageName, options);
   return info?.latestVersion || null;
+}
+
+// ============================================================================
+// Toolchain Detection Utilities
+// ============================================================================
+
+/**
+ * Check TypeScript version and availability
+ *
+ * @param options - Detection options
+ * @returns Promise resolving to toolchain check result
+ */
+export async function detectTypeScript(options: {
+  /** Check locally installed version instead of global */
+  local?: boolean;
+  /** Working directory to check for local installation */
+  cwd?: string;
+} = {}): Promise<ToolchainCheck> {
+  const { local = false, cwd = process.cwd() } = options;
+
+  try {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+
+    const command = local ? 'npx tsc --version' : 'tsc --version';
+    const execOptions = cwd ? { cwd } : {};
+
+    try {
+      const { stdout } = await execAsync(command, execOptions);
+      const version = parseVersionOutput(stdout.trim());
+
+      return {
+        name: 'typescript',
+        currentVersion: version,
+        requiredVersion: '4.0.0',
+        required: false,
+        path: local ? 'local' : 'global',
+        metadata: {
+          installation: local ? 'local' : 'global',
+          raw: stdout.trim(),
+        },
+      };
+    } catch (cmdError) {
+      if (local) {
+        try {
+          const fs = await import('fs/promises');
+          const path = await import('path');
+          const packageJsonPath = path.join(cwd, 'package.json');
+          const packageContent = await fs.readFile(packageJsonPath, 'utf-8');
+          const packageJson = JSON.parse(packageContent);
+
+          const tsVersion =
+            packageJson.dependencies?.typescript ||
+            packageJson.devDependencies?.typescript;
+
+          if (tsVersion) {
+            const cleanVersion = parseVersionOutput(tsVersion) || tsVersion;
+            return {
+              name: 'typescript',
+              currentVersion: cleanVersion,
+              requiredVersion: '4.0.0',
+              required: false,
+              path: packageJsonPath,
+              metadata: {
+                installation: 'package.json',
+                raw: tsVersion,
+              },
+            };
+          }
+        } catch {
+          // Ignore errors
+        }
+      }
+
+      return {
+        name: 'typescript',
+        currentVersion: null,
+        requiredVersion: '4.0.0',
+        required: false,
+        metadata: {
+          installation: local ? 'local' : 'global',
+          error: cmdError instanceof Error ? cmdError.message : 'Command failed',
+        },
+      };
+    }
+  } catch (error) {
+    return {
+      name: 'typescript',
+      currentVersion: null,
+      requiredVersion: '4.0.0',
+      required: false,
+      metadata: {
+        error: error instanceof Error ? error.message : 'Detection failed',
+      },
+    };
+  }
+}
+
+/**
+ * Check Yarn package manager version and availability
+ *
+ * @returns Promise resolving to toolchain check result
+ */
+export async function detectYarn(): Promise<ToolchainCheck> {
+  try {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+
+    const { stdout } = await execAsync('yarn --version');
+    const version = parseVersionOutput(stdout.trim());
+
+    return {
+      name: 'yarn',
+      currentVersion: version,
+      requiredVersion: '1.22.0',
+      required: false,
+      metadata: {
+        raw: stdout.trim(),
+        packageManager: true,
+      },
+    };
+  } catch (error) {
+    return {
+      name: 'yarn',
+      currentVersion: null,
+      requiredVersion: '1.22.0',
+      required: false,
+      metadata: {
+        error: error instanceof Error ? error.message : 'Yarn not found',
+        packageManager: true,
+      },
+    };
+  }
+}
+
+/**
+ * Check pnpm package manager version and availability
+ *
+ * @returns Promise resolving to toolchain check result
+ */
+export async function detectPnpm(): Promise<ToolchainCheck> {
+  try {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+
+    const { stdout } = await execAsync('pnpm --version');
+    const version = parseVersionOutput(stdout.trim());
+
+    return {
+      name: 'pnpm',
+      currentVersion: version,
+      requiredVersion: '7.0.0',
+      required: false,
+      metadata: {
+        raw: stdout.trim(),
+        packageManager: true,
+      },
+    };
+  } catch (error) {
+    return {
+      name: 'pnpm',
+      currentVersion: null,
+      requiredVersion: '7.0.0',
+      required: false,
+      metadata: {
+        error: error instanceof Error ? error.message : 'pnpm not found',
+        packageManager: true,
+      },
+    };
+  }
+}
+
+/**
+ * Check Claude API key presence
+ * Only checks for presence, never logs actual key values for security
+ *
+ * @param options - Detection options
+ * @returns Promise resolving to toolchain check result
+ */
+export async function detectClaudeApiKey(options: {
+  checkEnv?: boolean;
+  envVar?: string;
+} = {}): Promise<ToolchainCheck> {
+  const { checkEnv = true, envVar = 'CLAUDE_API_KEY' } = options;
+
+  try {
+    let apiKeyFound = false;
+    let source: string | undefined;
+
+    if (checkEnv) {
+      const envVars = [envVar, 'ANTHROPIC_API_KEY'];
+      for (const varName of envVars) {
+        if (process.env[varName]) {
+          apiKeyFound = true;
+          source = varName;
+          break;
+        }
+      }
+    }
+
+    return {
+      name: 'claude-api-key',
+      currentVersion: apiKeyFound ? 'present' : null,
+      requiredVersion: 'present',
+      required: true,
+      path: source,
+      metadata: {
+        source,
+        checkMethod: 'environment-variables',
+      },
+    };
+  } catch (error) {
+    return {
+      name: 'claude-api-key',
+      currentVersion: null,
+      requiredVersion: 'present',
+      required: true,
+      metadata: {
+        error: error instanceof Error ? error.message : 'Detection failed',
+      },
+    };
+  }
 }
 
 // ============================================================================

@@ -530,6 +530,198 @@ tokio = { version = "1.0", features = ["full"] }
       });
     });
 
+    it('should parse pyproject.toml for Python projects', async () => {
+      const pyprojectContent = `
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-python-project"
+version = "0.1.0"
+description = "A sample Python project"
+authors = [
+    {name = "Jane Doe", email = "jane@example.com"}
+]
+dependencies = [
+    "requests>=2.20.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "mypy>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+strict_optional = true
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+`;
+
+      const configInfo: ConfigurationInfo = {
+        name: 'pyproject.toml',
+        path: 'pyproject.toml',
+        format: 'toml',
+        purpose: 'package-manager',
+        isValid: true
+      };
+
+      mockFs.promises.access = vi.fn().mockResolvedValue(undefined);
+      mockFs.promises.readFile = vi.fn().mockResolvedValue(pyprojectContent);
+
+      const result = await analyzer.parseConfigurations([configInfo]);
+
+      expect(result[0]).toMatchObject({
+        name: 'pyproject.toml',
+        isValid: true,
+        parsed: expect.objectContaining({
+          project: expect.objectContaining({
+            name: 'my-python-project',
+            version: '0.1.0',
+            description: 'A sample Python project'
+          }),
+          'build-system': expect.objectContaining({
+            requires: expect.arrayContaining(['setuptools>=45', 'wheel'])
+          })
+        })
+        // Note: Python dependencies from pyproject.toml have different structure than npm,
+        // so they won't be automatically parsed into the dependencies format
+      });
+    });
+
+    it('should parse docker-compose.yml configuration', async () => {
+      const dockerComposeContent = `
+version: '3.8'
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://user:pass@db:5432/myapp
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:
+`;
+
+      const configInfo: ConfigurationInfo = {
+        name: 'docker-compose.yml',
+        path: 'docker-compose.yml',
+        format: 'yaml',
+        purpose: 'containerization',
+        isValid: true
+      };
+
+      mockFs.promises.access = vi.fn().mockResolvedValue(undefined);
+      mockFs.promises.readFile = vi.fn().mockResolvedValue(dockerComposeContent);
+
+      const result = await analyzer.parseConfigurations([configInfo]);
+
+      expect(result[0]).toMatchObject({
+        name: 'docker-compose.yml',
+        isValid: true,
+        parsed: expect.objectContaining({
+          version: '3.8',
+          services: expect.objectContaining({
+            web: expect.objectContaining({
+              build: expect.objectContaining({
+                context: '.',
+                dockerfile: 'Dockerfile'
+              }),
+              ports: expect.arrayContaining(['3000:3000'])
+            }),
+            db: expect.objectContaining({
+              image: 'postgres:13'
+            })
+          })
+        })
+      });
+    });
+
+    it('should parse .prettierrc configuration', async () => {
+      const prettierContent = JSON.stringify({
+        semi: false,
+        singleQuote: true,
+        tabWidth: 2,
+        trailingComma: 'es5',
+        printWidth: 100,
+        bracketSpacing: true,
+        arrowParens: 'avoid',
+        endOfLine: 'lf',
+        overrides: [
+          {
+            files: '*.md',
+            options: {
+              printWidth: 80
+            }
+          }
+        ]
+      });
+
+      const configInfo: ConfigurationInfo = {
+        name: '.prettierrc',
+        path: '.prettierrc',
+        format: 'json',
+        purpose: 'linting',
+        isValid: true
+      };
+
+      mockFs.promises.access = vi.fn().mockResolvedValue(undefined);
+      mockFs.promises.readFile = vi.fn().mockResolvedValue(prettierContent);
+
+      const result = await analyzer.parseConfigurations([configInfo]);
+
+      expect(result[0]).toMatchObject({
+        name: '.prettierrc',
+        isValid: true,
+        parsed: expect.objectContaining({
+          semi: false,
+          singleQuote: true,
+          tabWidth: 2,
+          trailingComma: 'es5',
+          printWidth: 100,
+          bracketSpacing: true,
+          arrowParens: 'avoid'
+        }),
+        lintConfig: expect.objectContaining({
+          semi: false,
+          singleQuote: true,
+          tabWidth: 2,
+          printWidth: 100
+        })
+      });
+    });
+
     it('should use getConfigurationInfoList when no configurations provided', async () => {
       const mockGetConfigurationInfoList = vi.spyOn(analyzer, 'getConfigurationInfoList')
         .mockResolvedValue([{
@@ -580,6 +772,161 @@ tokio = { version = "1.0", features = ["full"] }
       expect(result[1].name).toBe('tsconfig.json');
       expect(result[0].scripts).toEqual({ build: 'tsc' });
       expect(result[1].compilerOptions).toEqual({ strict: true });
+    });
+
+    it('should handle mixed success and error configurations', async () => {
+      const configs: ConfigurationInfo[] = [
+        {
+          name: 'valid.json',
+          path: 'valid.json',
+          format: 'json',
+          purpose: 'other',
+          isValid: true
+        },
+        {
+          name: 'missing.json',
+          path: 'missing.json',
+          format: 'json',
+          purpose: 'other',
+          isValid: true
+        },
+        {
+          name: 'invalid.json',
+          path: 'invalid.json',
+          format: 'json',
+          purpose: 'other',
+          isValid: true
+        }
+      ];
+
+      mockFs.promises.access = vi.fn()
+        .mockResolvedValueOnce(undefined) // valid.json exists
+        .mockRejectedValueOnce(new Error('File not found')) // missing.json
+        .mockResolvedValueOnce(undefined); // invalid.json exists
+
+      mockFs.promises.readFile = vi.fn()
+        .mockResolvedValueOnce('{"valid": true}') // valid.json
+        .mockResolvedValueOnce('{ invalid json }'); // invalid.json
+
+      const result = await analyzer.parseConfigurations(configs);
+
+      expect(result).toHaveLength(3);
+      expect(result[0]).toMatchObject({
+        name: 'valid.json',
+        isValid: true,
+        parsed: { valid: true }
+      });
+      expect(result[1]).toMatchObject({
+        name: 'missing.json',
+        isValid: false,
+        parseError: 'File not found: missing.json'
+      });
+      expect(result[2]).toMatchObject({
+        name: 'invalid.json',
+        isValid: false,
+        parseError: expect.stringContaining('Unexpected token')
+      });
+    });
+
+    it('should handle XML format configurations', async () => {
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <property name="debug" value="true"/>
+  <property name="port" value="8080"/>
+</configuration>`;
+
+      const configInfo: ConfigurationInfo = {
+        name: 'config.xml',
+        path: 'config.xml',
+        format: 'xml',
+        purpose: 'other',
+        isValid: true
+      };
+
+      mockFs.promises.access = vi.fn().mockResolvedValue(undefined);
+      mockFs.promises.readFile = vi.fn().mockResolvedValue(xmlContent);
+
+      const result = await analyzer.parseConfigurations([configInfo]);
+
+      expect(result[0]).toMatchObject({
+        name: 'config.xml',
+        isValid: true,
+        parsed: expect.objectContaining({
+          content: xmlContent,
+          format: 'xml'
+        })
+      });
+    });
+
+    it('should handle unsupported format configurations', async () => {
+      const unknownContent = 'some unknown format content';
+
+      const configInfo: ConfigurationInfo = {
+        name: 'config.unknown',
+        path: 'config.unknown',
+        format: 'other',
+        purpose: 'other',
+        isValid: true
+      };
+
+      mockFs.promises.access = vi.fn().mockResolvedValue(undefined);
+      mockFs.promises.readFile = vi.fn().mockResolvedValue(unknownContent);
+
+      const result = await analyzer.parseConfigurations([configInfo]);
+
+      expect(result[0]).toMatchObject({
+        name: 'config.unknown',
+        isValid: true,
+        parsed: expect.objectContaining({
+          content: unknownContent,
+          format: 'other'
+        })
+      });
+    });
+
+    it('should handle environment files with sensitive data filtering', async () => {
+      const envContent = `
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=postgresql://localhost/prod
+API_KEY=sensitive-key-123
+SECRET_TOKEN=very-secret-token
+PASSWORD=supersecret
+PRIVATE_KEY=rsa-private-key-data
+WEBHOOK_SECRET=webhook-secret-123
+DB_PASSWORD=db-secret
+EMAIL_PASS=email-password
+JWT_SECRET=jwt-signing-secret
+`;
+
+      const configInfo: ConfigurationInfo = {
+        name: '.env.production',
+        path: '.env.production',
+        format: 'env',
+        purpose: 'environment',
+        isValid: true
+      };
+
+      mockFs.promises.access = vi.fn().mockResolvedValue(undefined);
+      mockFs.promises.readFile = vi.fn().mockResolvedValue(envContent);
+
+      const result = await analyzer.parseConfigurations([configInfo]);
+
+      expect(result[0]).toMatchObject({
+        name: '.env.production',
+        isValid: true,
+        environment: expect.objectContaining({
+          NODE_ENV: 'production',
+          PORT: '3000',
+          DATABASE_URL: 'postgresql://localhost/prod'
+        })
+      });
+
+      // Should filter out sensitive variables
+      const sensitiveKeys = ['API_KEY', 'SECRET_TOKEN', 'PASSWORD', 'PRIVATE_KEY', 'WEBHOOK_SECRET', 'DB_PASSWORD', 'EMAIL_PASS', 'JWT_SECRET'];
+      sensitiveKeys.forEach(key => {
+        expect(result[0].environment).not.toHaveProperty(key);
+      });
     });
   });
 

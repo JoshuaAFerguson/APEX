@@ -12,6 +12,12 @@ import {
   createDoctorCheckResult,
   createHealthReport,
   getLatestPackageVersion,
+  validateApexConfiguration,
+  createApexConfigValidationCheck,
+  detectTypeScript,
+  detectYarn,
+  detectPnpm,
+  detectClaudeApiKey,
 } from '@apexcli/core';
 import type { CliContext } from '../index.js';
 
@@ -278,6 +284,40 @@ async function checkApexConfig(ctx: CliContext): Promise<DoctorCheckResult> {
 }
 
 /**
+ * Comprehensive APEX configuration validation including directory structure,
+ * config.yaml schema, agent definitions, and workflow definitions
+ */
+async function checkApexConfigurationComprehensive(ctx: CliContext): Promise<DoctorCheckResult> {
+  const start = Date.now();
+
+  try {
+    // Use the comprehensive validation from the config-validation module
+    const validationResult = await validateApexConfiguration(ctx.projectPath);
+
+    // Convert the validation result to a DoctorCheckResult
+    return createApexConfigValidationCheck(ctx.projectPath, validationResult);
+
+  } catch (error) {
+    // Fallback to basic check if comprehensive validation fails
+    const check = createDoctorCheckResult({
+      id: 'apex-config-validation',
+      name: 'APEX Configuration Validation',
+      category: 'config',
+      description: 'Comprehensive validation of APEX configuration'
+    });
+
+    return {
+      ...check,
+      status: 'fail',
+      severity: 'error',
+      message: `Configuration validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      suggestion: 'Check APEX configuration files and directory structure',
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+/**
  * Check APEX dependencies and package.json
  */
 async function checkApexDependencies(ctx: CliContext): Promise<DoctorCheckResult> {
@@ -410,6 +450,110 @@ async function checkApexPermissions(ctx: CliContext): Promise<DoctorCheckResult>
       durationMs: Date.now() - start,
     };
   }
+}
+
+/**
+ * Check TypeScript availability and version
+ */
+async function checkTypeScriptVersion(): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const toolchainResult = await detectTypeScript({ local: true });
+
+  const check = createDoctorCheckResult({
+    id: 'typescript-version',
+    name: 'TypeScript Language',
+    category: 'toolchain',
+    description: 'Check TypeScript availability for type-safe development',
+  });
+
+  const isAvailable = toolchainResult.currentVersion !== null;
+  const versionMeetsRequirement = isAvailable &&
+    satisfiesVersion(toolchainResult.currentVersion!, toolchainResult.requiredVersion || '4.0.0');
+
+  return {
+    ...check,
+    status: isAvailable ? (versionMeetsRequirement ? 'pass' : 'fail') : 'skip',
+    severity: isAvailable ? (versionMeetsRequirement ? 'info' : 'warning') : 'info',
+    message: isAvailable
+      ? `TypeScript ${toolchainResult.currentVersion} ${versionMeetsRequirement ? 'is available' : 'version may be outdated'}`
+      : 'TypeScript not found (optional for APEX operation)',
+    suggestion: !isAvailable
+      ? 'Install TypeScript: npm install -g typescript or npm install --save-dev typescript'
+      : !versionMeetsRequirement
+      ? 'Consider upgrading TypeScript for better language features'
+      : undefined,
+    toolchain: toolchainResult,
+    durationMs: Date.now() - start,
+  };
+}
+
+/**
+ * Check alternative package managers (Yarn, pnpm)
+ */
+async function checkAlternativePackageManagers(): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const [yarnResult, pnpmResult] = await Promise.all([
+    detectYarn(),
+    detectPnpm()
+  ]);
+
+  const check = createDoctorCheckResult({
+    id: 'alt-package-managers',
+    name: 'Alternative Package Managers',
+    category: 'toolchain',
+    description: 'Check availability of Yarn and pnpm package managers',
+  });
+
+  const availableManagers = [];
+  if (yarnResult.currentVersion) availableManagers.push(`Yarn ${yarnResult.currentVersion}`);
+  if (pnpmResult.currentVersion) availableManagers.push(`pnpm ${pnpmResult.currentVersion}`);
+
+  return {
+    ...check,
+    status: 'pass', // Always pass since these are optional
+    severity: 'info',
+    message: availableManagers.length > 0
+      ? `Alternative package managers available: ${availableManagers.join(', ')}`
+      : 'No alternative package managers found (npm is sufficient)',
+    toolchain: availableManagers.length > 0 ? yarnResult : undefined,
+    details: {
+      yarn: yarnResult,
+      pnpm: pnpmResult,
+      available: availableManagers
+    },
+    durationMs: Date.now() - start,
+  };
+}
+
+/**
+ * Check Claude API key configuration
+ */
+async function checkClaudeApiKey(): Promise<DoctorCheckResult> {
+  const start = Date.now();
+  const toolchainResult = await detectClaudeApiKey();
+
+  const check = createDoctorCheckResult({
+    id: 'claude-api-key',
+    name: 'Claude API Key',
+    category: 'config',
+    description: 'Verify Claude API key is configured for AI operations',
+  });
+
+  const isConfigured = toolchainResult.currentVersion === 'present';
+
+  return {
+    ...check,
+    status: isConfigured ? 'pass' : 'fail',
+    severity: isConfigured ? 'info' : 'error',
+    message: isConfigured
+      ? `Claude API key is configured via ${toolchainResult.path}`
+      : 'Claude API key not found - required for APEX AI operations',
+    suggestion: !isConfigured
+      ? 'Set Claude API key: export CLAUDE_API_KEY=your-api-key or create .env file'
+      : undefined,
+    toolchain: toolchainResult,
+    durationMs: Date.now() - start,
+  };
 }
 
 // ============================================================================
@@ -549,7 +693,8 @@ export async function handleDoctor(ctx: CliContext, args: string[]): Promise<voi
     // Quick mode: skip slower checks like npm/git version checks and dependency scanning
     checkPromises = [
       checkNodeVersion(),        // Fast - uses process.version
-      checkApexConfig(ctx),      // Fast - config validation
+      checkClaudeApiKey(),       // Fast - environment variable check
+      checkApexConfigurationComprehensive(ctx), // Enhanced - comprehensive config validation
       checkApexPermissions(ctx), // Fast - file system check
     ];
   } else {
@@ -558,7 +703,10 @@ export async function handleDoctor(ctx: CliContext, args: string[]): Promise<voi
       checkNodeVersion(),
       checkNpmVersion(),         // Slower - executes npm --version
       checkGitVersion(),         // Slower - executes git --version
-      checkApexConfig(ctx),
+      checkTypeScriptVersion(),  // Slower - executes tsc --version and reads package.json
+      checkAlternativePackageManagers(), // Slower - executes yarn/pnpm --version
+      checkClaudeApiKey(),       // Fast - environment variable check
+      checkApexConfigurationComprehensive(ctx), // Enhanced - comprehensive config validation
       checkApexDependencies(ctx), // Slower - reads and parses package.json
       checkApexPermissions(ctx),
     ];

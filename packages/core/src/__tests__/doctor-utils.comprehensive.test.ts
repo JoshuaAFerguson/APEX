@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   satisfiesVersion,
   compareVersionStrings,
@@ -13,12 +13,12 @@ import {
 } from '../doctor-utils.js';
 
 // Mock fetch for npm registry tests
-global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>;
-const mockedFetch = global.fetch as jest.MockedFunction<typeof fetch>;
+global.fetch = vi.fn() as any;
+const mockedFetch = vi.mocked(global.fetch);
 
 describe('Doctor Utils Comprehensive Tests', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('Version Utilities', () => {
@@ -126,7 +126,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
         mockedFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: jest.fn().mockResolvedValue(mockResponse),
+          json: vi.fn().mockResolvedValue(mockResponse),
         } as any);
 
         const result = await queryNpmRegistry('@apexcli/core');
@@ -162,7 +162,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
         mockedFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: jest.fn().mockResolvedValue(mockResponse),
+          json: vi.fn().mockResolvedValue(mockResponse),
         } as any);
 
         await queryNpmRegistry('@company/private-pkg');
@@ -225,7 +225,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
         mockedFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: jest.fn().mockResolvedValue(mockResponse),
+          json: vi.fn().mockResolvedValue(mockResponse),
         } as any);
 
         await queryNpmRegistry('private-package', {
@@ -248,7 +248,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
         delete (global as any).fetch;
 
         // Re-import to trigger the fetch detection
-        jest.resetModules();
+        vi.resetModules();
         const { queryNpmRegistry: queryWithoutFetch } = await import('../doctor-utils.js');
 
         const result = await queryWithoutFetch('test-package');
@@ -268,7 +268,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
 
         mockedFetch.mockResolvedValueOnce({
           ok: true,
-          json: jest.fn().mockResolvedValue(mockResponse),
+          json: vi.fn().mockResolvedValue(mockResponse),
         } as any);
 
         const result = await isPackageVersionAvailable('test-package', '1.0.0');
@@ -282,7 +282,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
 
         mockedFetch.mockResolvedValueOnce({
           ok: true,
-          json: jest.fn().mockResolvedValue(mockResponse),
+          json: vi.fn().mockResolvedValue(mockResponse),
         } as any);
 
         const result = await isPackageVersionAvailable('test-package', '3.0.0');
@@ -305,7 +305,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
 
         mockedFetch.mockResolvedValueOnce({
           ok: true,
-          json: jest.fn().mockResolvedValue(mockResponse),
+          json: vi.fn().mockResolvedValue(mockResponse),
         } as any);
 
         const result = await getLatestPackageVersion('test-package');
@@ -324,7 +324,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
 
         mockedFetch.mockResolvedValueOnce({
           ok: true,
-          json: jest.fn().mockResolvedValue(mockResponse),
+          json: vi.fn().mockResolvedValue(mockResponse),
         } as any);
 
         const result = await getLatestPackageVersion('test-package');
@@ -531,7 +531,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
     it('should handle malformed npm registry responses', async () => {
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: jest.fn().mockResolvedValue(null),
+        json: vi.fn().mockResolvedValue(null),
       } as any);
 
       const result = await queryNpmRegistry('test-package');
@@ -547,7 +547,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
     it('should handle JSON parse errors', async () => {
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: jest.fn().mockRejectedValue(new Error('Invalid JSON')),
+        json: vi.fn().mockRejectedValue(new Error('Invalid JSON')),
       } as any);
 
       const result = await queryNpmRegistry('test-package');
@@ -565,7 +565,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: jest.fn().mockResolvedValue(mockResponse),
+        json: vi.fn().mockResolvedValue(mockResponse),
       } as any);
 
       const result = await queryNpmRegistry('test-package');
@@ -583,7 +583,7 @@ describe('Doctor Utils Comprehensive Tests', () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: jest.fn().mockResolvedValue(mockResponse),
+        json: vi.fn().mockResolvedValue(mockResponse),
       } as any);
 
       const result = await queryNpmRegistry('deprecated-package');

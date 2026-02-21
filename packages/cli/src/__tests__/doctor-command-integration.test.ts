@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -6,27 +6,27 @@ import chalk from 'chalk';
 import boxen from 'boxen';
 
 // Mock dependencies before importing CLI code
-jest.mock('fs/promises');
-jest.mock('child_process');
-jest.mock('chalk', () => ({
-  cyan: jest.fn((text) => text),
-  green: jest.fn((text) => text),
-  red: jest.fn((text) => text),
-  yellow: jest.fn((text) => text),
-  blue: jest.fn((text) => text),
-  gray: jest.fn((text) => text),
-  dim: jest.fn((text) => text),
-  bold: jest.fn((text) => text),
+vi.mock('fs/promises');
+vi.mock('child_process');
+vi.mock('chalk', () => ({
+  cyan: vi.fn((text) => text),
+  green: vi.fn((text) => text),
+  red: vi.fn((text) => text),
+  yellow: vi.fn((text) => text),
+  blue: vi.fn((text) => text),
+  gray: vi.fn((text) => text),
+  dim: vi.fn((text) => text),
+  bold: vi.fn((text) => text),
 }));
-jest.mock('boxen');
+vi.mock('boxen');
 
 // Mock the entire @apexcli/core module
-jest.mock('@apexcli/core', () => ({
-  loadApexConfig: jest.fn(),
+vi.mock('@apexcli/core', () => ({
+  loadApexConfig: vi.fn(),
   ApexConfigSchema: {
-    parse: jest.fn((data) => data),
+    parse: vi.fn((data) => data),
   },
-  createDoctorCheckResult: jest.fn((partial) => ({
+  createDoctorCheckResult: vi.fn((partial) => ({
     description: `Health check for ${partial.name}`,
     status: 'unknown',
     severity: 'info',
@@ -35,7 +35,7 @@ jest.mock('@apexcli/core', () => ({
     durationMs: 0,
     ...partial,
   })),
-  createHealthReport: jest.fn((checks, options) => ({
+  createHealthReport: vi.fn((checks, options) => ({
     id: 'test-health-report',
     timestamp: new Date(),
     overallStatus: checks.some((c: any) => c.status === 'fail') ? 'fail' : 'pass',
@@ -56,7 +56,7 @@ jest.mock('@apexcli/core', () => ({
     durationMs: 100,
     apexVersion: options?.apexVersion || '0.6.0',
   })),
-  satisfiesVersion: jest.fn((current, required) => {
+  satisfiesVersion: vi.fn((current, required) => {
     const parseVersion = (v: string) => v.replace(/[v]/g, '').split('.').map(Number);
     const currentParts = parseVersion(current);
     const requiredParts = parseVersion(required);
@@ -69,13 +69,13 @@ jest.mock('@apexcli/core', () => ({
     }
     return true;
   }),
-  parseVersionOutput: jest.fn((output) => {
+  parseVersionOutput: vi.fn((output) => {
     const match = output.match(/v?(\d+\.\d+\.\d+)/);
     return match ? match[1] : null;
   }),
-  queryNpmRegistry: jest.fn(),
-  getLatestPackageVersion: jest.fn(),
-  compareVersionStrings: jest.fn((a, b) => {
+  queryNpmRegistry: vi.fn(),
+  getLatestPackageVersion: vi.fn(),
+  compareVersionStrings: vi.fn((a, b) => {
     const parseVersion = (v: string) => v.split('.').map(Number);
     const aParts = parseVersion(a);
     const bParts = parseVersion(b);
@@ -88,13 +88,13 @@ jest.mock('@apexcli/core', () => ({
     }
     return 0;
   }),
-  ApexOrchestrator: jest.fn(),
+  ApexOrchestrator: vi.fn(),
 }));
 
-const mockedFs = fs as jest.Mocked<typeof fs>;
-const mockedExec = promisify(exec as jest.Mocked<typeof exec>);
-const mockedChalk = chalk as jest.Mocked<typeof chalk>;
-const mockedBoxen = boxen as jest.MockedFunction<typeof boxen>;
+const mockedFs = fs as any;
+const mockedExec = promisify(exec as any);
+const mockedChalk = chalk as any;
+const mockedBoxen = boxen as any;
 
 // Mock console methods
 const originalConsoleLog = console.log;
@@ -104,25 +104,25 @@ let consoleErrors: string[] = [];
 
 describe('Doctor Command Integration Tests', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     consoleLogs = [];
     consoleErrors = [];
 
-    console.log = jest.fn((message) => {
+    console.log = vi.fn((message) => {
       consoleLogs.push(message);
     });
-    console.error = jest.fn((message) => {
+    console.error = vi.fn((message) => {
       consoleErrors.push(message);
     });
 
     // Set up default chalk mocks
     Object.keys(mockedChalk).forEach(method => {
       if (typeof mockedChalk[method as keyof typeof mockedChalk] === 'function') {
-        (mockedChalk[method as keyof typeof mockedChalk] as jest.MockedFunction<any>).mockImplementation((text) => text);
+        (mockedChalk[method as keyof typeof mockedChalk] as any).mockImplementation((text: any) => text);
       }
     });
 
-    mockedBoxen.mockImplementation((text) => `[BOXED] ${text}`);
+    mockedBoxen.mockImplementation((text: any) => `[BOXED] ${text}`);
   });
 
   afterEach(() => {
@@ -134,12 +134,12 @@ describe('Doctor Command Integration Tests', () => {
     it('should handle healthy system with all tools available', async () => {
       // Mock a fully working environment
       const { loadApexConfig } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue({
+      (loadApexConfig as any).mockResolvedValue({
         project: { name: 'test-project', language: 'typescript' },
       });
 
       // Mock tool availability
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         if (command === 'npm --version') {
           return { stdout: '9.2.0', stderr: '' };
         }
@@ -157,7 +157,7 @@ describe('Doctor Command Integration Tests', () => {
 
       // Mock update check
       const { getLatestPackageVersion } = await import('@apexcli/core');
-      (getLatestPackageVersion as jest.MockedFunction<any>).mockResolvedValue('0.6.0'); // No update
+      (getLatestPackageVersion as any<any>).mockResolvedValue('0.6.0'); // No update
 
       // Import and run doctor command
       const { handleDoctor } = await import('../handlers/doctor-handlers.js');
@@ -187,10 +187,10 @@ describe('Doctor Command Integration Tests', () => {
     it('should handle problematic environment with missing tools', async () => {
       // Mock missing tools and permissions issues
       const { loadApexConfig } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue(null);
+      (loadApexConfig as any<any>).mockResolvedValue(null);
 
       // Mock npm available but old, git missing
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         if (command === 'npm --version') {
           return { stdout: '6.14.0', stderr: '' }; // Old version
         }
@@ -232,11 +232,11 @@ describe('Doctor Command Integration Tests', () => {
     it('should handle update notification display', async () => {
       // Mock system with update available
       const { loadApexConfig, getLatestPackageVersion } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue({
+      (loadApexConfig as any<any>).mockResolvedValue({
         project: { name: 'test-project', language: 'typescript' },
       });
 
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         if (command === 'npm --version') {
           return { stdout: '8.19.2', stderr: '' };
         }
@@ -250,7 +250,7 @@ describe('Doctor Command Integration Tests', () => {
       mockedFs.readFile.mockResolvedValue(JSON.stringify({}));
 
       // Mock update available
-      (getLatestPackageVersion as jest.MockedFunction<any>).mockResolvedValue('0.7.0');
+      (getLatestPackageVersion as any<any>).mockResolvedValue('0.7.0');
 
       const { handleDoctor } = await import('../handlers/doctor-handlers.js');
       const mockContext = {
@@ -297,11 +297,11 @@ describe('Doctor Command Integration Tests', () => {
 
     it('should handle update check timeout gracefully', async () => {
       const { loadApexConfig, getLatestPackageVersion } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue({
+      (loadApexConfig as any<any>).mockResolvedValue({
         project: { name: 'test-project', language: 'typescript' },
       });
 
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         if (command === 'npm --version') {
           return { stdout: '8.19.2', stderr: '' };
         }
@@ -314,7 +314,7 @@ describe('Doctor Command Integration Tests', () => {
       mockedFs.access.mockResolvedValue(undefined);
 
       // Mock update check timeout
-      (getLatestPackageVersion as jest.MockedFunction<any>).mockRejectedValue(new Error('Request timeout'));
+      (getLatestPackageVersion as any<any>).mockRejectedValue(new Error('Request timeout'));
 
       const { handleDoctor } = await import('../handlers/doctor-handlers.js');
       const mockContext = {
@@ -334,11 +334,11 @@ describe('Doctor Command Integration Tests', () => {
   describe('Real-World Scenarios', () => {
     it('should handle development environment with monorepo setup', async () => {
       const { loadApexConfig } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue({
+      (loadApexConfig as any<any>).mockResolvedValue({
         project: { name: 'apex-monorepo', language: 'typescript' },
       });
 
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         if (command === 'npm --version') {
           return { stdout: '8.19.2', stderr: '' };
         }
@@ -373,11 +373,11 @@ describe('Doctor Command Integration Tests', () => {
       process.env = { ...originalEnv, CI: 'true', GITHUB_ACTIONS: 'true' };
 
       const { loadApexConfig } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue({
+      (loadApexConfig as any<any>).mockResolvedValue({
         project: { name: 'ci-project', language: 'javascript' },
       });
 
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         if (command === 'npm --version') {
           return { stdout: '8.19.2', stderr: '' };
         }
@@ -422,11 +422,11 @@ describe('Doctor Command Integration Tests', () => {
       });
 
       const { loadApexConfig } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue({
+      (loadApexConfig as any<any>).mockResolvedValue({
         project: { name: 'windows-project', language: 'typescript' },
       });
 
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         if (command === 'npm --version') {
           return { stdout: '8.19.2\r\n', stderr: '' }; // Windows line endings
         }
@@ -463,11 +463,11 @@ describe('Doctor Command Integration Tests', () => {
       const startTime = Date.now();
 
       const { loadApexConfig } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue({
+      (loadApexConfig as any<any>).mockResolvedValue({
         project: { name: 'test-project', language: 'typescript' },
       });
 
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         // Add small delay to simulate real execution time
         await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -501,11 +501,11 @@ describe('Doctor Command Integration Tests', () => {
 
     it('should handle concurrent executions gracefully', async () => {
       const { loadApexConfig } = await import('@apexcli/core');
-      (loadApexConfig as jest.MockedFunction<any>).mockResolvedValue({
+      (loadApexConfig as any<any>).mockResolvedValue({
         project: { name: 'test-project', language: 'typescript' },
       });
 
-      (mockedExec as jest.MockedFunction<any>).mockImplementation(async (command: string) => {
+      (mockedExec as any<any>).mockImplementation(async (command: string) => {
         if (command === 'npm --version') {
           return { stdout: '8.19.2', stderr: '' };
         }
