@@ -10478,6 +10478,7 @@ export type DetectionConfidence = z.infer<typeof DetectionConfidenceSchema>;
  *   category: 'frontend',
  *   confidence: 'high',
  *   detectedVia: 'package.json dependency',
+ *   detectionReasons: ['package.json dependency', 'React JSX patterns found'],
  *   language: 'typescript',
  *   configFiles: ['tsconfig.json', 'vite.config.ts']
  * };
@@ -10498,6 +10499,9 @@ export const FrameworkInfoSchema = z.object({
 
   /** How the framework was detected */
   detectedVia: z.string().optional(),
+
+  /** Detailed reasons for how the framework was detected */
+  detectionReasons: z.array(z.string()).optional().default([]),
 
   /** Primary programming language */
   language: z.string().optional(),

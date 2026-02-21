@@ -547,6 +547,10 @@ export class ProjectContextAnalyzer {
       const configFrameworks = await this.detectConfigBasedFrameworks();
       detection.frameworks.push(...configFrameworks);
 
+      // Detect frameworks based on file patterns and project structure
+      const patternFrameworks = await this.detectPatternBasedFrameworks();
+      detection.frameworks.push(...patternFrameworks);
+
       // Remove duplicates and sort by confidence
       detection.frameworks = this.deduplicateFrameworks(detection.frameworks);
 
@@ -1299,6 +1303,35 @@ export class ProjectContextAnalyzer {
         // Desktop Frameworks
         { name: 'Electron', packages: ['electron'], category: 'desktop' as const },
         { name: 'Tauri', packages: ['@tauri-apps/api'], category: 'desktop' as const },
+
+        // Additional Backend Frameworks
+        { name: 'Django', packages: ['django'], category: 'backend' as const },
+        { name: 'FastAPI', packages: ['fastapi'], category: 'backend' as const },
+        { name: 'Flask', packages: ['flask'], category: 'backend' as const },
+        { name: 'Spring Boot', packages: ['spring-boot-starter'], category: 'backend' as const },
+
+        // Additional Frontend/CSS Frameworks
+        { name: 'Tailwind CSS', packages: ['tailwindcss'], category: 'frontend' as const },
+        { name: 'Bootstrap', packages: ['bootstrap'], category: 'frontend' as const },
+        { name: 'Material-UI', packages: ['@mui/material', '@material-ui/core'], category: 'frontend' as const },
+        { name: 'Ant Design', packages: ['antd'], category: 'frontend' as const },
+        { name: 'Chakra UI', packages: ['@chakra-ui/react'], category: 'frontend' as const },
+
+        // State Management
+        { name: 'Redux', packages: ['redux', '@reduxjs/toolkit'], category: 'frontend' as const },
+        { name: 'MobX', packages: ['mobx'], category: 'frontend' as const },
+        { name: 'Zustand', packages: ['zustand'], category: 'frontend' as const },
+
+        // Additional Testing Frameworks
+        { name: 'Testing Library', packages: ['@testing-library/react', '@testing-library/dom'], category: 'testing' as const },
+        { name: 'Jasmine', packages: ['jasmine'], category: 'testing' as const },
+        { name: 'Puppeteer', packages: ['puppeteer'], category: 'testing' as const },
+
+        // Database ORMs
+        { name: 'Prisma', packages: ['prisma', '@prisma/client'], category: 'backend' as const },
+        { name: 'TypeORM', packages: ['typeorm'], category: 'backend' as const },
+        { name: 'Mongoose', packages: ['mongoose'], category: 'backend' as const },
+        { name: 'Sequelize', packages: ['sequelize'], category: 'backend' as const },
       ];
 
       for (const rule of frameworkRules) {
@@ -1311,6 +1344,7 @@ export class ProjectContextAnalyzer {
             category: rule.category,
             confidence: 'high',
             detectedVia: `package.json dependency: ${matchingPackage}`,
+            detectionReasons: [`package.json dependency: ${matchingPackage}`],
             language: 'javascript',
             isDevDependency,
           });
@@ -1325,6 +1359,7 @@ export class ProjectContextAnalyzer {
           category: 'other',
           confidence: 'high',
           detectedVia: 'package.json dependency: typescript',
+          detectionReasons: ['package.json dependency: typescript'],
           language: 'typescript',
           isDevDependency: packageJson.devDependencies?.['typescript'] !== undefined,
         });
@@ -1465,6 +1500,19 @@ export class ProjectContextAnalyzer {
       { files: ['svelte.config.js'], framework: 'Svelte', category: 'frontend' as const },
       { files: ['angular.json'], framework: 'Angular', category: 'frontend' as const },
       { files: ['vue.config.js'], framework: 'Vue', category: 'frontend' as const },
+
+      // Additional config files
+      { files: ['remix.config.js'], framework: 'Remix', category: 'fullstack' as const },
+      { files: ['gatsby-config.js', 'gatsby-config.ts'], framework: 'Gatsby', category: 'fullstack' as const },
+      { files: ['astro.config.js', 'astro.config.mjs', 'astro.config.ts'], framework: 'Astro', category: 'fullstack' as const },
+      { files: ['eslint.config.js', '.eslintrc.js', '.eslintrc.json'], framework: 'ESLint', category: 'other' as const },
+      { files: ['prettier.config.js', '.prettierrc'], framework: 'Prettier', category: 'other' as const },
+      { files: ['babel.config.js', '.babelrc'], framework: 'Babel', category: 'build' as const },
+      { files: ['postcss.config.js'], framework: 'PostCSS', category: 'build' as const },
+      { files: ['storybook/main.js', '.storybook/main.js'], framework: 'Storybook', category: 'other' as const },
+      { files: ['prisma/schema.prisma'], framework: 'Prisma', category: 'backend' as const },
+      { files: ['docker-compose.yml', 'docker-compose.yaml'], framework: 'Docker Compose', category: 'other' as const },
+      { files: ['Dockerfile'], framework: 'Docker', category: 'other' as const },
     ];
 
     for (const rule of configRules) {
@@ -1476,6 +1524,7 @@ export class ProjectContextAnalyzer {
             category: rule.category,
             confidence: 'medium',
             detectedVia: `Configuration file: ${configFile}`,
+            detectionReasons: [`Configuration file: ${configFile}`],
             configFiles: [configFile],
           });
           break; // Only add once per framework
@@ -1486,6 +1535,130 @@ export class ProjectContextAnalyzer {
     }
 
     return frameworks;
+  }
+
+  /**
+   * Detect frameworks based on file patterns and project structure
+   */
+  private async detectPatternBasedFrameworks(): Promise<FrameworkInfo[]> {
+    const frameworks: FrameworkInfo[] = [];
+
+    try {
+      // Check for common framework file patterns
+      const patternRules = [
+        {
+          name: 'React',
+          patterns: ['**/*.jsx', '**/components/**/*.js', '**/components/**/*.ts'],
+          category: 'frontend' as const,
+          confidence: 'low' as const,
+          detectionReason: 'JSX files or React component patterns found'
+        },
+        {
+          name: 'Vue',
+          patterns: ['**/*.vue', '**/src/**/*.vue'],
+          category: 'frontend' as const,
+          confidence: 'medium' as const,
+          detectionReason: '.vue files found'
+        },
+        {
+          name: 'Angular',
+          patterns: ['**/*.component.ts', '**/*.service.ts', '**/*.module.ts'],
+          category: 'frontend' as const,
+          confidence: 'medium' as const,
+          detectionReason: 'Angular TypeScript patterns found'
+        },
+        {
+          name: 'Svelte',
+          patterns: ['**/*.svelte'],
+          category: 'frontend' as const,
+          confidence: 'high' as const,
+          detectionReason: '.svelte files found'
+        },
+        {
+          name: 'Next.js',
+          patterns: ['pages/**/*.js', 'pages/**/*.tsx', 'app/**/*.js', 'app/**/*.tsx'],
+          category: 'fullstack' as const,
+          confidence: 'medium' as const,
+          detectionReason: 'Next.js pages or app directory structure found'
+        },
+        {
+          name: 'Python',
+          patterns: ['**/*.py', '**/requirements.txt', '**/setup.py'],
+          category: 'other' as const,
+          confidence: 'medium' as const,
+          detectionReason: 'Python files found'
+        },
+        {
+          name: 'Django',
+          patterns: ['**/manage.py', '**/settings.py', '**/models.py'],
+          category: 'backend' as const,
+          confidence: 'high' as const,
+          detectionReason: 'Django project structure found'
+        },
+        {
+          name: 'Flutter',
+          patterns: ['**/pubspec.yaml', '**/lib/**/*.dart'],
+          category: 'mobile' as const,
+          confidence: 'high' as const,
+          detectionReason: 'Flutter project structure found'
+        },
+        {
+          name: 'Laravel',
+          patterns: ['**/artisan', '**/config/app.php', '**/app/Http/Controllers/**/*.php'],
+          category: 'backend' as const,
+          confidence: 'high' as const,
+          detectionReason: 'Laravel project structure found'
+        },
+        {
+          name: 'Ruby on Rails',
+          patterns: ['**/Gemfile', '**/config/routes.rb', '**/app/controllers/**/*.rb'],
+          category: 'backend' as const,
+          confidence: 'high' as const,
+          detectionReason: 'Rails project structure found'
+        }
+      ];
+
+      for (const rule of patternRules) {
+        let hasMatch = false;
+        for (const pattern of rule.patterns) {
+          try {
+            const matches = await this.findFilesByPattern(pattern);
+            if (matches.length > 0) {
+              hasMatch = true;
+              break;
+            }
+          } catch {
+            // Continue if pattern matching fails
+          }
+        }
+
+        if (hasMatch) {
+          frameworks.push({
+            name: rule.name,
+            category: rule.category,
+            confidence: rule.confidence,
+            detectedVia: rule.detectionReason,
+            detectionReasons: [rule.detectionReason],
+          });
+        }
+      }
+    } catch (error) {
+      // Pattern-based detection failed, continue with other methods
+    }
+
+    return frameworks;
+  }
+
+  /**
+   * Find files matching a glob pattern
+   */
+  private async findFilesByPattern(pattern: string): Promise<string[]> {
+    const fg = await import('fast-glob');
+    return fg.default(pattern, {
+      cwd: this.projectPath,
+      onlyFiles: true,
+      ignore: this.options.excludeDirectories.map(dir => `**/${dir}/**`)
+    });
   }
 
   /**
@@ -1510,12 +1683,14 @@ export class ProjectContextAnalyzer {
           frameworkMap.set(key, {
             ...framework,
             configFiles: [...(existing.configFiles || []), ...(framework.configFiles || [])],
+            detectionReasons: [...(existing.detectionReasons || []), ...(framework.detectionReasons || [])],
           });
         } else {
-          // Keep existing but merge config files
+          // Keep existing but merge config files and detection reasons
           frameworkMap.set(key, {
             ...existing,
             configFiles: [...(existing.configFiles || []), ...(framework.configFiles || [])],
+            detectionReasons: [...(existing.detectionReasons || []), ...(framework.detectionReasons || [])],
           });
         }
       }
