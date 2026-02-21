@@ -163,6 +163,7 @@ describe('ProjectContextAnalyzer', () => {
         isDirty: false,
         stashCount: 0,
         remotes: [],
+        recentCommits: [],
       });
     });
 
@@ -175,6 +176,7 @@ describe('ProjectContextAnalyzer', () => {
         .mockResolvedValueOnce({ stdout: '0\t2\n', stderr: '' }) // ahead/behind count
         .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git status --porcelain
         .mockResolvedValueOnce({ stdout: 'abc1234|Initial commit|1640995200\n', stderr: '' }) // last commit
+        .mockResolvedValueOnce({ stdout: 'abc1234567890123456789012345678901234567890|Initial commit|1640995200|Test Author|test@example.com\n', stderr: '' }) // recent commits
         .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git stash list
         .mockResolvedValueOnce({ stdout: 'origin\tgit@github.com:user/repo.git\t(fetch)\n', stderr: '' }); // remotes
 
@@ -195,6 +197,13 @@ describe('ProjectContextAnalyzer', () => {
       expect(gitStatus.lastCommitTimestamp).toEqual(new Date(1640995200000));
       expect(gitStatus.stashCount).toBe(0);
       expect(gitStatus.remotes).toEqual([{ name: 'origin', url: 'git@github.com:user/repo.git' }]);
+      expect(gitStatus.recentCommits).toEqual([{
+        hash: 'abc1234',
+        message: 'Initial commit',
+        timestamp: new Date(1640995200000),
+        author: 'Test Author',
+        authorEmail: 'test@example.com'
+      }]);
     });
 
     it('analyzes git repository with dirty status', async () => {
@@ -207,6 +216,7 @@ describe('ProjectContextAnalyzer', () => {
           stderr: ''
         }) // git status with changes
         .mockRejectedValueOnce(new Error('no commits')) // no last commit
+        .mockRejectedValueOnce(new Error('no commits')) // no recent commits
         .mockResolvedValueOnce({ stdout: 'stash@{0}: WIP on main\nstash@{1}: autosave\n', stderr: '' }) // stash
         .mockResolvedValueOnce({ stdout: '', stderr: '' }); // no remotes
 
@@ -224,6 +234,7 @@ describe('ProjectContextAnalyzer', () => {
       expect(gitStatus.isDirty).toBe(true);
       expect(gitStatus.stashCount).toBe(2);
       expect(gitStatus.remotes).toEqual([]);
+      expect(gitStatus.recentCommits).toEqual([]);
     });
 
     it('handles detached HEAD state', async () => {

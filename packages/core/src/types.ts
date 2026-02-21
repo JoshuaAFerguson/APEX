@@ -10234,6 +10234,23 @@ export const GitChangedFileSchema = z.object({
 export type GitChangedFile = z.infer<typeof GitChangedFileSchema>;
 
 /**
+ * Represents a single commit in git history
+ */
+export const GitCommitSchema = z.object({
+  /** Short commit hash (usually 7 characters) */
+  hash: z.string().min(1),
+  /** Commit message */
+  message: z.string(),
+  /** Timestamp when the commit was made */
+  timestamp: z.date(),
+  /** Author of the commit */
+  author: z.string().optional(),
+  /** Author email */
+  authorEmail: z.string().optional(),
+});
+export type GitCommit = z.infer<typeof GitCommitSchema>;
+
+/**
  * Git repository status information
  * Provides comprehensive information about the current state of a git repository
  * including branch info, tracking status, and file changes
@@ -10252,7 +10269,11 @@ export type GitChangedFile = z.infer<typeof GitChangedFileSchema>;
  *   hasConflicts: false,
  *   isDirty: true,
  *   lastCommitHash: 'abc1234',
- *   lastCommitMessage: 'Add new feature'
+ *   lastCommitMessage: 'Add new feature',
+ *   recentCommits: [
+ *     { hash: 'abc1234', message: 'Add new feature', timestamp: new Date() },
+ *     { hash: 'def5678', message: 'Fix bug', timestamp: new Date() }
+ *   ]
  * };
  * ```
  */
@@ -10304,6 +10325,9 @@ export const GitStatusSchema = z.object({
     name: z.string(),
     url: z.string(),
   })).optional().default([]),
+
+  /** Recent commits (last 5) */
+  recentCommits: z.array(GitCommitSchema).optional().default([]),
 });
 export type GitStatus = z.infer<typeof GitStatusSchema>;
 

@@ -18,6 +18,7 @@ import {
   GitStatus,
   GitStatusSchema,
   GitChangedFile,
+  GitCommit,
   ProjectStructure,
   ProjectStructureSchema,
   ProjectEntry,
@@ -180,6 +181,7 @@ export class ProjectContextAnalyzer {
       isDirty: false,
       stashCount: 0,
       remotes: [],
+      recentCommits: [],
     };
 
     try {
@@ -336,6 +338,34 @@ export class ProjectContextAnalyzer {
       gitStatus.lastCommitTimestamp = new Date(parseInt(timestamp, 10) * 1000);
     } catch {
       // Keep undefined
+    }
+
+    try {
+      // Get recent commits (last 5)
+      const recentCommitsResult = await execAsync('git log -5 --format="%H|%s|%ct|%an|%ae"', {
+        cwd: this.projectPath,
+        shell: getPlatformShell().shell,
+      });
+
+      const commitLines = recentCommitsResult.stdout.trim().split('\n').filter(line => line.length > 0);
+      gitStatus.recentCommits = commitLines.map(line => {
+        const parts = line.split('|');
+        if (parts.length >= 3) {
+          const [hash, message, timestamp, author, authorEmail] = parts;
+          const parsedTimestamp = parseInt(timestamp, 10);
+
+          return {
+            hash: hash ? hash.substring(0, 7) : '', // Short hash
+            message: message || '',
+            timestamp: isNaN(parsedTimestamp) ? new Date() : new Date(parsedTimestamp * 1000),
+            author: author || undefined,
+            authorEmail: authorEmail || undefined,
+          };
+        }
+        return null;
+      }).filter((commit): commit is GitCommit => commit !== null);
+    } catch {
+      // Keep default empty array
     }
 
     try {
@@ -1510,6 +1540,7 @@ export class ProjectContextAnalyzer {
       isDirty: false,
       stashCount: 0,
       remotes: [],
+      recentCommits: [],
     };
   }
 

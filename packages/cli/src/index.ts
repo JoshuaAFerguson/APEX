@@ -46,7 +46,7 @@ import { requestConfirmation, DangerousOperation, showOperationCancelled } from 
 import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
 import inquirer from 'inquirer';
 
-const VERSION = '0.1.0';
+const VERSION = '0.6.0';
 
 // ASCII Art Banner
 const banner = `

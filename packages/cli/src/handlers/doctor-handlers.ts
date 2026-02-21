@@ -7,16 +7,13 @@ import boxen from 'boxen';
 import {
   DoctorCheckResult,
   HealthReport,
-  CheckStatus,
-  ApexConfig,
   satisfiesVersion,
   parseVersionOutput,
   createDoctorCheckResult,
   createHealthReport,
-  queryNpmRegistry,
   getLatestPackageVersion,
 } from '@apexcli/core';
-import type { ApexContext } from '../index.js';
+import type { CliContext } from '../index.js';
 
 const execAsync = promisify(exec);
 
@@ -208,7 +205,7 @@ async function checkGitVersion(): Promise<DoctorCheckResult> {
 /**
  * Check APEX configuration validity
  */
-async function checkApexConfig(ctx: ApexContext): Promise<DoctorCheckResult> {
+async function checkApexConfig(ctx: CliContext): Promise<DoctorCheckResult> {
   const start = Date.now();
   const check = createDoctorCheckResult({
     id: 'apex-config',
@@ -283,7 +280,7 @@ async function checkApexConfig(ctx: ApexContext): Promise<DoctorCheckResult> {
 /**
  * Check APEX dependencies and package.json
  */
-async function checkApexDependencies(ctx: ApexContext): Promise<DoctorCheckResult> {
+async function checkApexDependencies(ctx: CliContext): Promise<DoctorCheckResult> {
   const start = Date.now();
   const check = createDoctorCheckResult({
     id: 'apex-dependencies',
@@ -348,7 +345,7 @@ async function checkApexDependencies(ctx: ApexContext): Promise<DoctorCheckResul
 /**
  * Check write permissions in APEX directory
  */
-async function checkApexPermissions(ctx: ApexContext): Promise<DoctorCheckResult> {
+async function checkApexPermissions(ctx: CliContext): Promise<DoctorCheckResult> {
   const start = Date.now();
   const check = createDoctorCheckResult({
     id: 'apex-permissions',
@@ -498,7 +495,7 @@ function displayHealthReport(report: HealthReport): void {
 /**
  * Handle the doctor command - run comprehensive health checks
  */
-export async function handleDoctor(ctx: ApexContext, args: string[]): Promise<void> {
+export async function handleDoctor(ctx: CliContext, args: string[]): Promise<void> {
   console.log(chalk.cyan('🔍 Running APEX health diagnostics...\n'));
 
   const startTime = Date.now();

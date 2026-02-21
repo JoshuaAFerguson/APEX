@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ProjectContextAnalyzer } from '../project-context-analyzer.js';
-import type { GitStatus, GitChangedFile } from '../types.js';
+import type { GitStatus, GitChangedFile, GitCommit } from '../types.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -16,6 +16,7 @@ const mockGitOutputs = {
     'git rev-list --count --left-right HEAD...origin/main': '0\t0\n',
     'git status --porcelain=v1': '',
     'git log -1 --format="%H|%s|%ct"': 'abc1234567890123456789012345678901234567890|Initial commit|1640000000\n',
+    'git log -5 --format="%H|%s|%ct|%an|%ae"': 'abc1234567890123456789012345678901234567890|Initial commit|1640000000|Test Author|test@example.com\n',
     'git stash list': '',
     'git remote -v': 'origin\tgit@github.com:user/repo.git (fetch)\norigin\tgit@github.com:user/repo.git (push)\n'
   },
@@ -25,6 +26,7 @@ const mockGitOutputs = {
     'git rev-parse --abbrev-ref HEAD': 'feature/test\n',
     'git status --porcelain=v1': ' M modified-file.ts\nA  staged-file.ts\nD  deleted-file.ts\n?? untracked-file.ts\nUU conflict-file.ts\n',
     'git log -1 --format="%H|%s|%ct"': 'def4567890123456789012345678901234567890ab|Add new feature|1640100000\n',
+    'git log -5 --format="%H|%s|%ct|%an|%ae"': 'def4567890123456789012345678901234567890ab|Add new feature|1640100000|Dev Author|dev@example.com\nabc1234567890123456789012345678901234567890|Initial commit|1640000000|Test Author|test@example.com\n',
     'git stash list': 'stash@{0}: WIP on main: abc1234 Initial commit\nstash@{1}: WIP on main: abc1234 Another stash\n'
   },
 
@@ -32,18 +34,21 @@ const mockGitOutputs = {
     'git rev-parse --git-dir': '.git\n',
     'git rev-parse --abbrev-ref HEAD': 'feature/ahead\n',
     'git rev-parse --abbrev-ref "feature/ahead@{upstream}"': 'origin/feature/ahead\n',
-    'git rev-list --count --left-right HEAD...origin/feature/ahead': '3\t2\n'
+    'git rev-list --count --left-right HEAD...origin/feature/ahead': '3\t2\n',
+    'git log -5 --format="%H|%s|%ct|%an|%ae"': 'ghi7890123456789012345678901234567890cdef|Feature commit|1640200000|Feature Author|feature@example.com\n'
   },
 
   detachedHead: {
     'git rev-parse --git-dir': '.git\n',
-    'git rev-parse --abbrev-ref HEAD': 'HEAD\n'
+    'git rev-parse --abbrev-ref HEAD': 'HEAD\n',
+    'git log -5 --format="%H|%s|%ct|%an|%ae"': 'jkl0123456789012345678901234567890ghij|Detached commit|1640300000|Detached Author|detached@example.com\n'
   },
 
   noRemote: {
     'git rev-parse --git-dir': '.git\n',
     'git rev-parse --abbrev-ref HEAD': 'main\n',
-    'git remote -v': ''
+    'git remote -v': '',
+    'git log -5 --format="%H|%s|%ct|%an|%ae"': 'mno3456789012345678901234567890klmn|No remote commit|1640400000|Local Author|local@example.com\n'
   },
 
   multipleRemotes: {
@@ -101,6 +106,16 @@ describe('ProjectContextAnalyzer - Comprehensive Git Tests', () => {
       expect(gitStatus.remotes).toEqual([
         { name: 'origin', url: 'git@github.com:user/repo.git' }
       ]);
+      expect(gitStatus.recentCommits).toBeDefined();
+      expect(Array.isArray(gitStatus.recentCommits)).toBe(true);
+      expect(gitStatus.recentCommits.length).toBe(1);
+      expect(gitStatus.recentCommits[0]).toEqual({
+        hash: 'abc1234',
+        message: 'Initial commit',
+        timestamp: new Date(1640000000 * 1000),
+        author: 'Test Author',
+        authorEmail: 'test@example.com'
+      });
     });
 
     it('should parse dirty repository with all file status types', async () => {
@@ -476,53 +491,65 @@ describe('ProjectContextAnalyzer - Comprehensive Git Tests', () => {
     });
   });
 
-  // Test to document the missing recent commits feature
-  describe('Missing Feature: Recent Commits', () => {
+  // Test recent commits feature implementation
+  describe('Recent Commits Feature', () => {
     beforeEach(() => {
       vi.mocked(execAsync) = vi.fn();
     });
 
-    it('should document missing recent commits functionality', async () => {
-      // Mock recent commits data that should be available
+    it('should fetch and parse recent commits (last 5)', async () => {
+      // Mock recent commits data
       const recentCommitsOutput =
-        'abc1234567890|First commit|1640000000\n' +
-        'def4567890123|Second commit|1640010000\n' +
-        'ghi7890123456|Third commit|1640020000\n' +
-        'jkl0123456789|Fourth commit|1640030000\n' +
-        'mno3456789012|Fifth commit|1640040000\n';
+        'abc1234567890123456789012345678901234567890|First commit|1640000000|John Doe|john@example.com\n' +
+        'def4567890123456789012345678901234567890ab|Second commit|1640010000|Jane Smith|jane@example.com\n' +
+        'ghi7890123456789012345678901234567890cdef|Third commit|1640020000|Bob Wilson|bob@example.com\n' +
+        'jkl0123456789012345678901234567890ghij|Fourth commit|1640030000|Alice Brown|alice@example.com\n' +
+        'mno3456789012345678901234567890klmn|Fifth commit|1640040000|Charlie Davis|charlie@example.com\n';
 
       mockExecAsync({
         ...mockGitOutputs.cleanRepo,
-        'git log -5 --format="%H|%s|%ct"': recentCommitsOutput
+        'git log -5 --format="%H|%s|%ct|%an|%ae"': recentCommitsOutput
       });
 
       const gitStatus = await analyzer.getGitStatus();
 
       expect(gitStatus.isRepository).toBe(true);
 
-      // TODO: The acceptance criteria require "recent commits (last 5)"
-      // but this feature is not implemented in the current GitStatus schema
+      // ✅ Recent commits (last 5) - NOW IMPLEMENTED
+      expect(gitStatus.recentCommits).toBeDefined();
+      expect(Array.isArray(gitStatus.recentCommits)).toBe(true);
+      expect(gitStatus.recentCommits.length).toBe(5);
 
-      // Current implementation only has single commit info:
-      expect(gitStatus.lastCommitHash).toBe('abc1234');
-      expect(gitStatus.lastCommitMessage).toBe('Initial commit');
-      expect(gitStatus.lastCommitTimestamp).toBeDefined();
+      // Verify each commit structure
+      gitStatus.recentCommits.forEach((commit, index) => {
+        expect(commit).toHaveProperty('hash');
+        expect(commit).toHaveProperty('message');
+        expect(commit).toHaveProperty('timestamp');
+        expect(commit).toHaveProperty('author');
+        expect(commit).toHaveProperty('authorEmail');
 
-      // Expected implementation (not yet available):
-      // expect(gitStatus.recentCommits).toBeDefined();
-      // expect(Array.isArray(gitStatus.recentCommits)).toBe(true);
-      // expect(gitStatus.recentCommits.length).toBeLessThanOrEqual(5);
-      //
-      // gitStatus.recentCommits.forEach(commit => {
-      //   expect(commit).toHaveProperty('hash');
-      //   expect(commit).toHaveProperty('message');
-      //   expect(commit).toHaveProperty('timestamp');
-      //   expect(typeof commit.hash).toBe('string');
-      //   expect(typeof commit.message).toBe('string');
-      //   expect(commit.timestamp).toBeInstanceOf(Date);
-      // });
+        expect(typeof commit.hash).toBe('string');
+        expect(typeof commit.message).toBe('string');
+        expect(commit.timestamp).toBeInstanceOf(Date);
+        expect(typeof commit.author).toBe('string');
+        expect(typeof commit.authorEmail).toBe('string');
 
-      // For now, we verify the implementation meets other acceptance criteria:
+        // Hash should be shortened to 7 characters
+        expect(commit.hash).toHaveLength(7);
+      });
+
+      // Verify specific commit data
+      expect(gitStatus.recentCommits[0].hash).toBe('abc1234');
+      expect(gitStatus.recentCommits[0].message).toBe('First commit');
+      expect(gitStatus.recentCommits[0].author).toBe('John Doe');
+      expect(gitStatus.recentCommits[0].authorEmail).toBe('john@example.com');
+      expect(gitStatus.recentCommits[0].timestamp).toEqual(new Date(1640000000 * 1000));
+
+      expect(gitStatus.recentCommits[4].hash).toBe('mno3456');
+      expect(gitStatus.recentCommits[4].message).toBe('Fifth commit');
+      expect(gitStatus.recentCommits[4].author).toBe('Charlie Davis');
+
+      // Verify all acceptance criteria are now met:
       // ✅ Returns current branch name
       expect(gitStatus.branch).toBe('main');
 
@@ -532,12 +559,90 @@ describe('ProjectContextAnalyzer - Comprehensive Git Tests', () => {
       // ✅ Staged files
       expect(Array.isArray(gitStatus.staged)).toBe(true);
 
+      // ✅ Recent commits (last 5)
+      expect(gitStatus.recentCommits.length).toBeLessThanOrEqual(5);
+
       // ✅ Detects if inside a git repository
       expect(gitStatus.isRepository).toBe(true);
+    });
 
-      // ❌ Recent commits (last 5) - NOT IMPLEMENTED
-      // This would require adding recentCommits field to GitStatus schema
-      // and implementing the git log parsing logic
+    it('should handle repositories with fewer than 5 commits', async () => {
+      const recentCommitsOutput =
+        'abc1234567890123456789012345678901234567890|First commit|1640000000|John Doe|john@example.com\n' +
+        'def4567890123456789012345678901234567890ab|Second commit|1640010000|Jane Smith|jane@example.com\n';
+
+      mockExecAsync({
+        ...mockGitOutputs.cleanRepo,
+        'git log -5 --format="%H|%s|%ct|%an|%ae"': recentCommitsOutput
+      });
+
+      const gitStatus = await analyzer.getGitStatus();
+
+      expect(gitStatus.isRepository).toBe(true);
+      expect(gitStatus.recentCommits).toBeDefined();
+      expect(gitStatus.recentCommits.length).toBe(2);
+      expect(gitStatus.recentCommits[0].hash).toBe('abc1234');
+      expect(gitStatus.recentCommits[1].hash).toBe('def4567');
+    });
+
+    it('should handle empty repository with no commits', async () => {
+      mockExecAsync({
+        ...mockGitOutputs.cleanRepo,
+        'git log -5 --format="%H|%s|%ct|%an|%ae"': '' // No commits
+      });
+
+      const gitStatus = await analyzer.getGitStatus();
+
+      expect(gitStatus.isRepository).toBe(true);
+      expect(gitStatus.recentCommits).toBeDefined();
+      expect(gitStatus.recentCommits).toEqual([]);
+    });
+
+    it('should handle git log command failure gracefully', async () => {
+      vi.mocked(execAsync).mockImplementation(async (command: string) => {
+        if (command.includes('git log -5')) {
+          throw new Error('Git log command failed');
+        }
+        if (command.includes('git rev-parse --git-dir')) {
+          return { stdout: '.git\n', stderr: '' };
+        }
+        return mockGitOutputs.cleanRepo[command.trim()]
+          ? { stdout: mockGitOutputs.cleanRepo[command.trim()], stderr: '' }
+          : Promise.reject(new Error('Command failed'));
+      });
+
+      const gitStatus = await analyzer.getGitStatus();
+
+      expect(gitStatus.isRepository).toBe(true);
+      expect(gitStatus.recentCommits).toBeDefined();
+      expect(gitStatus.recentCommits).toEqual([]); // Should fall back to empty array
+    });
+
+    it('should handle malformed commit data gracefully', async () => {
+      const malformedCommitsOutput =
+        'abc1234567890123456789012345678901234567890|First commit|1640000000|John Doe|john@example.com\n' +
+        'invalid-line-missing-fields\n' +
+        'def4567890123456789012345678901234567890ab|Second commit|invalid-timestamp|Jane Smith|jane@example.com\n' +
+        'ghi7890123456789012345678901234567890cdef|Third commit|1640020000|Bob Wilson|bob@example.com\n';
+
+      mockExecAsync({
+        ...mockGitOutputs.cleanRepo,
+        'git log -5 --format="%H|%s|%ct|%an|%ae"': malformedCommitsOutput
+      });
+
+      const gitStatus = await analyzer.getGitStatus();
+
+      expect(gitStatus.isRepository).toBe(true);
+      expect(gitStatus.recentCommits).toBeDefined();
+
+      // Should parse valid commits and skip/handle invalid ones gracefully
+      const validCommits = gitStatus.recentCommits.filter(commit =>
+        commit.hash && commit.message && commit.timestamp instanceof Date
+      );
+
+      expect(validCommits.length).toBeGreaterThan(0);
+      expect(validCommits[0].hash).toBe('abc1234');
+      expect(validCommits[0].message).toBe('First commit');
     });
   });
 });
