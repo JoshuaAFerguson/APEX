@@ -72,16 +72,55 @@ describe('Codebase Intelligence Module Integration', () => {
       expect(exports.getLanguageForExtension).toBeDefined();
     });
 
+    it('should re-export all extractor module exports', async () => {
+      const exports = await import('../index.js');
+
+      // Check extractor classes
+      expect(exports.TypeScriptExtractor).toBeDefined();
+      expect(exports.PythonExtractor).toBeDefined();
+      expect(exports.getExtractorForLanguage).toBeDefined();
+
+      // Check extractor types and utilities
+      expect(exports.SymbolKind).toBeDefined();
+      expect(exports.ExtractionError).toBeDefined();
+      expect(exports.hasExtractorSupport).toBeDefined();
+    });
+
+    it('should re-export all indexer module exports', async () => {
+      const exports = await import('../index.js');
+
+      // Check indexer class and utilities
+      expect(exports.CodebaseIndexer).toBeDefined();
+      expect(typeof exports.CodebaseIndexer).toBe('function');
+      expect(exports.getCodebaseIndexer).toBeDefined();
+      expect(typeof exports.getCodebaseIndexer).toBe('function');
+
+      // Verify CodebaseIndexer has expected methods
+      expect(exports.CodebaseIndexer.getInstance).toBeDefined();
+      expect(typeof exports.CodebaseIndexer.getInstance).toBe('function');
+      expect(exports.CodebaseIndexer.resetInstance).toBeDefined();
+      expect(typeof exports.CodebaseIndexer.resetInstance).toBe('function');
+    });
+
     it('should work with main orchestrator exports', async () => {
       // Test that exports are available through the main orchestrator package
       // This simulates how consumers would import the functionality
       const orchestratorExports = await import('../../index.js');
 
-      // Check that codebase-intelligence exports are available
+      // Check that codebase-intelligence parsers exports are available
       expect(orchestratorExports.TreeSitterWrapper).toBeDefined();
       expect(orchestratorExports.SupportedLanguage).toBeDefined();
       expect(orchestratorExports.ParserError).toBeDefined();
       expect(orchestratorExports.UnsupportedLanguageError).toBeDefined();
+
+      // Check that codebase-intelligence extractors exports are available
+      expect(orchestratorExports.TypeScriptExtractor).toBeDefined();
+      expect(orchestratorExports.PythonExtractor).toBeDefined();
+      expect(orchestratorExports.getExtractorForLanguage).toBeDefined();
+
+      // Check that codebase-intelligence indexer exports are available
+      expect(orchestratorExports.CodebaseIndexer).toBeDefined();
+      expect(orchestratorExports.getCodebaseIndexer).toBeDefined();
     });
   });
 
@@ -104,6 +143,48 @@ describe('Codebase Intelligence Module Integration', () => {
       // Clean up
       wrapper.clearCache();
       TreeSitterWrapper.resetInstance();
+    });
+
+    it('should create indexer instance through orchestrator export', async () => {
+      const { CodebaseIndexer, getCodebaseIndexer } = await import('../../index.js');
+
+      // Reset any existing instances
+      CodebaseIndexer.resetInstance();
+
+      const indexer = CodebaseIndexer.getInstance();
+      expect(indexer).toBeDefined();
+
+      // Test convenience function
+      const indexer2 = getCodebaseIndexer();
+      expect(indexer2).toBeDefined();
+      expect(indexer2).toBe(indexer); // Should be same instance
+
+      // Clean up
+      CodebaseIndexer.resetInstance();
+    });
+
+    it('should create extractor instances through orchestrator export', async () => {
+      const { TypeScriptExtractor, PythonExtractor, getExtractorForLanguage, SupportedLanguage } = await import('../../index.js');
+
+      // Test direct extractor access
+      const tsExtractor = TypeScriptExtractor.getInstance();
+      expect(tsExtractor).toBeDefined();
+
+      const pythonExtractor = PythonExtractor.getInstance();
+      expect(pythonExtractor).toBeDefined();
+
+      // Test factory function
+      const tsExtractor2 = getExtractorForLanguage(SupportedLanguage.TypeScript);
+      expect(tsExtractor2).toBeDefined();
+      expect(tsExtractor2).toBe(tsExtractor);
+
+      const pythonExtractor2 = getExtractorForLanguage(SupportedLanguage.Python);
+      expect(pythonExtractor2).toBeDefined();
+      expect(pythonExtractor2).toBe(pythonExtractor);
+
+      // Clean up
+      TypeScriptExtractor.resetInstance();
+      PythonExtractor.resetInstance();
     });
 
     it('should support all languages through orchestrator export', async () => {
