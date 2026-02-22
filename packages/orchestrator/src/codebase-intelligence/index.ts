@@ -48,3 +48,12 @@ export * from './extractors/index.js';
 // Indexer
 export { CodebaseIndexer, getCodebaseIndexer } from './indexer.js';
 export type { IndexingOptions, IndexingProgress, IndexingError } from './indexer.js';
+
+// Symbol Resolver
+export { SymbolResolver } from './symbol-resolver.js';
+export type {
+  FindOptions,
+  SymbolDefinition,
+  SymbolReferenceResult,
+  ResolutionStats,
+} from './symbol-resolver.js';

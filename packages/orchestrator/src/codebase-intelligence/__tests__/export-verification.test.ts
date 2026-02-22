@@ -1,19 +1,19 @@
 /**
- * Export Verification Tests for CodebaseIndexer
+ * Export Verification Tests for CodebaseIndexer and SymbolResolver
  *
- * Tests specifically verify that CodebaseIndexer is properly exported from:
+ * Tests specifically verify that both classes are properly exported from:
  * 1. The codebase-intelligence/index.ts module
  * 2. The main orchestrator/index.ts module
  *
  * These tests ensure the acceptance criteria are met:
- * - CodebaseIndexer is exported from packages/orchestrator/src/codebase-intelligence/index.ts
- * - CodebaseIndexer is exported from packages/orchestrator/src/index.ts
+ * - CodebaseIndexer and SymbolResolver are exported from packages/orchestrator/src/codebase-intelligence/index.ts
+ * - CodebaseIndexer and SymbolResolver are exported from packages/orchestrator/src/index.ts
  * - Integration tests verify exports work correctly
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-describe('CodebaseIndexer Export Verification', () => {
+describe('CodebaseIndexer and SymbolResolver Export Verification', () => {
   beforeEach(() => {
     // Clear any module cache to ensure fresh imports
     vi.resetModules();
@@ -63,6 +63,37 @@ describe('CodebaseIndexer Export Verification', () => {
       // Clean up
       exports.CodebaseIndexer.resetInstance();
     });
+
+    it('should export SymbolResolver class from codebase-intelligence index', async () => {
+      const exports = await import('../index.js');
+
+      expect(exports.SymbolResolver).toBeDefined();
+      expect(typeof exports.SymbolResolver).toBe('function');
+      expect(exports.SymbolResolver.name).toBe('SymbolResolver');
+    });
+
+    it('should export SymbolResolver types from codebase-intelligence index', async () => {
+      const exports = await import('../index.js');
+
+      // These are type-only exports, so we can't directly test them at runtime
+      // But we can verify the module loads without errors and has the expected shape
+      expect(exports).toHaveProperty('SymbolResolver');
+
+      // We can indirectly verify by creating instances (need a mock RepositoryMap)
+      const mockRepoMap = {
+        rootPath: '/test',
+        files: [],
+        references: [],
+        stats: { totalFiles: 0, totalSymbols: 0, totalReferences: 0 }
+      };
+
+      const resolver = new exports.SymbolResolver(mockRepoMap);
+      expect(resolver).toBeDefined();
+      expect(typeof resolver.findDefinition).toBe('function');
+      expect(typeof resolver.findReferences).toBe('function');
+      expect(typeof resolver.hasSymbol).toBe('function');
+      expect(typeof resolver.getStats).toBe('function');
+    });
   });
 
   describe('Main Orchestrator Module Exports', () => {
@@ -89,6 +120,22 @@ describe('CodebaseIndexer Export Verification', () => {
       // Both should export the same CodebaseIndexer class
       expect(mainExports.CodebaseIndexer).toBe(codebaseExports.CodebaseIndexer);
       expect(mainExports.getCodebaseIndexer).toBe(codebaseExports.getCodebaseIndexer);
+    });
+
+    it('should export SymbolResolver class from main orchestrator index', async () => {
+      const exports = await import('../../index.js');
+
+      expect(exports.SymbolResolver).toBeDefined();
+      expect(typeof exports.SymbolResolver).toBe('function');
+      expect(exports.SymbolResolver.name).toBe('SymbolResolver');
+    });
+
+    it('should maintain consistency between codebase-intelligence and main SymbolResolver exports', async () => {
+      const codebaseExports = await import('../index.js');
+      const mainExports = await import('../../index.js');
+
+      // Both should export the same SymbolResolver class
+      expect(mainExports.SymbolResolver).toBe(codebaseExports.SymbolResolver);
     });
   });
 
@@ -169,6 +216,95 @@ describe('CodebaseIndexer Export Verification', () => {
 
       // Clean up
       CodebaseIndexer.resetInstance();
+    });
+
+    it('should create working SymbolResolver instance from codebase-intelligence exports', async () => {
+      const { SymbolResolver } = await import('../index.js');
+
+      // Create a mock repository map
+      const mockRepoMap = {
+        rootPath: '/test',
+        name: 'test-project',
+        files: [{
+          path: 'test.ts',
+          language: 'typescript',
+          symbols: [{
+            name: 'testFunction',
+            type: 'function' as const,
+            filePath: 'test.ts',
+            startLine: 1,
+            endLine: 5,
+            startColumn: 0,
+            endColumn: 10,
+            exported: true
+          }],
+          imports: [],
+          exports: [],
+          lineCount: 10,
+          lastModified: new Date()
+        }],
+        references: [],
+        stats: { totalFiles: 1, totalSymbols: 1, totalReferences: 0 }
+      };
+
+      const resolver = new SymbolResolver(mockRepoMap);
+      expect(resolver).toBeDefined();
+      expect(typeof resolver.findDefinition).toBe('function');
+      expect(typeof resolver.findReferences).toBe('function');
+      expect(typeof resolver.hasSymbol).toBe('function');
+
+      // Test that methods are callable
+      const definitions = resolver.findDefinition('testFunction');
+      expect(Array.isArray(definitions)).toBe(true);
+      expect(definitions.length).toBe(1);
+      expect(definitions[0].symbol.name).toBe('testFunction');
+
+      const hasSymbol = resolver.hasSymbol('testFunction');
+      expect(hasSymbol).toBe(true);
+
+      const stats = resolver.getStats();
+      expect(stats).toBeDefined();
+      expect(stats.totalSymbols).toBe(1);
+    });
+
+    it('should create working SymbolResolver instance from main orchestrator exports', async () => {
+      const { SymbolResolver } = await import('../../index.js');
+
+      // Create a mock repository map
+      const mockRepoMap = {
+        rootPath: '/test',
+        name: 'test-project',
+        files: [{
+          path: 'test.ts',
+          language: 'typescript',
+          symbols: [{
+            name: 'testClass',
+            type: 'class' as const,
+            filePath: 'test.ts',
+            startLine: 1,
+            endLine: 10,
+            startColumn: 0,
+            endColumn: 20,
+            exported: true
+          }],
+          imports: [],
+          exports: [],
+          lineCount: 15,
+          lastModified: new Date()
+        }],
+        references: [],
+        stats: { totalFiles: 1, totalSymbols: 1, totalReferences: 0 }
+      };
+
+      const resolver = new SymbolResolver(mockRepoMap);
+      expect(resolver).toBeDefined();
+      expect(typeof resolver.findDefinition).toBe('function');
+
+      // Test functionality
+      const definitions = resolver.findDefinition('testClass');
+      expect(Array.isArray(definitions)).toBe(true);
+      expect(definitions.length).toBe(1);
+      expect(definitions[0].symbol.name).toBe('testClass');
     });
   });
 

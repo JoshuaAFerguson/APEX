@@ -91,4 +91,23 @@ describe('Compilation Check', () => {
     // If this compiles, types are correct
     expect(true).toBe(true);
   });
+
+  it('should verify SymbolResolver types compile correctly', async () => {
+    // Test SymbolResolver imports
+    const symbolResolverExports = await import('../symbol-resolver.js');
+    expect(symbolResolverExports).toBeDefined();
+    expect(symbolResolverExports.SymbolResolver).toBeDefined();
+
+    // Type-level verification
+    type SymbolResolverCompilationCheck = {
+      resolver: typeof import('../symbol-resolver.js').SymbolResolver;
+      findOptions: import('../symbol-resolver.js').FindOptions;
+      symbolDefinition: import('../symbol-resolver.js').SymbolDefinition;
+      symbolReferenceResult: import('../symbol-resolver.js').SymbolReferenceResult;
+      resolutionStats: import('../symbol-resolver.js').ResolutionStats;
+    };
+
+    // If this compiles, types are correct
+    expect(true).toBe(true);
+  });
 });
