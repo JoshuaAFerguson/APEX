@@ -6,6 +6,7 @@
  * - Multi-language support (TypeScript, JavaScript, Python, Go, Java, Rust)
  * - Language detection
  * - Symbol extraction (functions, classes, interfaces, types, etc.)
+ * - Directory indexing and RepositoryMap generation
  *
  * @example
  * ```typescript
@@ -27,6 +28,15 @@
  * const pythonResult = await pythonExtractor.extract(pythonCode, SupportedLanguage.Python);
  * console.log(pythonResult.symbols); // [{ name: 'my_class', kind: 'class', ... }]
  * ```
+ *
+ * @example
+ * ```typescript
+ * import { CodebaseIndexer } from '@apexcli/orchestrator/codebase-intelligence';
+ *
+ * const indexer = CodebaseIndexer.getInstance();
+ * const repoMap = await indexer.indexDirectory('/path/to/project');
+ * console.log(`Indexed ${repoMap.stats?.totalFiles} files with ${repoMap.stats?.totalSymbols} symbols`);
+ * ```
  */
 
 // Parsers
@@ -34,3 +44,7 @@ export * from './parsers/index.js';
 
 // Extractors
 export * from './extractors/index.js';
+
+// Indexer
+export { CodebaseIndexer, getCodebaseIndexer } from './indexer.js';
+export type { IndexingOptions, IndexingProgress, IndexingError } from './indexer.js';
