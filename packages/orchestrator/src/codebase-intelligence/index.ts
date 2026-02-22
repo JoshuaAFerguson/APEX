@@ -57,3 +57,7 @@ export type {
   SymbolReferenceResult,
   ResolutionStats,
 } from './symbol-resolver.js';
+
+// Import Graph Builder
+export { ImportGraphBuilder, getImportGraphBuilder } from './import-graph/index.js';
+export * from './import-graph/types.js';
