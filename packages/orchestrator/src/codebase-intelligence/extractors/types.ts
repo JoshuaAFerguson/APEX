@@ -201,6 +201,56 @@ export interface ExtractionResult {
 
   /** Time taken to extract symbols in milliseconds */
   extractionTimeMs: number;
+
+  /** Total number of symbols extracted (including nested children) */
+  symbolCount?: number;
+}
+
+/**
+ * Base interface for all symbol extractors
+ *
+ * Defines the contract that all language-specific extractors must implement.
+ * This allows for consistent usage across different languages and enables
+ * the factory pattern for obtaining the appropriate extractor.
+ *
+ * @example
+ * ```typescript
+ * // Using the factory to get an extractor
+ * const extractor = getExtractorForLanguage(SupportedLanguage.TypeScript);
+ * const result = await extractor.extract(sourceCode, SupportedLanguage.TypeScript);
+ *
+ * // Or directly instantiate a specific extractor
+ * const tsExtractor = TypeScriptExtractor.getInstance();
+ * ```
+ */
+export interface SymbolExtractor {
+  /**
+   * Extract symbols from source code string
+   *
+   * @param sourceCode - The source code to extract symbols from
+   * @param language - The programming language of the source code
+   * @param options - Optional extraction configuration
+   * @returns Promise resolving to extraction result with symbols and metadata
+   * @throws {ExtractionError} If the language is not supported by this extractor
+   */
+  extract(
+    sourceCode: string,
+    language: SupportedLanguage,
+    options?: ExtractionOptions
+  ): Promise<ExtractionResult>;
+
+  /**
+   * Extract symbols from a file
+   *
+   * @param filePath - Path to the file to extract symbols from
+   * @param options - Optional extraction configuration
+   * @returns Promise resolving to extraction result with symbols and metadata
+   * @throws {ExtractionError} If the file cannot be read or language is not supported
+   */
+  extractFromFile(
+    filePath: string,
+    options?: ExtractionOptions
+  ): Promise<ExtractionResult>;
 }
 
 /**
@@ -367,3 +417,26 @@ export const PYTHON_NODE_TYPE_TO_SYMBOL_KIND: Record<string, SymbolKind> = {
   [PYTHON_EXTRACTABLE_NODE_TYPES.DECORATOR]: SymbolKind.Decorator,
   [PYTHON_EXTRACTABLE_NODE_TYPES.MODULE]: SymbolKind.Module
 };
+
+/**
+ * All languages that have extractor support
+ */
+export const SUPPORTED_EXTRACTOR_LANGUAGES = [
+  ...TYPESCRIPT_EXTRACTOR_LANGUAGES,
+  ...PYTHON_EXTRACTOR_LANGUAGES
+] as const;
+
+/**
+ * Type for languages that have extractor support
+ */
+export type ExtractorSupportedLanguage = (typeof SUPPORTED_EXTRACTOR_LANGUAGES)[number];
+
+/**
+ * Check if a language has extractor support
+ *
+ * @param language - The language to check
+ * @returns True if the language has a symbol extractor available
+ */
+export function hasExtractorSupport(language: string): language is ExtractorSupportedLanguage {
+  return (SUPPORTED_EXTRACTOR_LANGUAGES as readonly string[]).includes(language);
+}
