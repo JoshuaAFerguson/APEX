@@ -292,12 +292,21 @@ export class RefactoringAnalyzer extends BaseAnalyzer {
           // Legacy format - create a basic ComplexityHotspot with default values
           return {
             file: hotspot,
+            functionName: 'unknown', // Default function name for legacy format
             cyclomaticComplexity: 15, // Default medium complexity
             cognitiveComplexity: 20,  // Default medium complexity
             lineCount: 300,           // Default medium size
           };
         }
-        return hotspot as ComplexityHotspot;
+        // Ensure the hotspot has all required fields, with defaults for missing ones
+        const completeHotspot = hotspot as ComplexityHotspot;
+        return {
+          file: completeHotspot.file,
+          functionName: completeHotspot.functionName || 'unknown',
+          cyclomaticComplexity: completeHotspot.cyclomaticComplexity,
+          cognitiveComplexity: completeHotspot.cognitiveComplexity,
+          lineCount: completeHotspot.lineCount,
+        };
       });
 
       // Calculate priority scores and sort by score (highest first)

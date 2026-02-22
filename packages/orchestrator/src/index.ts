@@ -12456,3 +12456,72 @@ export {
   type ApprovalScenario,
   type ApprovalTestEvents,
 } from './approval-test-utils.js';
+
+// ============================================================================
+// Codebase Analysis (v0.6.0)
+// ============================================================================
+
+export {
+  createCodebaseAnalyzer,
+  CodebaseAnalysisOrchestratorImpl,
+} from './codebase-analyzer/index.js';
+
+export type {
+  CodebaseAnalysisOrchestrator,
+  AnalysisOptions,
+  AnalysisProgress,
+  AnalysisError,
+  AnalysisContext,
+  FileInfo,
+  DomainAnalysisResult,
+  CodebaseAnalyzerBase,
+  AnalysisOutputWriter,
+  OutputFormat,
+  AnalysisDomain,
+  AnalysisPhase,
+} from './codebase-analyzer/types.js';
+
+export {
+  StackAnalyzer,
+} from './codebase-analyzer/analyzers/stack-analyzer.js';
+
+export {
+  ArchitectureAnalyzer,
+} from './codebase-analyzer/analyzers/architecture-analyzer.js';
+
+export {
+  ConventionAnalyzer,
+} from './codebase-analyzer/analyzers/convention-analyzer.js';
+
+export {
+  TechnicalDebtAnalyzer,
+} from './codebase-analyzer/analyzers/debt-analyzer.js';
+
+export {
+  DocumentationAnalyzer,
+} from './codebase-analyzer/analyzers/documentation-analyzer.js';
+
+export {
+  MarkdownWriter,
+} from './codebase-analyzer/output/markdown-writer.js';
+
+export {
+  JsonWriter,
+} from './codebase-analyzer/output/json-writer.js';
+
+export {
+  YamlWriter,
+} from './codebase-analyzer/output/yaml-writer.js';
+
+// =============================================================================
+// CodebaseMapper Service
+// =============================================================================
+
+export {
+  CodebaseMapper,
+  createCodebaseMapper,
+  type CodebaseMapperConfig,
+  type AnalysisAgent,
+  type CodebaseMapperProgress,
+  type CodebaseMapperEvents,
+} from './codebase-mapper.js';

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Brownfield Codebase Analysis:** New `apex map-codebase` command for comprehensive codebase documentation
+  - Parallel agent execution across 5 analysis domains: Stack, Architecture, Conventions, Technical Debt, and Documentation
+  - Multiple output formats: Markdown, JSON, YAML (default: Markdown)
+  - Configurable concurrency with `--parallel` option (1-10 parallel analyzers, default: 4)
+  - Include/exclude glob patterns (`--include`, `--exclude`) for targeted analysis
+  - Quick mode (`--quick`) for faster, less deep analysis on large codebases
+  - Verbose mode (`--verbose`) for detailed real-time progress reporting
+  - Command aliases: `map`, `analyze` for convenience
+  - REPL access via `/map-codebase` command with full option support
+  - Comprehensive help text with usage examples (`--help`)
+  - Output written to `.apex/codebase-analysis/` by default
+  - Graceful handling of analyzer failures with partial results
+  - Language detection for 25+ programming languages
+  - Binary file detection and exclusion
+
 ## [0.5.0] - 2026-02-18
 
 ### Added

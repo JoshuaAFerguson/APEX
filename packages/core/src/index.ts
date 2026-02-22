@@ -88,6 +88,9 @@ export * from './logger';
 // Project Context Analysis
 export * from './project-context-analyzer';
 
+// Convention Analysis
+export * from './convention-analyzer';
+
 // Doctor Health Check Utilities
 export * from './doctor-utils';
 

@@ -20,7 +20,9 @@ export { MaintenanceAnalyzer } from './maintenance-analyzer';
 export { RefactoringAnalyzer } from './refactoring-analyzer';
 export { DocsAnalyzer } from './docs-analyzer';
 export { TestsAnalyzer } from './tests-analyzer';
+export { TechnicalDebtAnalyzer } from './technical-debt-analyzer';
 export { VersionMismatchDetector } from './version-mismatch-detector';
+export { ConventionAnalyzer } from './convention-analyzer';
 export {
   CrossReferenceValidator,
   type DocumentationReference,

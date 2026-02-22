@@ -2723,14 +2723,18 @@ export const IdleTaskTypeSchema = z.enum([
   'refactoring',
   'docs',
   'tests',
+  'technical-debt',
+  'conventions',
 ]);
 export type IdleTaskType = z.infer<typeof IdleTaskTypeSchema>;
 
 export const StrategyWeightsSchema = z.object({
-  maintenance: z.number().min(0).max(1).optional().default(0.25),
-  refactoring: z.number().min(0).max(1).optional().default(0.25),
-  docs: z.number().min(0).max(1).optional().default(0.25),
-  tests: z.number().min(0).max(1).optional().default(0.25),
+  maintenance: z.number().min(0).max(1).optional().default(0.15),
+  refactoring: z.number().min(0).max(1).optional().default(0.15),
+  docs: z.number().min(0).max(1).optional().default(0.15),
+  tests: z.number().min(0).max(1).optional().default(0.15),
+  'technical-debt': z.number().min(0).max(1).optional().default(0.2),
+  conventions: z.number().min(0).max(1).optional().default(0.2),
 });
 export type StrategyWeights = z.infer<typeof StrategyWeightsSchema>;
 
@@ -6782,6 +6786,8 @@ export type VisualComparisonEventDataFor<T extends ApexEventType> =
 export interface ComplexityHotspot {
   /** File path relative to project root */
   file: string;
+  /** Function name that has high complexity */
+  functionName: string;
   /** Cyclomatic complexity score */
   cyclomaticComplexity: number;
   /** Cognitive complexity score */
@@ -11022,7 +11028,12 @@ export type ArchitectureAnalysis = z.infer<typeof ArchitectureAnalysisSchema>;
  *   variableNaming: 'camelCase',
  *   indentation: { type: 'spaces', size: 2 },
  *   imports: { style: 'es6', grouping: 'type-separate' },
- *   documentation: { style: 'jsdoc', coverage: 75 }
+ *   documentation: { style: 'jsdoc', coverage: 75 },
+ *   organization: {
+ *     testLocation: 'separate-__tests__',
+ *     testNaming: 'suffix-.test',
+ *     sourceStructure: 'src'
+ *   }
  * };
  * ```
  */
@@ -11067,6 +11078,21 @@ export const ConventionAnalysisSchema = z.object({
     semicolons: z.enum(['required', 'optional', 'mixed']).optional(),
     quotes: z.enum(['single', 'double', 'backtick', 'mixed']).optional(),
     trailingCommas: z.enum(['always', 'never', 'es5', 'mixed']).optional(),
+  }).optional(),
+
+  /** File organization patterns */
+  organization: z.object({
+    /** Test file location patterns */
+    testLocation: z.enum(['colocated', 'separate-tests', 'separate-__tests__', 'mixed']),
+
+    /** Test file naming patterns */
+    testNaming: z.enum(['suffix-.test', 'suffix-.spec', 'suffix-Test', 'prefix-test-', 'mixed']),
+
+    /** Source directory structure */
+    sourceStructure: z.enum(['src', 'lib', 'app', 'source', 'root-level', 'mixed']),
+
+    /** Configuration file organization */
+    configLocation: z.enum(['root', 'config-dir', 'mixed']).optional(),
   }).optional(),
 });
 export type ConventionAnalysis = z.infer<typeof ConventionAnalysisSchema>;

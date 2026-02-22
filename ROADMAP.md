@@ -479,13 +479,13 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### Brownfield Codebase Analysis (inspired by [GSD](https://github.com/glittercowboy/get-shit-done))
 
-- ⚪ **`apex map-codebase`** - Spawn parallel agents to analyze existing codebases
-- ⚪ **Stack documentation** - Auto-generate stack/technology documentation
-- ⚪ **Architecture documentation** - Auto-document architecture patterns
-- ⚪ **Convention extraction** - Extract and document coding conventions
+- 🟢 **`apex map-codebase`** - Spawn parallel agents to analyze existing codebases
+- 🟢 **Stack documentation** - Auto-generate stack/technology documentation
+- 🟢 **Architecture documentation** - Auto-document architecture patterns
+- 🟢 **Convention extraction** - Extract and document coding conventions
 - ⚪ **Testing patterns** - Document existing test patterns and coverage
 - ⚪ **Integration mapping** - Map third-party integrations and APIs
-- ⚪ **Technical concerns** - Identify technical debt and concerns
+- 🟢 **Technical concerns** - Identify technical debt and concerns
 
 ### Codebase Intelligence (inspired by [Aider](https://github.com/Aider-AI/aider))
 
@@ -1258,7 +1258,7 @@ telemetry:
 | **LSP integration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
 | **Desktop app** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ⚪ |
 | **Cloud platform** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Brownfield codebase mapping** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ⚪ |
+| **Brownfield codebase mapping** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | 🟢 |
 | **Automated changelog** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
 | **GitHub Actions trigger** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚪ |
 

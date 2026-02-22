@@ -26,6 +26,8 @@ export type RemediationActionType =
   | 'package_replacement'
   | 'manual_review'
   | 'documentation'
+  | 'documentation_update'
+  | 'version_sync'
   | 'testing'
   | 'command';
 
@@ -152,8 +154,9 @@ export abstract class BaseAnalyzer implements StrategyAnalyzer {
 
   /**
    * Helper to create a candidate with consistent structure.
+   * Made public so it can be used in tests and by subclasses.
    */
-  protected createCandidate(
+  public createCandidate(
     id: string,
     title: string,
     description: string,

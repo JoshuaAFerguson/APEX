@@ -41,6 +41,7 @@ import {
   handleWorkspaceStats,
 } from './handlers/workspace-handlers.js';
 import { handleDoctor } from './handlers/doctor-handlers.js';
+import { handleMapCodebase } from './handlers/map-codebase-handlers.js';
 import { checkAndNotifyUpdates } from './utils/update-checker.js';
 import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
 import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
@@ -3445,6 +3446,15 @@ export const commands: Command[] = [
     usage: '/doctor [--quick] [--json] | /doctor --quick (skip slow checks) | /doctor --json (JSON output)',
     handler: async (ctx, args) => {
       await handleDoctor(ctx, args);
+    },
+  },
+  {
+    name: 'map-codebase',
+    aliases: ['map', 'analyze'],
+    description: 'Analyze existing codebase and generate comprehensive documentation',
+    usage: '/map-codebase [--output-dir <path>] [--parallel <n>] [--output-format <type>] [--include-debt] [--quick] [--verbose]',
+    handler: async (ctx, args) => {
+      await handleMapCodebase(ctx, args);
     },
   },
 ];
