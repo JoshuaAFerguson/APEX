@@ -530,6 +530,73 @@ function unclosed(param {
     });
   });
 
+  describe('AST Node Traversal', () => {
+    it('should traverse and find specific nodes in TypeScript', async () => {
+      const code = `
+interface User {
+  id: number;
+  name: string;
+}
+
+function greet(user: User): string {
+  return \`Hello, \${user.name}!\`;
+}
+      `.trim();
+
+      const result = await wrapper.parse(code, SupportedLanguage.TypeScript);
+      expect(result.hasErrors).toBe(false);
+
+      // Find interface declaration
+      const interfaceNode = result.rootNode.children.find(n => n.type === 'interface_declaration');
+      expect(interfaceNode).toBeDefined();
+      expect(interfaceNode?.text).toContain('interface User');
+
+      // Find function declaration
+      const functionNode = result.rootNode.children.find(n => n.type === 'function_declaration');
+      expect(functionNode).toBeDefined();
+      expect(functionNode?.text).toContain('function greet');
+    });
+
+    it('should traverse and access child nodes', async () => {
+      const code = `
+class Calculator {
+  add(a: number, b: number): number {
+    return a + b;
+  }
+}
+      `.trim();
+
+      const result = await wrapper.parse(code, SupportedLanguage.TypeScript);
+
+      // Find class declaration
+      const classNode = result.rootNode.children.find(n => n.type === 'class_declaration');
+      expect(classNode).toBeDefined();
+      expect(classNode?.childCount).toBeGreaterThan(0);
+
+      // Check that we can access child nodes
+      expect(classNode?.children).toBeDefined();
+      expect(classNode?.children.length).toBeGreaterThan(0);
+    });
+
+    it('should handle cursor-based traversal', async () => {
+      const code = `def test(): pass`;
+
+      const result = await wrapper.parse(code, SupportedLanguage.Python);
+      expect(result.hasErrors).toBe(false);
+
+      // Test cursor creation and navigation
+      const cursor = result.rootNode.walk();
+      expect(cursor).toBeDefined();
+      expect(cursor.currentNode).toBe(result.rootNode);
+
+      // Test if we can navigate to first child
+      const hasChild = cursor.gotoFirstChild();
+      if (hasChild) {
+        expect(cursor.currentNode).not.toBe(result.rootNode);
+      }
+    });
+  });
+
   describe('Type Utilities', () => {
     it('getLanguageForExtension should work correctly', () => {
       expect(getLanguageForExtension('.ts')).toBe(SupportedLanguage.TypeScript);
