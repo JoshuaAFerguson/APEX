@@ -5,6 +5,7 @@
  * - Tree-sitter based AST parsing
  * - Multi-language support (TypeScript, JavaScript, Python, Go, Java, Rust)
  * - Language detection
+ * - Symbol extraction (functions, classes, interfaces, types, etc.)
  *
  * @example
  * ```typescript
@@ -13,7 +14,23 @@
  * const wrapper = TreeSitterWrapper.getInstance();
  * const result = await wrapper.parse('const x = 5;', SupportedLanguage.JavaScript);
  * ```
+ *
+ * @example
+ * ```typescript
+ * import { TypeScriptExtractor, PythonExtractor, SupportedLanguage } from '@apexcli/orchestrator/codebase-intelligence';
+ *
+ * const tsExtractor = TypeScriptExtractor.getInstance();
+ * const tsResult = await tsExtractor.extract(sourceCode, SupportedLanguage.TypeScript);
+ * console.log(tsResult.symbols); // [{ name: 'myFunction', kind: 'function', ... }]
+ *
+ * const pythonExtractor = PythonExtractor.getInstance();
+ * const pythonResult = await pythonExtractor.extract(pythonCode, SupportedLanguage.Python);
+ * console.log(pythonResult.symbols); // [{ name: 'my_class', kind: 'class', ... }]
+ * ```
  */
 
 // Parsers
 export * from './parsers/index.js';
+
+// Extractors
+export * from './extractors/index.js';
