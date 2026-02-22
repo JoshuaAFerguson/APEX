@@ -5,7 +5,7 @@
  * the appropriate symbol extractor for a given programming language.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   getExtractorForLanguage,
   TypeScriptExtractor,

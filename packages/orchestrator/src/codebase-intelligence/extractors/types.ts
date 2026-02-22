@@ -395,8 +395,7 @@ export const PYTHON_EXTRACTABLE_NODE_TYPES = {
 
   // Containers
   MODULE: 'module',
-  BLOCK: 'block',
-  CLASS_DEFINITION: 'class_definition'
+  BLOCK: 'block'
 } as const;
 
 /**

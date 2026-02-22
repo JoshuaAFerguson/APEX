@@ -22,8 +22,8 @@ import {
   type ExtractedSymbol,
   type ExtractionResult,
   type ExtractionOptions
-} from './typescript-extractor.js';
-import { SupportedLanguage } from '../parsers/types.js';
+} from '../typescript-extractor.js';
+import { SupportedLanguage } from '../../parsers/types.js';
 
 describe('TypeScriptExtractor', () => {
   let extractor: TypeScriptExtractor;
