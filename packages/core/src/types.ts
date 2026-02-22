@@ -11228,3 +11228,391 @@ export const CodebaseAnalysisSchema = z.object({
   }).optional(),
 });
 export type CodebaseAnalysis = z.infer<typeof CodebaseAnalysisSchema>;
+
+// ============================================================================
+// Repository Map Types (Code Intelligence)
+// ============================================================================
+
+/**
+ * Types of code symbols that can be tracked in a repository map
+ * Used for code navigation, search, and understanding codebase structure
+ *
+ * @example
+ * ```typescript
+ * const symbolType: SymbolType = 'function';
+ * const validType = SymbolTypeSchema.parse('class');
+ * ```
+ */
+export const SymbolTypeSchema = z.enum([
+  'function',       // Functions and methods
+  'class',          // Class definitions
+  'interface',      // Interface definitions (TypeScript, Go, etc.)
+  'type',           // Type aliases and definitions
+  'enum',           // Enumeration types
+  'variable',       // Variables and constants
+  'constant',       // Named constants (const, final, etc.)
+  'property',       // Object/class properties
+  'method',         // Class/object methods (distinguished from standalone functions)
+  'module',         // Module/namespace declarations
+  'import',         // Import statements
+  'export',         // Export statements
+  'parameter',      // Function/method parameters
+  'generic',        // Generic type parameters
+  'decorator',      // Decorators/annotations
+  'unknown',        // Unknown or unclassified symbol
+]);
+export type SymbolType = z.infer<typeof SymbolTypeSchema>;
+
+/**
+ * A code symbol representing a named entity in the codebase
+ * Symbols are the atomic units of code structure (functions, classes, variables, etc.)
+ *
+ * @example
+ * ```typescript
+ * const symbol: CodeSymbol = {
+ *   name: 'calculateTotal',
+ *   type: 'function',
+ *   filePath: 'src/utils/math.ts',
+ *   startLine: 15,
+ *   endLine: 25,
+ *   startColumn: 0,
+ *   endColumn: 1,
+ *   signature: 'function calculateTotal(items: Item[]): number',
+ *   exported: true,
+ *   documentation: 'Calculates the total price of all items'
+ * };
+ * ```
+ */
+export const CodeSymbolSchema = z.object({
+  /** The symbol's name/identifier */
+  name: z.string().min(1, 'Symbol name is required'),
+
+  /** The type/kind of this symbol */
+  type: SymbolTypeSchema,
+
+  /** File path where this symbol is defined (relative to repository root) */
+  filePath: z.string().min(1, 'File path is required'),
+
+  /** Line number where the symbol definition starts (1-based) */
+  startLine: z.number().int().min(1),
+
+  /** Line number where the symbol definition ends (1-based) */
+  endLine: z.number().int().min(1),
+
+  /** Column number where the symbol starts (0-based) */
+  startColumn: z.number().int().min(0).optional(),
+
+  /** Column number where the symbol ends (0-based) */
+  endColumn: z.number().int().min(0).optional(),
+
+  /** Full signature of the symbol (e.g., function signature with parameters) */
+  signature: z.string().optional(),
+
+  /** Whether this symbol is exported/public */
+  exported: z.boolean().optional().default(false),
+
+  /** Whether this symbol is a default export */
+  isDefault: z.boolean().optional().default(false),
+
+  /** Documentation string (JSDoc, docstring, etc.) */
+  documentation: z.string().optional(),
+
+  /** Parent symbol name (for nested symbols like methods in a class) */
+  parent: z.string().optional(),
+
+  /** Child symbol names (for container symbols like classes) */
+  children: z.array(z.string()).optional().default([]),
+
+  /** Type annotations if available */
+  typeAnnotation: z.string().optional(),
+
+  /** Modifiers (public, private, static, async, etc.) */
+  modifiers: z.array(z.string()).optional().default([]),
+
+  /** Language-specific metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CodeSymbol = z.infer<typeof CodeSymbolSchema>;
+
+/**
+ * A reference to a symbol from another location in the codebase
+ * Tracks where symbols are used (called, instantiated, referenced)
+ *
+ * @example
+ * ```typescript
+ * const reference: SymbolReference = {
+ *   symbolName: 'calculateTotal',
+ *   symbolType: 'function',
+ *   sourceFile: 'src/components/Cart.tsx',
+ *   sourceLine: 42,
+ *   sourceColumn: 10,
+ *   targetFile: 'src/utils/math.ts',
+ *   targetLine: 15,
+ *   referenceType: 'call'
+ * };
+ * ```
+ */
+export const SymbolReferenceSchema = z.object({
+  /** Name of the referenced symbol */
+  symbolName: z.string().min(1, 'Symbol name is required'),
+
+  /** Type of the referenced symbol */
+  symbolType: SymbolTypeSchema.optional(),
+
+  /** File where the reference occurs (relative to repository root) */
+  sourceFile: z.string().min(1, 'Source file is required'),
+
+  /** Line number where the reference occurs (1-based) */
+  sourceLine: z.number().int().min(1),
+
+  /** Column number where the reference occurs (0-based) */
+  sourceColumn: z.number().int().min(0).optional(),
+
+  /** File where the symbol is defined (relative to repository root) */
+  targetFile: z.string().min(1, 'Target file is required'),
+
+  /** Line number where the symbol is defined (1-based) */
+  targetLine: z.number().int().min(1).optional(),
+
+  /** Type of reference (how the symbol is being used) */
+  referenceType: z.enum([
+    'call',           // Function/method invocation
+    'instantiation',  // Class instantiation (new Foo())
+    'assignment',     // Variable assignment
+    'read',           // Value read
+    'write',          // Value write/mutation
+    'import',         // Import statement
+    'export',         // Re-export
+    'extension',      // Class extension (extends)
+    'implementation', // Interface implementation (implements)
+    'type',           // Type reference in type annotation
+    'decorator',      // Decorator application
+    'parameter',      // Used as parameter
+    'return',         // Used as return value
+    'unknown',        // Unknown reference type
+  ]).optional().default('unknown'),
+
+  /** Whether this is a dynamic reference (computed property, reflection, etc.) */
+  isDynamic: z.boolean().optional().default(false),
+
+  /** Confidence score for inferred references (0-1) */
+  confidence: z.number().min(0).max(1).optional().default(1),
+});
+export type SymbolReference = z.infer<typeof SymbolReferenceSchema>;
+
+/**
+ * An import edge representing a dependency between files
+ * Tracks the import graph of the codebase
+ *
+ * @example
+ * ```typescript
+ * const importEdge: ImportEdge = {
+ *   sourceFile: 'src/components/Cart.tsx',
+ *   targetFile: 'src/utils/math.ts',
+ *   importedSymbols: ['calculateTotal', 'formatPrice'],
+ *   isTypeOnly: false,
+ *   importType: 'named'
+ * };
+ * ```
+ */
+export const ImportEdgeSchema = z.object({
+  /** File that contains the import statement (relative to repository root) */
+  sourceFile: z.string().min(1, 'Source file is required'),
+
+  /** File being imported (relative to repository root) */
+  targetFile: z.string().min(1, 'Target file is required'),
+
+  /** The original import specifier as written in code */
+  importSpecifier: z.string().optional(),
+
+  /** List of specific symbols imported (empty for namespace/default imports) */
+  importedSymbols: z.array(z.string()).optional().default([]),
+
+  /** Whether this is a type-only import (TypeScript) */
+  isTypeOnly: z.boolean().optional().default(false),
+
+  /** Whether this is a dynamic import (import()) */
+  isDynamic: z.boolean().optional().default(false),
+
+  /** Type of import statement */
+  importType: z.enum([
+    'named',          // import { foo } from 'module'
+    'default',        // import foo from 'module'
+    'namespace',      // import * as foo from 'module'
+    'side-effect',    // import 'module' (no bindings)
+    'dynamic',        // import('module')
+    'require',        // require('module')
+    'reexport',       // export { foo } from 'module'
+  ]).optional().default('named'),
+
+  /** Line number of the import statement (1-based) */
+  line: z.number().int().min(1).optional(),
+
+  /** Whether this import is used (not just declared) */
+  isUsed: z.boolean().optional().default(true),
+
+  /** Resolved absolute or package path */
+  resolvedPath: z.string().optional(),
+});
+export type ImportEdge = z.infer<typeof ImportEdgeSchema>;
+
+/**
+ * A code file with its symbols and imports
+ * Represents a single source file in the repository
+ *
+ * @example
+ * ```typescript
+ * const codeFile: CodeFile = {
+ *   path: 'src/utils/math.ts',
+ *   language: 'typescript',
+ *   symbols: [
+ *     { name: 'calculateTotal', type: 'function', ... }
+ *   ],
+ *   imports: [
+ *     { sourceFile: 'src/utils/math.ts', targetFile: 'lodash', ... }
+ *   ],
+ *   lineCount: 150,
+ *   lastModified: new Date('2024-01-15')
+ * };
+ * ```
+ */
+export const CodeFileSchema = z.object({
+  /** File path relative to repository root */
+  path: z.string().min(1, 'File path is required'),
+
+  /** Programming language of the file */
+  language: z.string().optional(),
+
+  /** Symbols defined in this file */
+  symbols: z.array(CodeSymbolSchema).optional().default([]),
+
+  /** Import statements in this file */
+  imports: z.array(ImportEdgeSchema).optional().default([]),
+
+  /** Export statements in this file (re-exports) */
+  exports: z.array(z.object({
+    /** Exported symbol name (or '*' for namespace export) */
+    name: z.string(),
+    /** Original name if aliased */
+    originalName: z.string().optional(),
+    /** Source file for re-exports */
+    fromFile: z.string().optional(),
+    /** Whether this is a default export */
+    isDefault: z.boolean().optional().default(false),
+    /** Whether this is a type-only export */
+    isTypeOnly: z.boolean().optional().default(false),
+  })).optional().default([]),
+
+  /** Total line count of the file */
+  lineCount: z.number().int().min(0).optional(),
+
+  /** File size in bytes */
+  size: z.number().int().min(0).optional(),
+
+  /** Last modification timestamp */
+  lastModified: z.date().optional(),
+
+  /** SHA/hash of the file content for change detection */
+  contentHash: z.string().optional(),
+
+  /** Whether this file has parsing errors */
+  hasErrors: z.boolean().optional().default(false),
+
+  /** Parsing errors if any */
+  errors: z.array(z.object({
+    message: z.string(),
+    line: z.number().int().min(1).optional(),
+    column: z.number().int().min(0).optional(),
+  })).optional().default([]),
+
+  /** File-level metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CodeFile = z.infer<typeof CodeFileSchema>;
+
+/**
+ * A complete map of a repository's code structure
+ * Contains all files, symbols, references, and their relationships
+ *
+ * @example
+ * ```typescript
+ * const repoMap: RepositoryMap = {
+ *   rootPath: '/path/to/repo',
+ *   files: [
+ *     { path: 'src/index.ts', language: 'typescript', symbols: [...] }
+ *   ],
+ *   references: [
+ *     { symbolName: 'App', sourceFile: 'src/main.ts', targetFile: 'src/App.tsx', ... }
+ *   ],
+ *   createdAt: new Date(),
+ *   version: '1.0.0'
+ * };
+ * ```
+ */
+export const RepositoryMapSchema = z.object({
+  /** Root path of the repository */
+  rootPath: z.string().min(1, 'Root path is required'),
+
+  /** Name of the repository */
+  name: z.string().optional(),
+
+  /** List of all code files in the repository */
+  files: z.array(CodeFileSchema).optional().default([]),
+
+  /** All symbol references across the codebase */
+  references: z.array(SymbolReferenceSchema).optional().default([]),
+
+  /** Summary statistics about the repository */
+  stats: z.object({
+    /** Total number of files */
+    totalFiles: z.number().int().min(0),
+    /** Total number of symbols */
+    totalSymbols: z.number().int().min(0),
+    /** Total number of references */
+    totalReferences: z.number().int().min(0),
+    /** Total lines of code */
+    totalLines: z.number().int().min(0).optional(),
+    /** Breakdown of files by language */
+    languageBreakdown: z.record(z.string(), z.number().int().min(0)).optional(),
+    /** Breakdown of symbols by type */
+    symbolTypeBreakdown: z.record(z.string(), z.number().int().min(0)).optional(),
+  }).optional(),
+
+  /** When this map was created/last updated */
+  createdAt: z.date().optional(),
+
+  /** Version of the map format/schema */
+  version: z.string().optional().default('1.0.0'),
+
+  /** Git commit hash at time of mapping */
+  commitHash: z.string().optional(),
+
+  /** Branch name at time of mapping */
+  branch: z.string().optional(),
+
+  /** Configuration used for generating this map */
+  config: z.object({
+    /** File patterns that were included */
+    includePatterns: z.array(z.string()).optional().default([]),
+    /** File patterns that were excluded */
+    excludePatterns: z.array(z.string()).optional().default([]),
+    /** Languages that were parsed */
+    languages: z.array(z.string()).optional().default([]),
+    /** Maximum file size that was processed */
+    maxFileSize: z.number().int().min(0).optional(),
+  }).optional(),
+
+  /** Errors encountered during mapping */
+  errors: z.array(z.object({
+    /** File path where error occurred */
+    file: z.string().optional(),
+    /** Error message */
+    message: z.string(),
+    /** Error severity */
+    severity: z.enum(['warning', 'error']),
+  })).optional().default([]),
+
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type RepositoryMap = z.infer<typeof RepositoryMapSchema>;
