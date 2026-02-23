@@ -49,6 +49,7 @@ import {
   type ExtractionResult,
   type ExtractionOptions
 } from './extractors/types.js';
+import { TypeAwarenessAnalyzer, type TypeAnalysisOptions, type TypeInformation } from './type-awareness-analyzer.js';
 
 /**
  * Configuration options for directory indexing
@@ -80,6 +81,12 @@ export interface IndexingOptions {
 
   /** Concurrency limit for parallel file processing */
   concurrency?: number;
+
+  /** Whether to enable enhanced TypeScript type analysis */
+  enableTypeAnalysis?: boolean;
+
+  /** Type analysis configuration */
+  typeAnalysisOptions?: TypeAnalysisOptions;
 }
 
 /**
@@ -134,7 +141,16 @@ const DEFAULT_INDEXING_OPTIONS: Required<IndexingOptions> = {
   maxSymbolDepth: undefined, // unlimited
   computeHashes: true,
   continueOnError: true,
-  concurrency: 4
+  concurrency: 4,
+  enableTypeAnalysis: true,
+  typeAnalysisOptions: {
+    includeDependencies: true,
+    includeDetailedAnnotations: true,
+    includeGenerics: true,
+    includeImportsExports: true,
+    maxTypeDepth: 5,
+    resolveTypeAliases: true
+  }
 };
 
 /**
@@ -498,6 +514,32 @@ export class CodebaseIndexer {
         }));
       }
 
+      // Enhanced TypeScript type analysis for TS/JS files
+      if (config.enableTypeAnalysis && this.isTypeScriptFile(relativePath, language)) {
+        try {
+          const typeAnalyzer = TypeAwarenessAnalyzer.getInstance();
+          const typeInfo = await typeAnalyzer.analyzeContent(
+            content,
+            relativePath,
+            config.typeAnalysisOptions
+          );
+
+          // Enrich the CodeFile with type information
+          const enrichedFile = await this.enrichFileWithTypeInfo(codeFile, typeInfo);
+          return enrichedFile;
+
+        } catch (typeError) {
+          // Log type analysis error but don't fail the indexing
+          console.warn(`Type analysis failed for ${relativePath}:`, typeError);
+
+          if (codeFile.errors) {
+            codeFile.errors.push({
+              message: `Type analysis error: ${typeError instanceof Error ? typeError.message : String(typeError)}`
+            });
+          }
+        }
+      }
+
     } catch (error) {
       // Mark file as having errors but continue
       codeFile.hasParseErrors = true;
@@ -557,6 +599,133 @@ export class CodebaseIndexer {
 
     processSymbols(symbols);
     return result;
+  }
+
+  /**
+   * Check if file should use TypeScript type analysis
+   *
+   * @private
+   * @param filePath - File path to check
+   * @param language - Language of the file
+   * @returns Whether type analysis should be applied
+   */
+  private isTypeScriptFile(filePath: string, language: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    return (
+      language === 'typescript' ||
+      language === 'javascript' ||
+      ['.ts', '.tsx', '.d.ts', '.js', '.jsx'].includes(ext)
+    );
+  }
+
+  /**
+   * Enrich CodeFile with type information from TypeAwarenessAnalyzer
+   *
+   * @private
+   * @param codeFile - Original CodeFile object
+   * @param typeInfo - Type information from analyzer
+   * @returns Enhanced CodeFile with type data
+   */
+  private async enrichFileWithTypeInfo(
+    codeFile: CodeFile,
+    typeInfo: TypeInformation
+  ): Promise<CodeFile> {
+    // Add type information to file metadata
+    const enrichedMetadata = {
+      ...codeFile.metadata,
+      typeInfo: {
+        interfaceCount: typeInfo.interfaces.length,
+        typeAliasCount: typeInfo.typeAliases.length,
+        genericCount: typeInfo.generics.length,
+        typeImportCount: typeInfo.typeImports.length,
+        typeExportCount: typeInfo.typeExports.length,
+        typeDependencyCount: typeInfo.typeDependencies.length,
+        interfaces: typeInfo.interfaces.map(i => i.name),
+        typeAliases: typeInfo.typeAliases.map(t => t.name),
+        referencedTypes: Array.from(
+          new Set(
+            Array.from(typeInfo.typeAnnotations.values())
+              .flatMap(annotation => annotation.referencedTypes)
+          )
+        ),
+        hasComplexTypes: typeInfo.typeAliases.some(t => t.definition.kind !== 'primitive'),
+        hasGenerics: typeInfo.interfaces.some(i => i.typeParameters.length > 0) ||
+                     typeInfo.typeAliases.some(t => t.typeParameters.length > 0),
+        analysisErrors: typeInfo.errors
+      }
+    };
+
+    // Enhance existing symbols with type annotations
+    const enhancedSymbols: CodeSymbol[] = codeFile.symbols.map(symbol => {
+      const typeAnnotation = typeInfo.typeAnnotations.get(symbol.name);
+
+      return {
+        ...symbol,
+        typeAnnotation: typeAnnotation?.raw,
+        metadata: {
+          ...symbol.metadata,
+          typeKind: typeAnnotation?.kind,
+          referencedTypes: typeAnnotation?.referencedTypes,
+          isNullable: typeAnnotation?.nullable,
+          isOptional: typeAnnotation?.optional
+        }
+      };
+    });
+
+    // Add interfaces as symbols
+    const interfaceSymbols: CodeSymbol[] = typeInfo.interfaces.map(iface => ({
+      name: iface.name,
+      type: 'interface',
+      filePath: codeFile.path,
+      startLine: iface.startLine,
+      endLine: iface.endLine,
+      exported: iface.exported,
+      isDefault: iface.exportKind === 'default',
+      documentation: iface.documentation,
+      typeAnnotation: `interface ${iface.name}`,
+      modifiers: iface.modifiers,
+      metadata: {
+        extends: iface.extends,
+        propertyCount: iface.properties.length,
+        typeParameterCount: iface.typeParameters.length,
+        hasTypeParameters: iface.typeParameters.length > 0,
+        properties: iface.properties.map(p => ({
+          name: p.name,
+          type: p.type.raw,
+          optional: p.optional,
+          readonly: p.readonly
+        }))
+      }
+    }));
+
+    // Add type aliases as symbols
+    const typeAliasSymbols: CodeSymbol[] = typeInfo.typeAliases.map(alias => ({
+      name: alias.name,
+      type: 'type',
+      filePath: codeFile.path,
+      startLine: alias.startLine,
+      endLine: alias.endLine,
+      exported: alias.exported,
+      isDefault: alias.exportKind === 'default',
+      documentation: alias.documentation,
+      typeAnnotation: `type ${alias.name} = ${alias.definition.raw}`,
+      metadata: {
+        definition: alias.definition.raw,
+        typeKind: alias.definition.kind,
+        typeParameterCount: alias.typeParameters.length,
+        hasTypeParameters: alias.typeParameters.length > 0,
+        referencedTypes: alias.definition.referencedTypes,
+        isUnionType: alias.definition.kind === 'union',
+        isIntersectionType: alias.definition.kind === 'intersection',
+        isGenericType: alias.definition.kind === 'generic'
+      }
+    }));
+
+    return {
+      ...codeFile,
+      metadata: enrichedMetadata,
+      symbols: [...enhancedSymbols, ...interfaceSymbols, ...typeAliasSymbols]
+    };
   }
 
   /**
