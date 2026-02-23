@@ -98,6 +98,29 @@ export interface WebPageContent {
 }
 
 /**
+ * Result of GitHub issue image processing
+ */
+export interface GitHubIssueImageResult {
+  /** The original GitHub issue content */
+  issueContent: string;
+  /** Extracted image URLs from the issue */
+  imageUrls: string[];
+  /** Processed image blocks ready for Claude SDK */
+  imageBlocks: ImageBlockParam[];
+  /** Processing metadata for each image */
+  imageMetadata: Array<{
+    url: string;
+    fileSizeBytes: number;
+    mediaType: string;
+    downloadTime: number;
+  }>;
+  /** Total processing time in milliseconds */
+  totalProcessingTime: number;
+  /** Any errors encountered during processing */
+  errors?: string[];
+}
+
+/**
  * Result of image processing
  */
 export interface ImageProcessResult {
@@ -155,6 +178,18 @@ export class MultimodalInputHandler {
     '.webp': 'image/webp',
   };
 
+  /** GitHub image URL patterns for extraction */
+  private static readonly GITHUB_IMAGE_PATTERNS = [
+    // user-images.githubusercontent.com URLs (main GitHub image hosting)
+    /https?:\/\/user-images\.githubusercontent\.com\/[^)\s]*/g,
+    // GitHub-hosted images in markdown format: ![alt](url)
+    /!\[.*?\]\((https?:\/\/user-images\.githubusercontent\.com\/[^)]*)\)/g,
+    // GitHub-hosted images in HTML format: <img src="url">
+    /<img[^>]+src=["'](https?:\/\/user-images\.githubusercontent\.com\/[^"']*)/g,
+    // raw.githubusercontent.com URLs (for repository files)
+    /https?:\/\/raw\.githubusercontent\.com\/[^)\s]*/g,
+  ];
+
   constructor(config?: MultimodalInputHandlerConfig) {
     this.config = {
       ...MultimodalInputHandler.DEFAULT_CONFIG,
@@ -206,6 +241,70 @@ export class MultimodalInputHandler {
       throw new MultimodalInputError(
         `Failed to process image file: ${error instanceof Error ? error.message : String(error)}`,
         'PROCESSING_ERROR'
+      );
+    }
+  }
+
+  /**
+   * Process GitHub issue content to extract and download images
+   *
+   * @param issueContent - GitHub issue body or comment content (markdown/HTML)
+   * @returns Promise resolving to GitHubIssueImageResult
+   * @throws MultimodalInputError for validation failures or download errors
+   */
+  async processGitHubIssueImages(issueContent: string): Promise<GitHubIssueImageResult> {
+    const startTime = Date.now();
+
+    try {
+      // Extract all GitHub image URLs from the content
+      const imageUrls = this.extractGitHubImageUrls(issueContent);
+
+      if (imageUrls.length === 0) {
+        return {
+          issueContent,
+          imageUrls: [],
+          imageBlocks: [],
+          imageMetadata: [],
+          totalProcessingTime: Date.now() - startTime,
+        };
+      }
+
+      // Download and process each image
+      const imageBlocks: ImageBlockParam[] = [];
+      const imageMetadata: GitHubIssueImageResult['imageMetadata'] = [];
+      const errors: string[] = [];
+
+      for (const url of imageUrls) {
+        try {
+          const downloadStart = Date.now();
+          const result = await this.downloadImageFromUrl(url);
+          const downloadTime = Date.now() - downloadStart;
+
+          imageBlocks.push(result.imageBlock);
+          imageMetadata.push({
+            url,
+            fileSizeBytes: result.fileSizeBytes,
+            mediaType: result.mediaType,
+            downloadTime,
+          });
+        } catch (error) {
+          const errorMessage = `Failed to download image from ${url}: ${error instanceof Error ? error.message : String(error)}`;
+          errors.push(errorMessage);
+        }
+      }
+
+      return {
+        issueContent,
+        imageUrls,
+        imageBlocks,
+        imageMetadata,
+        totalProcessingTime: Date.now() - startTime,
+        errors: errors.length > 0 ? errors : undefined,
+      };
+    } catch (error) {
+      throw new MultimodalInputError(
+        `Failed to process GitHub issue images: ${error instanceof Error ? error.message : String(error)}`,
+        'GITHUB_ISSUE_PROCESSING_ERROR'
       );
     }
   }
