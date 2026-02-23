@@ -11616,3 +11616,485 @@ export const RepositoryMapSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type RepositoryMap = z.infer<typeof RepositoryMapSchema>;
+
+// ============================================================================
+// Multimodal Input Types (v0.6.0)
+// ============================================================================
+// These types enable agents to receive and process multimodal inputs including:
+// - Images (base64-encoded or URL references)
+// - Web pages (for context/analysis)
+// - Design mockups (Figma, Sketch, etc.)
+
+/**
+ * Supported image media types for multimodal inputs
+ * Includes common web and design formats
+ */
+export const ImageMediaTypeSchema = z.enum([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+  'image/bmp',
+  'image/tiff',
+]);
+export type ImageMediaType = z.infer<typeof ImageMediaTypeSchema>;
+
+/**
+ * Multimodal input type discriminator
+ * Used to identify the type of multimodal content being provided
+ */
+export const MultimodalInputTypeSchema = z.enum([
+  'image',
+  'web_page',
+  'design_mockup',
+]);
+export type MultimodalInputType = z.infer<typeof MultimodalInputTypeSchema>;
+
+/**
+ * Source metadata for tracking where multimodal inputs originated
+ * Provides context about the input's origin for audit trails and debugging
+ *
+ * @example
+ * ```typescript
+ * const sourceMetadata: SourceMetadata = {
+ *   provider: 'figma',
+ *   originalUrl: 'https://figma.com/file/abc123',
+ *   capturedAt: new Date(),
+ *   capturedBy: 'design-agent',
+ *   version: '2.1.0',
+ *   additionalInfo: { nodeId: '123:456' }
+ * };
+ * ```
+ */
+export const SourceMetadataSchema = z.object({
+  /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+  provider: z.string().min(1, 'Provider is required').optional(),
+
+  /** Original URL where the content was sourced from */
+  originalUrl: z.string().url().optional(),
+
+  /** Timestamp when the content was captured/retrieved */
+  capturedAt: z.date().optional(),
+
+  /** Identifier of the agent or process that captured the content */
+  capturedBy: z.string().optional(),
+
+  /** Version identifier for the source content (if applicable) */
+  version: z.string().optional(),
+
+  /** Additional provider-specific metadata */
+  additionalInfo: z.record(z.string(), z.unknown()).optional(),
+});
+export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
+
+/**
+ * Base schema for all multimodal inputs
+ * Contains common fields shared across all input types
+ */
+export const BaseMultimodalInputSchema = z.object({
+  /** Unique identifier for this input */
+  id: z.string().optional(),
+
+  /** Human-readable name/label for the input */
+  name: z.string().optional(),
+
+  /** Description of what this input contains or represents */
+  description: z.string().optional(),
+
+  /** Source metadata for tracking input origin */
+  source: SourceMetadataSchema.optional(),
+
+  /** Tags for categorization and filtering */
+  tags: z.array(z.string()).optional().default([]),
+
+  /** Timestamp when this input was created/added */
+  createdAt: z.date().optional(),
+
+  /** Additional custom metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type BaseMultimodalInput = z.infer<typeof BaseMultimodalInputSchema>;
+
+/**
+ * Image input schema for providing images to agents
+ * Supports both base64-encoded data and URL references
+ *
+ * @example
+ * ```typescript
+ * // Base64 image input
+ * const base64Image: ImageInput = {
+ *   type: 'image',
+ *   name: 'screenshot.png',
+ *   mediaType: 'image/png',
+ *   data: 'iVBORw0KGgoAAAANSUhEUgAA...',
+ *   encoding: 'base64',
+ *   width: 1920,
+ *   height: 1080,
+ * };
+ *
+ * // URL image input
+ * const urlImage: ImageInput = {
+ *   type: 'image',
+ *   name: 'product-photo.jpg',
+ *   mediaType: 'image/jpeg',
+ *   url: 'https://example.com/images/product.jpg',
+ * };
+ * ```
+ */
+export const ImageInputSchema = BaseMultimodalInputSchema.extend({
+  /** Discriminator for image type */
+  type: z.literal('image'),
+
+  /** MIME type of the image */
+  mediaType: ImageMediaTypeSchema,
+
+  /**
+   * Base64-encoded image data
+   * Mutually exclusive with `url` - provide either data or url, not both
+   */
+  data: z.string().optional(),
+
+  /**
+   * URL to the image resource
+   * Mutually exclusive with `data` - provide either url or data, not both
+   */
+  url: z.string().url().optional(),
+
+  /** Encoding format for the data field (always 'base64' when data is provided) */
+  encoding: z.literal('base64').optional(),
+
+  /** Image width in pixels (if known) */
+  width: z.number().int().min(1).optional(),
+
+  /** Image height in pixels (if known) */
+  height: z.number().int().min(1).optional(),
+
+  /** File size in bytes (if known) */
+  fileSize: z.number().int().min(0).optional(),
+
+  /** Alt text for accessibility and context */
+  altText: z.string().optional(),
+}).refine(
+  (data) => data.data !== undefined || data.url !== undefined,
+  { message: 'Either data (base64) or url must be provided for image input' }
+).refine(
+  (data) => !(data.data !== undefined && data.url !== undefined),
+  { message: 'Provide either data or url, not both' }
+);
+export type ImageInput = z.infer<typeof ImageInputSchema>;
+
+/**
+ * Web page input schema for providing web page content/context to agents
+ * Can include both the URL and optionally captured content
+ *
+ * @example
+ * ```typescript
+ * const webPageInput: WebPageInput = {
+ *   type: 'web_page',
+ *   name: 'Product Landing Page',
+ *   url: 'https://example.com/products/widget',
+ *   title: 'Amazing Widget - Example Corp',
+ *   capturedHtml: '<html>...</html>',
+ *   capturedText: 'Plain text content...',
+ *   screenshot: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *   },
+ *   viewport: { width: 1920, height: 1080 },
+ * };
+ * ```
+ */
+export const WebPageInputSchema = BaseMultimodalInputSchema.extend({
+  /** Discriminator for web page type */
+  type: z.literal('web_page'),
+
+  /** URL of the web page */
+  url: z.string().url('Valid URL is required for web page input'),
+
+  /** Page title (if captured) */
+  title: z.string().optional(),
+
+  /** Full HTML content of the page (if captured) */
+  capturedHtml: z.string().optional(),
+
+  /** Plain text content extracted from the page (if captured) */
+  capturedText: z.string().optional(),
+
+  /** Markdown representation of the page content (if converted) */
+  capturedMarkdown: z.string().optional(),
+
+  /**
+   * Screenshot of the page
+   * Stored as a nested ImageInput without the refinements to avoid circular validation
+   */
+  screenshot: BaseMultimodalInputSchema.extend({
+    type: z.literal('image'),
+    mediaType: ImageMediaTypeSchema,
+    data: z.string().optional(),
+    url: z.string().url().optional(),
+    encoding: z.literal('base64').optional(),
+    width: z.number().int().min(1).optional(),
+    height: z.number().int().min(1).optional(),
+    fileSize: z.number().int().min(0).optional(),
+    altText: z.string().optional(),
+  }).optional(),
+
+  /** Viewport dimensions used when capturing the page */
+  viewport: z.object({
+    width: z.number().int().min(1),
+    height: z.number().int().min(1),
+  }).optional(),
+
+  /** HTTP status code when the page was fetched */
+  statusCode: z.number().int().optional(),
+
+  /** Response headers (selected relevant headers) */
+  headers: z.record(z.string(), z.string()).optional(),
+
+  /** Timestamp when the page was captured */
+  capturedAt: z.date().optional(),
+
+  /** Whether JavaScript was executed during capture */
+  jsExecuted: z.boolean().optional().default(false),
+
+  /** Links found on the page */
+  links: z.array(z.object({
+    href: z.string(),
+    text: z.string().optional(),
+    rel: z.string().optional(),
+  })).optional(),
+
+  /** Page load metrics */
+  loadMetrics: z.object({
+    /** Time to first byte in milliseconds */
+    ttfb: z.number().min(0).optional(),
+    /** DOM content loaded time in milliseconds */
+    domContentLoaded: z.number().min(0).optional(),
+    /** Full page load time in milliseconds */
+    loadComplete: z.number().min(0).optional(),
+  }).optional(),
+});
+export type WebPageInput = z.infer<typeof WebPageInputSchema>;
+
+/**
+ * Design tool/platform identifiers for mockup inputs
+ */
+export const DesignToolSchema = z.enum([
+  'figma',
+  'sketch',
+  'adobe_xd',
+  'invision',
+  'zeplin',
+  'framer',
+  'canva',
+  'photoshop',
+  'illustrator',
+  'other',
+]);
+export type DesignTool = z.infer<typeof DesignToolSchema>;
+
+/**
+ * Design mockup input schema for providing design files/exports to agents
+ * Supports various design tools like Figma, Sketch, Adobe XD, etc.
+ *
+ * @example
+ * ```typescript
+ * const mockupInput: DesignMockupInput = {
+ *   type: 'design_mockup',
+ *   name: 'Login Screen - Mobile',
+ *   designTool: 'figma',
+ *   fileId: 'abc123xyz',
+ *   nodeId: '123:456',
+ *   fileUrl: 'https://figma.com/file/abc123xyz/Login-Screens',
+ *   exportedImage: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *     width: 375,
+ *     height: 812,
+ *   },
+ *   exportFormat: 'png',
+ *   exportScale: 2,
+ *   designTokens: {
+ *     colors: { primary: '#007AFF', secondary: '#5856D6' },
+ *     typography: { heading: 'SF Pro Display', body: 'SF Pro Text' },
+ *   },
+ * };
+ * ```
+ */
+export const DesignMockupInputSchema = BaseMultimodalInputSchema.extend({
+  /** Discriminator for design mockup type */
+  type: z.literal('design_mockup'),
+
+  /** Design tool/platform used to create the mockup */
+  designTool: DesignToolSchema,
+
+  /** Unique file identifier in the design tool */
+  fileId: z.string().optional(),
+
+  /** Node/frame/artboard identifier within the file */
+  nodeId: z.string().optional(),
+
+  /** Direct URL to the design file or frame */
+  fileUrl: z.string().url().optional(),
+
+  /**
+   * Exported image of the mockup
+   * Stored as a nested structure to avoid circular refinement issues
+   */
+  exportedImage: BaseMultimodalInputSchema.extend({
+    type: z.literal('image'),
+    mediaType: ImageMediaTypeSchema,
+    data: z.string().optional(),
+    url: z.string().url().optional(),
+    encoding: z.literal('base64').optional(),
+    width: z.number().int().min(1).optional(),
+    height: z.number().int().min(1).optional(),
+    fileSize: z.number().int().min(0).optional(),
+    altText: z.string().optional(),
+  }).optional(),
+
+  /** Format used for export (png, svg, pdf, etc.) */
+  exportFormat: z.enum(['png', 'jpeg', 'svg', 'pdf', 'webp']).optional(),
+
+  /** Export scale factor (1x, 2x, 3x, etc.) */
+  exportScale: z.number().min(0.1).max(10).optional(),
+
+  /** Frame/artboard name in the design tool */
+  frameName: z.string().optional(),
+
+  /** Page name containing the frame */
+  pageName: z.string().optional(),
+
+  /** Design dimensions (if different from exported image) */
+  designDimensions: z.object({
+    width: z.number().min(0),
+    height: z.number().min(0),
+    unit: z.enum(['px', 'pt', 'dp', 'sp', 'em', 'rem', '%']).optional().default('px'),
+  }).optional(),
+
+  /** Design tokens extracted from the mockup */
+  designTokens: z.object({
+    /** Color palette */
+    colors: z.record(z.string(), z.string()).optional(),
+    /** Typography definitions */
+    typography: z.record(z.string(), z.union([z.string(), z.object({
+      fontFamily: z.string().optional(),
+      fontSize: z.number().optional(),
+      fontWeight: z.union([z.string(), z.number()]).optional(),
+      lineHeight: z.number().optional(),
+      letterSpacing: z.number().optional(),
+    })])).optional(),
+    /** Spacing values */
+    spacing: z.record(z.string(), z.number()).optional(),
+    /** Border radius values */
+    borderRadius: z.record(z.string(), z.number()).optional(),
+    /** Shadow definitions */
+    shadows: z.record(z.string(), z.string()).optional(),
+  }).optional(),
+
+  /** Components/symbols used in the mockup */
+  components: z.array(z.object({
+    name: z.string(),
+    id: z.string().optional(),
+    type: z.string().optional(),
+    bounds: z.object({
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    }).optional(),
+  })).optional(),
+
+  /** Version/revision of the design file */
+  fileVersion: z.string().optional(),
+
+  /** Last modified timestamp from the design tool */
+  lastModified: z.date().optional(),
+
+  /** Collaborators/editors of the design file */
+  collaborators: z.array(z.string()).optional(),
+
+  /** Comments or annotations on this mockup */
+  annotations: z.array(z.object({
+    id: z.string().optional(),
+    text: z.string(),
+    author: z.string().optional(),
+    position: z.object({
+      x: z.number(),
+      y: z.number(),
+    }).optional(),
+    createdAt: z.date().optional(),
+  })).optional(),
+});
+export type DesignMockupInput = z.infer<typeof DesignMockupInputSchema>;
+
+/**
+ * Union type for all multimodal inputs
+ * Uses discriminated union based on the 'type' field for type-safe handling
+ *
+ * @example
+ * ```typescript
+ * function processMultimodalInput(input: MultimodalInput) {
+ *   switch (input.type) {
+ *     case 'image':
+ *       // TypeScript knows this is ImageInput
+ *       console.log(`Processing image: ${input.mediaType}`);
+ *       break;
+ *     case 'web_page':
+ *       // TypeScript knows this is WebPageInput
+ *       console.log(`Processing web page: ${input.url}`);
+ *       break;
+ *     case 'design_mockup':
+ *       // TypeScript knows this is DesignMockupInput
+ *       console.log(`Processing mockup from: ${input.designTool}`);
+ *       break;
+ *   }
+ * }
+ * ```
+ */
+export const MultimodalInputSchema = z.discriminatedUnion('type', [
+  ImageInputSchema,
+  WebPageInputSchema,
+  DesignMockupInputSchema,
+]);
+export type MultimodalInput = z.infer<typeof MultimodalInputSchema>;
+
+/**
+ * Collection of multimodal inputs for batch processing
+ * Useful for tasks that require multiple inputs of different types
+ *
+ * @example
+ * ```typescript
+ * const inputCollection: MultimodalInputCollection = {
+ *   inputs: [
+ *     { type: 'design_mockup', designTool: 'figma', ... },
+ *     { type: 'web_page', url: 'https://example.com', ... },
+ *     { type: 'image', mediaType: 'image/png', data: '...', ... },
+ *   ],
+ *   context: 'Implement the login screen based on the Figma mockup',
+ * };
+ * ```
+ */
+export const MultimodalInputCollectionSchema = z.object({
+  /** Array of multimodal inputs */
+  inputs: z.array(MultimodalInputSchema).min(1, 'At least one input is required'),
+
+  /** Optional context describing the relationship between inputs */
+  context: z.string().optional(),
+
+  /** Primary input index (0-based) if one input is the main focus */
+  primaryInputIndex: z.number().int().min(0).optional(),
+
+  /** Processing order preference */
+  processingOrder: z.enum(['sequential', 'parallel', 'priority']).optional().default('sequential'),
+
+  /** Timestamp when this collection was created */
+  createdAt: z.date().optional(),
+
+  /** Additional metadata for the collection */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type MultimodalInputCollection = z.infer<typeof MultimodalInputCollectionSchema>;
