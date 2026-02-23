@@ -520,6 +520,149 @@ export class MultimodalInputHandler {
   }
 
   /**
+   * Extract GitHub image URLs from issue content
+   */
+  private extractGitHubImageUrls(content: string): string[] {
+    const urls = new Set<string>();
+
+    for (const pattern of MultimodalInputHandler.GITHUB_IMAGE_PATTERNS) {
+      let match;
+      const regex = new RegExp(pattern.source, pattern.flags);
+
+      while ((match = regex.exec(content)) !== null) {
+        if (match[1]) {
+          // For patterns with capture groups (markdown/HTML)
+          urls.add(match[1]);
+        } else {
+          // For patterns without capture groups (direct URLs)
+          urls.add(match[0]);
+        }
+      }
+    }
+
+    return Array.from(urls).filter(url => this.isValidImageUrl(url));
+  }
+
+  /**
+   * Check if URL is a valid image URL based on file extension
+   */
+  private isValidImageUrl(url: string): boolean {
+    try {
+      const parsedUrl = new URL(url);
+      const pathname = parsedUrl.pathname.toLowerCase();
+
+      // Check if URL ends with supported image extensions
+      return this.config.supportedFormats.some(format => {
+        const extension = format === 'jpg' ? 'jpeg' : format;
+        return pathname.endsWith(`.${format}`) || pathname.endsWith(`.${extension}`);
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Download image from URL and convert to Claude SDK format
+   */
+  private async downloadImageFromUrl(url: string): Promise<ImageProcessResult> {
+    try {
+      // Use the WebFetch tool to download the image
+      const webFetchParams = {
+        url,
+        method: 'GET' as const,
+        timeout: 30000, // 30 second timeout for image downloads
+        bypassCache: false,
+        convertToMarkdown: false, // We want raw image data
+      };
+
+      const webFetchResult = await this.webFetchTool.execute(webFetchParams);
+
+      if (!webFetchResult.success) {
+        throw new MultimodalInputError(
+          `Failed to download image: ${webFetchResult.error || 'Unknown error'}`,
+          'IMAGE_DOWNLOAD_ERROR'
+        );
+      }
+
+      if (!webFetchResult.data) {
+        throw new MultimodalInputError(
+          'No image data received from URL',
+          'EMPTY_IMAGE_DATA'
+        );
+      }
+
+      // Convert the response data to buffer
+      let imageBuffer: Buffer;
+      if (typeof webFetchResult.data === 'string') {
+        // WebFetch typically returns binary data as a string for images
+        imageBuffer = Buffer.from(webFetchResult.data, 'binary');
+      } else if (webFetchResult.data instanceof Buffer) {
+        imageBuffer = webFetchResult.data;
+      } else if (webFetchResult.data instanceof ArrayBuffer) {
+        imageBuffer = Buffer.from(webFetchResult.data);
+      } else {
+        // Last resort: try to convert to string then to buffer
+        imageBuffer = Buffer.from(String(webFetchResult.data), 'binary');
+      }
+
+      // Validate file size
+      this.validateFileSize(imageBuffer.length);
+
+      // Determine media type from URL
+      const mediaType = this.getMediaTypeFromUrl(url);
+
+      // Convert to base64
+      const base64Data = imageBuffer.toString('base64');
+
+      // Create Claude SDK compatible structure
+      const imageBlock: ImageBlockParam = {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: base64Data,
+        },
+      };
+
+      return {
+        imageBlock,
+        fileSizeBytes: imageBuffer.length,
+        mediaType,
+      };
+    } catch (error) {
+      if (error instanceof MultimodalInputError) {
+        throw error;
+      }
+      throw new MultimodalInputError(
+        `Failed to download and process image from URL: ${error instanceof Error ? error.message : String(error)}`,
+        'IMAGE_DOWNLOAD_PROCESSING_ERROR'
+      );
+    }
+  }
+
+  /**
+   * Get media type from URL file extension
+   */
+  private getMediaTypeFromUrl(url: string): ImageBlockParam['source']['media_type'] {
+    try {
+      const parsedUrl = new URL(url);
+      const pathname = parsedUrl.pathname.toLowerCase();
+
+      // Find the extension
+      for (const [extension, mediaType] of Object.entries(MultimodalInputHandler.MEDIA_TYPE_MAP)) {
+        if (pathname.endsWith(extension)) {
+          return mediaType;
+        }
+      }
+
+      // Default to JPEG if we can't determine
+      return 'image/jpeg';
+    } catch {
+      return 'image/jpeg';
+    }
+  }
+
+  /**
    * Get current configuration
    */
   getConfig(): Required<MultimodalInputHandlerConfig> {
@@ -564,4 +707,12 @@ export async function processImageFile(imagePath: string, config?: MultimodalInp
 export async function processWebPage(url: string, options?: WebPageOptions, config?: MultimodalInputHandlerConfig): Promise<WebPageContent> {
   const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
   return handler.processWebPage(url, options);
+}
+
+/**
+ * Convenience function for processing GitHub issue images
+ */
+export async function processGitHubIssueImages(issueContent: string, config?: MultimodalInputHandlerConfig): Promise<GitHubIssueImageResult> {
+  const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
+  return handler.processGitHubIssueImages(issueContent);
 }

@@ -6,10 +6,12 @@ import {
   multimodalInputHandler,
   processImageFile,
   processWebPage,
+  processGitHubIssueImages,
   type MultimodalInputHandlerConfig,
   type ImageProcessResult,
   type WebPageOptions,
-  type WebPageContent
+  type WebPageContent,
+  type GitHubIssueImageResult
 } from './multimodal-input-handler';
 import { WebFetchTool, type WebFetchResult } from './webfetch';
 
@@ -703,6 +705,314 @@ describe('MultimodalInputHandler', () => {
 
       expect(result.url).toBe('https://example.com');
       expect(mockExecute).toHaveBeenCalled();
+    });
+  });
+
+  describe('processGitHubIssueImages', () => {
+    let mockWebFetchTool: { execute: MockedFunction<any> };
+
+    beforeEach(() => {
+      mockWebFetchTool = {
+        execute: vi.fn(),
+      };
+      MockWebFetchTool.mockImplementation(() => mockWebFetchTool as any);
+    });
+
+    describe('successful processing', () => {
+      it('should extract and process GitHub issue images', async () => {
+        const issueContent = `
+## Bug Report
+
+Here's a screenshot of the issue:
+![Screenshot](https://user-images.githubusercontent.com/12345/screenshot.png)
+
+And another image:
+<img src="https://user-images.githubusercontent.com/67890/debug.jpg" />
+        `;
+
+        // Mock image data response
+        const mockImageData = Buffer.from('fake-image-data');
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+          data: mockImageData.toString('base64'),
+          metadata: { url: 'https://user-images.githubusercontent.com/12345/screenshot.png', method: 'GET', responseTime: 200 },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.issueContent).toBe(issueContent);
+        expect(result.imageUrls).toHaveLength(2);
+        expect(result.imageUrls).toContain('https://user-images.githubusercontent.com/12345/screenshot.png');
+        expect(result.imageUrls).toContain('https://user-images.githubusercontent.com/67890/debug.jpg');
+        expect(result.imageBlocks).toHaveLength(2);
+        expect(result.imageMetadata).toHaveLength(2);
+        expect(result.totalProcessingTime).toBeGreaterThan(0);
+      });
+
+      it('should handle content with no images', async () => {
+        const issueContent = `
+## Bug Report
+
+This is just text with no images.
+        `;
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.issueContent).toBe(issueContent);
+        expect(result.imageUrls).toHaveLength(0);
+        expect(result.imageBlocks).toHaveLength(0);
+        expect(result.imageMetadata).toHaveLength(0);
+        expect(result.totalProcessingTime).toBeGreaterThan(0);
+      });
+
+      it('should extract direct GitHub image URLs', async () => {
+        const issueContent = `
+Check out this image: https://user-images.githubusercontent.com/12345/example.png
+And this one too: https://raw.githubusercontent.com/user/repo/main/image.jpg
+        `;
+
+        const mockImageData = Buffer.from('fake-image-data');
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: {},
+          data: mockImageData.toString('base64'),
+          metadata: { url: 'test-url', method: 'GET', responseTime: 100 },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.imageUrls).toContain('https://user-images.githubusercontent.com/12345/example.png');
+        expect(result.imageUrls).toContain('https://raw.githubusercontent.com/user/repo/main/image.jpg');
+      });
+
+      it('should filter out non-image URLs', async () => {
+        const issueContent = `
+Here's an image: https://user-images.githubusercontent.com/12345/screenshot.png
+But not this: https://user-images.githubusercontent.com/12345/document.txt
+Or this: https://raw.githubusercontent.com/user/repo/main/README.md
+        `;
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.imageUrls).toHaveLength(1);
+        expect(result.imageUrls[0]).toBe('https://user-images.githubusercontent.com/12345/screenshot.png');
+      });
+
+      it('should handle duplicate URLs', async () => {
+        const issueContent = `
+![Image 1](https://user-images.githubusercontent.com/12345/screenshot.png)
+![Image 2](https://user-images.githubusercontent.com/12345/screenshot.png)
+https://user-images.githubusercontent.com/12345/screenshot.png
+        `;
+
+        const mockImageData = Buffer.from('fake-image-data');
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: {},
+          data: mockImageData.toString('base64'),
+          metadata: { url: 'test-url', method: 'GET', responseTime: 100 },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.imageUrls).toHaveLength(1);
+        expect(result.imageBlocks).toHaveLength(1);
+        expect(mockWebFetchTool.execute).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('error handling', () => {
+      it('should handle image download failures gracefully', async () => {
+        const issueContent = `
+![Good image](https://user-images.githubusercontent.com/12345/good.png)
+![Bad image](https://user-images.githubusercontent.com/12345/bad.png)
+        `;
+
+        const mockGoodImageData = Buffer.from('good-image-data');
+        mockWebFetchTool.execute
+          .mockResolvedValueOnce({
+            success: true,
+            status: 200,
+            headers: {},
+            data: mockGoodImageData.toString('base64'),
+            metadata: { url: 'good-url', method: 'GET', responseTime: 100 },
+          })
+          .mockResolvedValueOnce({
+            success: false,
+            error: 'Not found',
+          });
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.imageUrls).toHaveLength(2);
+        expect(result.imageBlocks).toHaveLength(1); // Only the good image
+        expect(result.imageMetadata).toHaveLength(1);
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors![0]).toContain('Failed to download image');
+      });
+
+      it('should validate image file sizes', async () => {
+        const issueContent = '![Large image](https://user-images.githubusercontent.com/12345/large.png)';
+
+        // Create an image that exceeds the default 20MB limit
+        const largeImageData = Buffer.alloc(21 * 1024 * 1024); // 21MB
+        mockWebFetchTool.execute.mockResolvedValue({
+          success: true,
+          status: 200,
+          headers: {},
+          data: largeImageData.toString('base64'),
+          metadata: { url: 'large-url', method: 'GET', responseTime: 100 },
+        });
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors![0]).toContain('exceeds maximum allowed size');
+        expect(result.imageBlocks).toHaveLength(0);
+      });
+
+      it('should handle invalid image URLs', async () => {
+        const issueContent = `
+![Valid](https://user-images.githubusercontent.com/12345/valid.png)
+![Invalid](not-a-valid-url)
+        `;
+
+        const mockImageData = Buffer.from('valid-image-data');
+        mockWebFetchTool.execute.mockResolvedValue({
+          success: true,
+          status: 200,
+          headers: {},
+          data: mockImageData.toString('base64'),
+          metadata: { url: 'valid-url', method: 'GET', responseTime: 100 },
+        });
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        // Should only process the valid URL
+        expect(result.imageUrls).toHaveLength(1);
+        expect(result.imageUrls[0]).toBe('https://user-images.githubusercontent.com/12345/valid.png');
+        expect(result.imageBlocks).toHaveLength(1);
+      });
+    });
+
+    describe('media type detection', () => {
+      it('should correctly detect PNG media type', async () => {
+        const issueContent = '![PNG](https://user-images.githubusercontent.com/12345/test.png)';
+
+        const mockImageData = Buffer.from('png-data');
+        mockWebFetchTool.execute.mockResolvedValue({
+          success: true,
+          status: 200,
+          headers: {},
+          data: mockImageData.toString('base64'),
+          metadata: { url: 'png-url', method: 'GET', responseTime: 100 },
+        });
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.imageBlocks[0].source.media_type).toBe('image/png');
+        expect(result.imageMetadata[0].mediaType).toBe('image/png');
+      });
+
+      it('should correctly detect JPEG media type for .jpg extension', async () => {
+        const issueContent = '![JPEG](https://user-images.githubusercontent.com/12345/test.jpg)';
+
+        const mockImageData = Buffer.from('jpeg-data');
+        mockWebFetchTool.execute.mockResolvedValue({
+          success: true,
+          status: 200,
+          headers: {},
+          data: mockImageData.toString('base64'),
+          metadata: { url: 'jpeg-url', method: 'GET', responseTime: 100 },
+        });
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.imageBlocks[0].source.media_type).toBe('image/jpeg');
+      });
+
+      it('should default to JPEG for unknown extensions', async () => {
+        const issueContent = '![Unknown](https://user-images.githubusercontent.com/12345/test.png)'; // Will be treated as PNG
+
+        const mockImageData = Buffer.from('image-data');
+        mockWebFetchTool.execute.mockResolvedValue({
+          success: true,
+          status: 200,
+          headers: {},
+          data: mockImageData.toString('base64'),
+          metadata: { url: 'unknown-url', method: 'GET', responseTime: 100 },
+        });
+
+        const result = await handler.processGitHubIssueImages(issueContent);
+
+        expect(result.imageBlocks[0].source.media_type).toBe('image/png');
+      });
+    });
+
+    describe('type safety', () => {
+      it('should ensure GitHubIssueImageResult has correct structure', async () => {
+        const issueContent = '![Test](https://user-images.githubusercontent.com/12345/test.png)';
+
+        const mockImageData = Buffer.from('test-data');
+        mockWebFetchTool.execute.mockResolvedValue({
+          success: true,
+          status: 200,
+          headers: {},
+          data: mockImageData.toString('base64'),
+          metadata: { url: 'test-url', method: 'GET', responseTime: 100 },
+        });
+
+        const result: GitHubIssueImageResult = await handler.processGitHubIssueImages(issueContent);
+
+        expect(typeof result.issueContent).toBe('string');
+        expect(Array.isArray(result.imageUrls)).toBe(true);
+        expect(Array.isArray(result.imageBlocks)).toBe(true);
+        expect(Array.isArray(result.imageMetadata)).toBe(true);
+        expect(typeof result.totalProcessingTime).toBe('number');
+
+        if (result.imageBlocks.length > 0) {
+          expect(result.imageBlocks[0].type).toBe('image');
+          expect(result.imageBlocks[0].source.type).toBe('base64');
+          expect(typeof result.imageBlocks[0].source.data).toBe('string');
+        }
+
+        if (result.imageMetadata.length > 0) {
+          expect(typeof result.imageMetadata[0].url).toBe('string');
+          expect(typeof result.imageMetadata[0].fileSizeBytes).toBe('number');
+          expect(typeof result.imageMetadata[0].mediaType).toBe('string');
+          expect(typeof result.imageMetadata[0].downloadTime).toBe('number');
+        }
+      });
+    });
+  });
+
+  describe('processGitHubIssueImages convenience function', () => {
+    it('should use default handler when no config provided', async () => {
+      const issueContent = 'No images here';
+
+      const result = await processGitHubIssueImages(issueContent);
+
+      expect(result.issueContent).toBe(issueContent);
+      expect(result.imageUrls).toHaveLength(0);
+    });
+
+    it('should create new handler when config provided', async () => {
+      const issueContent = 'No images here';
+      const customConfig: MultimodalInputHandlerConfig = {
+        maxFileSizeBytes: 5 * 1024 * 1024,
+      };
+
+      const result = await processGitHubIssueImages(issueContent, customConfig);
+
+      expect(result.issueContent).toBe(issueContent);
+      expect(result.imageUrls).toHaveLength(0);
     });
   });
 });

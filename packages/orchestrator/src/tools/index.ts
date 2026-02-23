@@ -45,11 +45,13 @@ export {
   multimodalInputHandler,
   processImageFile,
   processWebPage,
+  processGitHubIssueImages,
   type ImageBlockParam,
   type MultimodalInputHandlerConfig,
   type ImageProcessResult,
   type WebPageOptions,
   type WebPageContent,
+  type GitHubIssueImageResult,
 } from './multimodal-input-handler';
 
 // Re-export for convenience

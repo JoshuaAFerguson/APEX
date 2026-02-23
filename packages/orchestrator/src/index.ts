@@ -11999,9 +11999,14 @@ export {
   MultimodalInputError,
   multimodalInputHandler,
   processImageFile,
+  processWebPage,
+  processGitHubIssueImages,
   type ImageBlockParam,
   type MultimodalInputHandlerConfig,
   type ImageProcessResult,
+  type WebPageOptions,
+  type WebPageContent,
+  type GitHubIssueImageResult,
 } from './tools/multimodal-input-handler';
 
 // Test utilities for state cleanup and test isolation
