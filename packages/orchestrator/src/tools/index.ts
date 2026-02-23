@@ -46,6 +46,7 @@ export {
   processImageFile,
   processWebPage,
   processGitHubIssueImages,
+  processDesignMockup,
   isFigmaUrl,
   parseFigmaUrl,
   type ImageBlockParam,

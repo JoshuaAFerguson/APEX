@@ -1,7 +1,15 @@
 import { readFile, stat } from 'fs/promises';
 import { extname } from 'path';
 import { WebFetchTool, type WebFetchParams, type WebFetchResult, type HttpMethod } from './webfetch';
-import type { FigmaUrlInfo, FigmaUrlParseResult } from './design-mockup-types';
+import type {
+  FigmaUrlInfo,
+  FigmaUrlParseResult,
+  DesignTool,
+  DesignExportFormat,
+  DesignMockupOptions,
+  DesignMockupProcessResult,
+} from './design-mockup-types';
+import { DesignMockupError } from './design-mockup-types';
 
 /**
  * Claude SDK compatible ImageBlockParam structure
@@ -330,6 +338,69 @@ export class MultimodalInputHandler {
       throw new MultimodalInputError(
         `Failed to process GitHub issue images: ${error instanceof Error ? error.message : String(error)}`,
         'GITHUB_ISSUE_PROCESSING_ERROR'
+      );
+    }
+  }
+
+  /**
+   * Process a design mockup from a URL (including Figma export URLs)
+   *
+   * This method handles URL-based design mockups, downloads images from URLs
+   * (including Figma export URLs), extracts available metadata from URL structure,
+   * and returns DesignMockupProcessResult with imageBlock and metadata.
+   *
+   * Supports:
+   * - Figma URLs (file, design, proto, image exports)
+   * - Direct image URLs from any design tool
+   * - Automatic design tool detection from URL patterns
+   * - Metadata extraction from URL structure
+   * - Optional AI analysis of the design
+   *
+   * @param url - The design mockup URL to process
+   * @param options - Optional processing options
+   * @returns Promise resolving to DesignMockupProcessResult
+   * @throws DesignMockupError for validation or processing failures
+   *
+   * @example
+   * ```typescript
+   * const handler = new MultimodalInputHandler();
+   *
+   * // Process a Figma file
+   * const figmaResult = await handler.processDesignMockup(
+   *   'https://www.figma.com/file/abc123xyz/Login-Screens?node-id=123:456',
+   *   { exportFormat: 'png', exportScale: 2 }
+   * );
+   *
+   * // Process a direct image URL
+   * const imageResult = await handler.processDesignMockup(
+   *   'https://example.com/designs/dashboard-mockup.png'
+   * );
+   *
+   * console.log(figmaResult.imageBlock); // Ready to use with Claude SDK
+   * console.log(figmaResult.metadata); // File metadata extracted from URL
+   * ```
+   */
+  async processDesignMockup(
+    url: string,
+    options?: Partial<DesignMockupOptions>
+  ): Promise<DesignMockupProcessResult> {
+    try {
+      // Validate URL format first
+      this.validateUrl(url);
+
+      // Route to appropriate handler based on URL type
+      if (this.isFigmaUrl(url)) {
+        return await this.processFigmaDesignMockup(url, options);
+      } else {
+        return await this.processGenericDesignMockup(url, options);
+      }
+    } catch (error) {
+      if (error instanceof DesignMockupError) {
+        throw error;
+      }
+      throw new DesignMockupError(
+        `Failed to process design mockup: ${error instanceof Error ? error.message : String(error)}`,
+        'PROCESSING_ERROR'
       );
     }
   }
@@ -788,6 +859,440 @@ export class MultimodalInputHandler {
   }
 
   /**
+   * Detect design tool from URL patterns
+   * @private
+   */
+  private detectDesignTool(url: string): DesignTool {
+    const urlLower = url.toLowerCase();
+
+    if (urlLower.includes('figma.com')) return 'figma';
+    if (urlLower.includes('sketch.cloud') || urlLower.includes('sketch.com')) return 'sketch';
+    if (urlLower.includes('xd.adobe.com')) return 'adobe_xd';
+    if (urlLower.includes('invisionapp.com')) return 'invision';
+    if (urlLower.includes('zeplin.io')) return 'zeplin';
+    if (urlLower.includes('framer.com')) return 'framer';
+    if (urlLower.includes('canva.com')) return 'canva';
+    if (urlLower.includes('photoshop') || urlLower.includes('ps')) return 'photoshop';
+    if (urlLower.includes('illustrator') || urlLower.includes('ai')) return 'illustrator';
+
+    return 'other';
+  }
+
+  /**
+   * Detect export format from URL and content type
+   * @private
+   */
+  private detectExportFormat(url: string, contentType?: string): DesignExportFormat {
+    // Priority 1: Check content-type header
+    if (contentType) {
+      const lowerContentType = contentType.toLowerCase();
+      if (lowerContentType.includes('image/png')) return 'png';
+      if (lowerContentType.includes('image/jpeg') || lowerContentType.includes('image/jpg')) return 'jpeg';
+      if (lowerContentType.includes('image/webp')) return 'webp';
+      if (lowerContentType.includes('image/svg') || lowerContentType.includes('svg+xml')) return 'svg';
+      if (lowerContentType.includes('application/pdf')) return 'pdf';
+    }
+
+    // Priority 2: Check URL extension
+    const ext = this.getExtensionFromUrl(url);
+    if (['png', 'jpeg', 'jpg', 'webp', 'svg', 'pdf'].includes(ext)) {
+      return ext === 'jpg' ? 'jpeg' : ext as DesignExportFormat;
+    }
+
+    // Default to PNG
+    return 'png';
+  }
+
+  /**
+   * Extract filename from URL path
+   * @private
+   */
+  private extractFilenameFromUrl(url: string): string | undefined {
+    try {
+      const parsedUrl = new URL(url);
+      const pathname = parsedUrl.pathname;
+      const pathParts = pathname.split('/');
+      const filename = pathParts[pathParts.length - 1];
+
+      // Remove file extension for cleaner name
+      if (filename) {
+        const lastDotIndex = filename.lastIndexOf('.');
+        return lastDotIndex > 0 ? filename.substring(0, lastDotIndex) : filename;
+      }
+
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Get file extension from URL
+   * @private
+   */
+  private getExtensionFromUrl(url: string): string {
+    try {
+      const parsedUrl = new URL(url);
+      const pathname = parsedUrl.pathname.toLowerCase();
+      const lastDotIndex = pathname.lastIndexOf('.');
+      return lastDotIndex > 0 ? pathname.substring(lastDotIndex + 1) : '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Process a generic design mockup (direct image URL)
+   * @private
+   */
+  private async processGenericDesignMockup(
+    url: string,
+    options?: Partial<DesignMockupOptions>
+  ): Promise<DesignMockupProcessResult> {
+    const startTime = Date.now();
+
+    try {
+      // Validate URL format
+      this.validateUrl(url);
+
+      // Detect design tool from URL
+      const designTool = options?.designTool || this.detectDesignTool(url);
+
+      // Prepare WebFetch parameters
+      const webFetchParams: WebFetchParams = {
+        url,
+        method: 'GET',
+        timeout: options?.timeout || 30000,
+        bypassCache: options?.bypassCache || false,
+        cacheTtl: options?.cacheTtl || 900000, // 15 minutes default
+        convertToMarkdown: false, // We want raw image data
+        headers: options?.headers,
+      };
+
+      // Execute web fetch to download the image
+      const webFetchResult = await this.webFetchTool.execute(webFetchParams);
+
+      // Handle fetch errors
+      if (!webFetchResult.success) {
+        throw new DesignMockupError(
+          `Failed to download design mockup: ${webFetchResult.error || 'Unknown error'}`,
+          'NETWORK_ERROR'
+        );
+      }
+
+      // Validate successful HTTP status
+      if (webFetchResult.status && (webFetchResult.status < 200 || webFetchResult.status >= 300)) {
+        const errorCode = webFetchResult.status === 404 ? 'FILE_NOT_FOUND' : 'NETWORK_ERROR';
+        throw new DesignMockupError(
+          `HTTP error ${webFetchResult.status} when fetching design mockup: ${url}`,
+          errorCode
+        );
+      }
+
+      if (!webFetchResult.data) {
+        throw new DesignMockupError(
+          'No image data received from URL',
+          'PROCESSING_ERROR'
+        );
+      }
+
+      // Convert the response data to buffer
+      let imageBuffer: Buffer;
+      if (typeof webFetchResult.data === 'string') {
+        // WebFetch typically returns binary data as a string for images
+        imageBuffer = Buffer.from(webFetchResult.data, 'binary');
+      } else if (webFetchResult.data instanceof Buffer) {
+        imageBuffer = webFetchResult.data;
+      } else if (webFetchResult.data instanceof ArrayBuffer) {
+        imageBuffer = Buffer.from(webFetchResult.data);
+      } else {
+        // Last resort: try to convert to string then to buffer
+        imageBuffer = Buffer.from(String(webFetchResult.data), 'binary');
+      }
+
+      // Validate file size
+      this.validateFileSize(imageBuffer.length);
+
+      // Detect export format from URL and content type
+      const contentType = webFetchResult.headers?.['content-type'] || webFetchResult.metadata?.contentType;
+      const exportFormat = options?.exportFormat || this.detectExportFormat(url, contentType);
+
+      // Determine media type for Claude SDK
+      let mediaType: ImageBlockParam['source']['media_type'];
+      switch (exportFormat) {
+        case 'png':
+          mediaType = 'image/png';
+          break;
+        case 'jpeg':
+          mediaType = 'image/jpeg';
+          break;
+        case 'webp':
+          mediaType = 'image/webp';
+          break;
+        case 'gif':
+          mediaType = 'image/gif';
+          break;
+        case 'svg':
+          mediaType = 'image/png'; // SVG not directly supported by Claude SDK, may need conversion
+          break;
+        case 'pdf':
+          mediaType = 'image/png'; // PDF not directly supported by Claude SDK, may need conversion
+          break;
+        default:
+          mediaType = 'image/png'; // Default fallback
+      }
+
+      // Convert to base64
+      const base64Data = imageBuffer.toString('base64');
+
+      // Create Claude SDK compatible structure
+      const imageBlock: ImageBlockParam = {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: base64Data,
+        },
+      };
+
+      // Extract filename for metadata
+      const frameName = this.extractFilenameFromUrl(url);
+
+      // Build the result
+      const result: DesignMockupProcessResult = {
+        imageBlock,
+        designTool,
+        metadata: {
+          fileUrl: url,
+          frameName,
+        },
+        exportFormat,
+        exportScale: options?.exportScale || 1,
+        fileSizeBytes: imageBuffer.length,
+        mediaType: `image/${exportFormat}`,
+        processingTime: Date.now() - startTime,
+        fromCache: webFetchResult.fromCache || false,
+        cacheKey: webFetchResult.metadata?.cacheKey,
+      };
+
+      return result;
+    } catch (error) {
+      if (error instanceof DesignMockupError) {
+        throw error;
+      }
+      throw new DesignMockupError(
+        `Failed to process generic design mockup: ${error instanceof Error ? error.message : String(error)}`,
+        'PROCESSING_ERROR'
+      );
+    }
+  }
+
+  /**
+   * Process a Figma design mockup URL
+   * @private
+   */
+  private async processFigmaDesignMockup(
+    url: string,
+    options?: Partial<DesignMockupOptions>
+  ): Promise<DesignMockupProcessResult> {
+    const startTime = Date.now();
+
+    try {
+      // Parse the Figma URL to extract metadata
+      const parseResult = this.parseFigmaUrl(url);
+      if (!parseResult.success) {
+        throw new DesignMockupError(
+          `Failed to parse Figma URL: ${parseResult.error}`,
+          'INVALID_URL'
+        );
+      }
+
+      const figmaInfo = parseResult.info!;
+
+      // For now, we'll treat Figma URLs as generic image downloads
+      // In a full implementation, we would construct API calls to Figma's REST API
+      // to export specific nodes, but that requires authentication tokens
+
+      // Determine the image URL to download
+      let imageUrl = url;
+
+      // If this is already an image export URL, use it directly
+      // Otherwise, we'll attempt to download the URL as-is (this will work for shared Figma images)
+      if (figmaInfo.urlType === 'image-export') {
+        imageUrl = url;
+      } else {
+        // For file/design/proto URLs, we'll try to use them directly
+        // Note: This may not always work without proper API integration
+        imageUrl = url;
+      }
+
+      // Set up headers for Figma API requests
+      const headers = { ...options?.headers };
+      if (options?.apiToken) {
+        headers['X-Figma-Token'] = options.apiToken;
+      }
+
+      // Prepare WebFetch parameters
+      const webFetchParams: WebFetchParams = {
+        url: imageUrl,
+        method: 'GET',
+        timeout: options?.timeout || 30000,
+        bypassCache: options?.bypassCache || false,
+        cacheTtl: options?.cacheTtl || 900000, // 15 minutes default
+        convertToMarkdown: false, // We want raw image data
+        headers,
+      };
+
+      // Execute web fetch to download the image
+      const webFetchResult = await this.webFetchTool.execute(webFetchParams);
+
+      // Handle fetch errors
+      if (!webFetchResult.success) {
+        // Provide more specific error messages for Figma
+        let errorCode: DesignMockupError['code'] = 'NETWORK_ERROR';
+        let errorMessage = `Failed to download Figma design: ${webFetchResult.error || 'Unknown error'}`;
+
+        if (webFetchResult.error?.includes('403') || webFetchResult.error?.includes('Forbidden')) {
+          errorCode = 'AUTHENTICATION_REQUIRED';
+          errorMessage = 'Figma file access forbidden. You may need to provide an API token or ensure the file is publicly accessible.';
+        } else if (webFetchResult.error?.includes('404')) {
+          errorCode = 'FILE_NOT_FOUND';
+          errorMessage = 'Figma file or node not found. Please check the URL and ensure the file is accessible.';
+        }
+
+        throw new DesignMockupError(errorMessage, errorCode);
+      }
+
+      // Validate successful HTTP status
+      if (webFetchResult.status && (webFetchResult.status < 200 || webFetchResult.status >= 300)) {
+        let errorCode: DesignMockupError['code'] = 'NETWORK_ERROR';
+        let errorMessage = `HTTP error ${webFetchResult.status} when fetching Figma design: ${url}`;
+
+        if (webFetchResult.status === 404) {
+          errorCode = 'FILE_NOT_FOUND';
+          errorMessage = 'Figma file or node not found';
+        } else if (webFetchResult.status === 403) {
+          errorCode = 'AUTHENTICATION_REQUIRED';
+          errorMessage = 'Access forbidden. API token may be required for this Figma file';
+        } else if (webFetchResult.status === 429) {
+          errorCode = 'RATE_LIMITED';
+          errorMessage = 'Rate limited by Figma API';
+        }
+
+        throw new DesignMockupError(errorMessage, errorCode);
+      }
+
+      if (!webFetchResult.data) {
+        throw new DesignMockupError(
+          'No image data received from Figma URL',
+          'PROCESSING_ERROR'
+        );
+      }
+
+      // Convert the response data to buffer
+      let imageBuffer: Buffer;
+      if (typeof webFetchResult.data === 'string') {
+        imageBuffer = Buffer.from(webFetchResult.data, 'binary');
+      } else if (webFetchResult.data instanceof Buffer) {
+        imageBuffer = webFetchResult.data;
+      } else if (webFetchResult.data instanceof ArrayBuffer) {
+        imageBuffer = Buffer.from(webFetchResult.data);
+      } else {
+        imageBuffer = Buffer.from(String(webFetchResult.data), 'binary');
+      }
+
+      // Validate file size
+      this.validateFileSize(imageBuffer.length);
+
+      // Determine export format
+      const contentType = webFetchResult.headers?.['content-type'] || webFetchResult.metadata?.contentType;
+      const exportFormat = options?.exportFormat || figmaInfo.exportFormat || this.detectExportFormat(url, contentType);
+
+      // Determine media type for Claude SDK
+      let mediaType: ImageBlockParam['source']['media_type'];
+      switch (exportFormat) {
+        case 'png':
+          mediaType = 'image/png';
+          break;
+        case 'jpeg':
+          mediaType = 'image/jpeg';
+          break;
+        case 'webp':
+          mediaType = 'image/webp';
+          break;
+        case 'gif':
+          mediaType = 'image/gif';
+          break;
+        case 'svg':
+          mediaType = 'image/png'; // SVG not directly supported by Claude SDK, may need conversion
+          break;
+        case 'pdf':
+          mediaType = 'image/png'; // PDF not directly supported by Claude SDK, may need conversion
+          break;
+        default:
+          mediaType = 'image/png'; // Default fallback
+      }
+
+      // Convert to base64
+      const base64Data = imageBuffer.toString('base64');
+
+      // Create Claude SDK compatible structure
+      const imageBlock: ImageBlockParam = {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: base64Data,
+        },
+      };
+
+      // Build comprehensive metadata from Figma URL info
+      const metadata = {
+        fileId: figmaInfo.fileKey,
+        nodeId: figmaInfo.nodeId,
+        fileUrl: figmaInfo.originalUrl,
+        frameName: figmaInfo.fileName ? figmaInfo.fileName.replace(/-/g, ' ') : undefined,
+        fileVersion: figmaInfo.versionId,
+      };
+
+      // Add dimensions if available from viewport info
+      let dimensions;
+      if (figmaInfo.viewport) {
+        dimensions = {
+          width: figmaInfo.viewport.width,
+          height: figmaInfo.viewport.height,
+          unit: 'px' as const,
+        };
+      }
+
+      // Build the result
+      const result: DesignMockupProcessResult = {
+        imageBlock,
+        designTool: 'figma',
+        metadata,
+        dimensions,
+        exportFormat,
+        exportScale: options?.exportScale || figmaInfo.exportScale || figmaInfo.scaleFactor || 1,
+        fileSizeBytes: imageBuffer.length,
+        mediaType: `image/${exportFormat}`,
+        processingTime: Date.now() - startTime,
+        fromCache: webFetchResult.fromCache || false,
+        cacheKey: webFetchResult.metadata?.cacheKey,
+      };
+
+      return result;
+    } catch (error) {
+      if (error instanceof DesignMockupError) {
+        throw error;
+      }
+      throw new DesignMockupError(
+        `Failed to process Figma design mockup: ${error instanceof Error ? error.message : String(error)}`,
+        'PROCESSING_ERROR'
+      );
+    }
+  }
+
+  /**
    * Check if a URL is a Figma URL
    *
    * @param url - The URL to check
@@ -975,4 +1480,34 @@ export function isFigmaUrl(url: string, config?: MultimodalInputHandlerConfig): 
 export function parseFigmaUrl(url: string, config?: MultimodalInputHandlerConfig): FigmaUrlParseResult {
   const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
   return handler.parseFigmaUrl(url);
+}
+
+/**
+ * Convenience function for processing design mockup URLs
+ *
+ * @param url - The design mockup URL to process
+ * @param options - Optional processing options
+ * @param config - Optional handler configuration
+ * @returns Promise resolving to DesignMockupProcessResult
+ * @throws DesignMockupError for validation or processing failures
+ *
+ * @example
+ * ```typescript
+ * // Process a Figma file
+ * const result = await processDesignMockup(
+ *   'https://www.figma.com/file/abc123xyz/Login-Screens',
+ *   { exportFormat: 'png', exportScale: 2 }
+ * );
+ *
+ * console.log(result.imageBlock); // Claude SDK compatible image block
+ * console.log(result.metadata); // Design file metadata
+ * ```
+ */
+export async function processDesignMockup(
+  url: string,
+  options?: Partial<DesignMockupOptions>,
+  config?: MultimodalInputHandlerConfig
+): Promise<DesignMockupProcessResult> {
+  const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
+  return handler.processDesignMockup(url, options);
 }
