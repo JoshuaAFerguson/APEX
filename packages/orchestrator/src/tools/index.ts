@@ -39,6 +39,17 @@ export {
   type BrowserToolConfig,
 } from './browser-tool';
 
+export {
+  MultimodalInputHandler,
+  MultimodalInputError,
+  multimodalInputHandler,
+  processImageFile,
+  type ImageBlockParam,
+  type MultimodalInputHandlerConfig,
+  type ImageProcessResult,
+} from './multimodal-input-handler';
+
 // Re-export for convenience
 export * from './webfetch';
 export * from './browser-tool';
+export * from './multimodal-input-handler';

@@ -11994,6 +11994,15 @@ export {
   type BrowserManagerEvents,
 } from './browser-manager';
 export { BrowserTool, type BrowserToolOptions, type BrowserToolConfig } from './tools/browser-tool';
+export {
+  MultimodalInputHandler,
+  MultimodalInputError,
+  multimodalInputHandler,
+  processImageFile,
+  type ImageBlockParam,
+  type MultimodalInputHandlerConfig,
+  type ImageProcessResult,
+} from './tools/multimodal-input-handler';
 
 // Test utilities for state cleanup and test isolation
 export {
