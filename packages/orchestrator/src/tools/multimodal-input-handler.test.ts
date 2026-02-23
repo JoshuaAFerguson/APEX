@@ -5,9 +5,13 @@ import {
   MultimodalInputError,
   multimodalInputHandler,
   processImageFile,
+  processWebPage,
   type MultimodalInputHandlerConfig,
-  type ImageProcessResult
+  type ImageProcessResult,
+  type WebPageOptions,
+  type WebPageContent
 } from './multimodal-input-handler';
+import { WebFetchTool, type WebFetchResult } from './webfetch';
 
 // Mock fs/promises
 vi.mock('fs/promises', () => ({
@@ -15,8 +19,16 @@ vi.mock('fs/promises', () => ({
   stat: vi.fn(),
 }));
 
+// Mock WebFetchTool
+vi.mock('./webfetch', () => ({
+  WebFetchTool: vi.fn(() => ({
+    execute: vi.fn(),
+  })),
+}));
+
 const mockReadFile = readFile as MockedFunction<typeof readFile>;
 const mockStat = stat as MockedFunction<typeof stat>;
+const MockWebFetchTool = WebFetchTool as unknown as vi.MockedClass<typeof WebFetchTool>;
 
 describe('MultimodalInputHandler', () => {
   let handler: MultimodalInputHandler;
@@ -418,6 +430,279 @@ describe('MultimodalInputHandler', () => {
         .toContain(result.imageBlock.source.media_type);
       expect(typeof result.fileSizeBytes).toBe('number');
       expect(typeof result.mediaType).toBe('string');
+    });
+  });
+
+  describe('processWebPage', () => {
+    let mockWebFetchTool: { execute: MockedFunction<any> };
+
+    beforeEach(() => {
+      mockWebFetchTool = {
+        execute: vi.fn(),
+      };
+      MockWebFetchTool.mockImplementation(() => mockWebFetchTool as any);
+    });
+
+    describe('successful processing', () => {
+      it('should process URL and return WebPageContent', async () => {
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+          data: '# Example Page\n\nThis is a test page.',
+          fromCache: false,
+          metadata: {
+            url: 'https://example.com',
+            method: 'GET',
+            responseTime: 150,
+            contentLength: 1024,
+            contentType: 'text/html',
+          },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result = await handler.processWebPage('https://example.com');
+
+        expect(result.url).toBe('https://example.com');
+        expect(result.statusCode).toBe(200);
+        expect(result.markdown).toBe('# Example Page\n\nThis is a test page.');
+        expect(result.title).toBe('Example Page');
+        expect(result.fromCache).toBe(false);
+        expect(result.metadata.responseTime).toBe(150);
+      });
+
+      it('should extract title from HTML content', async () => {
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: {},
+          data: '<title>HTML Title Test</title><h1>Content</h1>',
+          metadata: { url: 'https://example.com', method: 'GET', responseTime: 100 },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result = await handler.processWebPage('https://example.com', { convertToMarkdown: false });
+
+        expect(result.title).toBe('HTML Title Test');
+        expect(result.html).toBe('<title>HTML Title Test</title><h1>Content</h1>');
+        expect(result.markdown).toBeUndefined();
+      });
+
+      it('should handle AI analysis when prompt is provided', async () => {
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: {},
+          data: '# Test Page\n\nContent for analysis.',
+          metadata: { url: 'https://example.com', method: 'GET', responseTime: 200 },
+          analysis: {
+            content: 'This page contains test content.',
+            model: 'claude-3-5-haiku-latest',
+            usage: { inputTokens: 50, outputTokens: 25 },
+            truncated: false,
+            originalContentLength: 100,
+            analyzedContentLength: 100,
+          },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result = await handler.processWebPage('https://example.com', {
+          prompt: 'Analyze this content'
+        });
+
+        expect(result.analysis).toBeDefined();
+        expect(result.analysis!.content).toBe('This page contains test content.');
+        expect(result.analysis!.model).toBe('claude-3-5-haiku-latest');
+        expect(result.analysis!.usage.inputTokens).toBe(50);
+        expect(result.analysis!.usage.outputTokens).toBe(25);
+      });
+
+      it('should handle cache results correctly', async () => {
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: {},
+          data: 'Cached content',
+          fromCache: true,
+          metadata: {
+            url: 'https://example.com',
+            method: 'GET',
+            responseTime: 0,
+            cacheKey: 'test-cache-key',
+          },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result = await handler.processWebPage('https://example.com');
+
+        expect(result.fromCache).toBe(true);
+        expect(result.metadata.responseTime).toBe(0);
+        expect(result.metadata.cacheKey).toBe('test-cache-key');
+      });
+
+      it('should pass through custom options to WebFetch', async () => {
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: {},
+          data: 'Content',
+          metadata: { url: 'https://example.com', method: 'POST', responseTime: 100 },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const options: WebPageOptions = {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer token' },
+          body: '{"test": "data"}',
+          timeout: 15000,
+          bypassCache: true,
+          prompt: 'Extract key info',
+        };
+
+        await handler.processWebPage('https://api.example.com', options);
+
+        expect(mockWebFetchTool.execute).toHaveBeenCalledWith({
+          url: 'https://api.example.com',
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer token' },
+          body: '{"test": "data"}',
+          timeout: 15000,
+          convertToMarkdown: true,
+          bypassCache: true,
+          cacheTtl: undefined,
+          prompt: 'Extract key info',
+          maxAnalysisContent: undefined,
+        });
+      });
+    });
+
+    describe('error handling', () => {
+      it('should throw INVALID_URL error for malformed URLs', async () => {
+        await expect(handler.processWebPage('not-a-url')).rejects.toThrow(MultimodalInputError);
+        await expect(handler.processWebPage('not-a-url')).rejects.toMatchObject({
+          code: 'INVALID_URL',
+        });
+      });
+
+      it('should throw FETCH_ERROR when web fetch fails', async () => {
+        mockWebFetchTool.execute.mockResolvedValue({
+          success: false,
+          error: 'Network timeout',
+        });
+
+        await expect(handler.processWebPage('https://example.com')).rejects.toThrow(MultimodalInputError);
+        await expect(handler.processWebPage('https://example.com')).rejects.toMatchObject({
+          code: 'FETCH_ERROR',
+        });
+      });
+
+      it('should throw HTTP_ERROR for non-2xx status codes', async () => {
+        mockWebFetchTool.execute.mockResolvedValue({
+          success: true,
+          status: 404,
+          error: 'Not Found',
+          metadata: { url: 'https://example.com', method: 'GET', responseTime: 100 },
+        });
+
+        await expect(handler.processWebPage('https://example.com')).rejects.toThrow(MultimodalInputError);
+        await expect(handler.processWebPage('https://example.com')).rejects.toMatchObject({
+          code: 'HTTP_ERROR',
+        });
+      });
+
+      it('should throw WEB_PAGE_PROCESSING_ERROR for unexpected errors', async () => {
+        mockWebFetchTool.execute.mockRejectedValue(new Error('Unexpected error'));
+
+        await expect(handler.processWebPage('https://example.com')).rejects.toThrow(MultimodalInputError);
+        await expect(handler.processWebPage('https://example.com')).rejects.toMatchObject({
+          code: 'WEB_PAGE_PROCESSING_ERROR',
+        });
+      });
+
+      it('should handle analysis errors gracefully', async () => {
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: {},
+          data: 'Content',
+          metadata: { url: 'https://example.com', method: 'GET', responseTime: 100 },
+          analysisError: 'AI analysis failed due to rate limiting',
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result = await handler.processWebPage('https://example.com', {
+          prompt: 'Analyze this'
+        });
+
+        expect(result.analysisError).toBe('AI analysis failed due to rate limiting');
+        expect(result.analysis).toBeUndefined();
+      });
+    });
+
+    describe('type safety', () => {
+      it('should ensure WebPageContent has correct structure', async () => {
+        const mockWebFetchResult: WebFetchResult = {
+          success: true,
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+          data: '# Test Page',
+          metadata: { url: 'https://example.com', method: 'GET', responseTime: 100 },
+        };
+        mockWebFetchTool.execute.mockResolvedValue(mockWebFetchResult);
+
+        const result: WebPageContent = await handler.processWebPage('https://example.com');
+
+        // Verify the structure matches expected types
+        expect(typeof result.url).toBe('string');
+        expect(typeof result.statusCode).toBe('number');
+        expect(typeof result.headers).toBe('object');
+        expect(typeof result.fromCache).toBe('boolean');
+        expect(typeof result.metadata).toBe('object');
+        expect(typeof result.metadata.responseTime).toBe('number');
+      });
+    });
+  });
+
+  describe('processWebPage convenience function', () => {
+    it('should use default handler when no config provided', async () => {
+      const mockWebFetchResult: WebFetchResult = {
+        success: true,
+        status: 200,
+        headers: {},
+        data: 'Content',
+        metadata: { url: 'https://example.com', method: 'GET', responseTime: 100 },
+      };
+
+      // Mock the default handler's webFetchTool
+      const mockExecute = vi.fn().mockResolvedValue(mockWebFetchResult);
+      MockWebFetchTool.mockImplementation(() => ({ execute: mockExecute }) as any);
+
+      const result = await processWebPage('https://example.com');
+
+      expect(result.url).toBe('https://example.com');
+      expect(mockExecute).toHaveBeenCalled();
+    });
+
+    it('should create new handler when config provided', async () => {
+      const mockWebFetchResult: WebFetchResult = {
+        success: true,
+        status: 200,
+        headers: {},
+        data: 'Content',
+        metadata: { url: 'https://example.com', method: 'GET', responseTime: 100 },
+      };
+
+      const mockExecute = vi.fn().mockResolvedValue(mockWebFetchResult);
+      MockWebFetchTool.mockImplementation(() => ({ execute: mockExecute }) as any);
+
+      const customConfig: MultimodalInputHandlerConfig = {
+        maxFileSizeBytes: 5 * 1024 * 1024,
+      };
+
+      const result = await processWebPage('https://example.com', undefined, customConfig);
+
+      expect(result.url).toBe('https://example.com');
+      expect(mockExecute).toHaveBeenCalled();
     });
   });
 });

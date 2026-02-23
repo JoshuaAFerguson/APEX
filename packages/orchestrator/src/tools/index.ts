@@ -44,9 +44,12 @@ export {
   MultimodalInputError,
   multimodalInputHandler,
   processImageFile,
+  processWebPage,
   type ImageBlockParam,
   type MultimodalInputHandlerConfig,
   type ImageProcessResult,
+  type WebPageOptions,
+  type WebPageContent,
 } from './multimodal-input-handler';
 
 // Re-export for convenience

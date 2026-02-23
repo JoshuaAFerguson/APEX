@@ -1,5 +1,6 @@
 import { readFile, stat } from 'fs/promises';
 import { extname } from 'path';
+import { WebFetchTool, type WebFetchParams, type WebFetchResult, type HttpMethod } from './webfetch';
 
 /**
  * Claude SDK compatible ImageBlockParam structure
@@ -22,6 +23,78 @@ export interface MultimodalInputHandlerConfig {
   maxFileSizeBytes?: number;
   /** Supported image formats (default: ['png', 'jpg', 'jpeg', 'gif', 'webp']) */
   supportedFormats?: string[];
+}
+
+/**
+ * Options for web page processing
+ */
+export interface WebPageOptions {
+  /** Whether to convert HTML content to markdown (default: true) */
+  convertToMarkdown?: boolean;
+  /** Request timeout in milliseconds (default: 10000) */
+  timeout?: number;
+  /** Custom HTTP headers to send with the request */
+  headers?: Record<string, string>;
+  /** Whether to bypass cache (default: false) */
+  bypassCache?: boolean;
+  /** Cache TTL in milliseconds (default: 900000 = 15 minutes) */
+  cacheTtl?: number;
+  /**
+   * AI analysis prompt - when provided, content is analyzed by Claude Haiku
+   * The prompt should describe what information to extract from the page
+   * @example "Extract the main product features and pricing"
+   * @example "Summarize the key points of this article"
+   */
+  prompt?: string;
+  /** Maximum content length to analyze (in characters, default: 100000) */
+  maxAnalysisContent?: number;
+  /** HTTP method to use (default: GET) */
+  method?: HttpMethod;
+  /** Request body for POST/PUT requests */
+  body?: string;
+}
+
+/**
+ * Result of web page processing
+ */
+export interface WebPageContent {
+  /** The original URL that was processed */
+  url: string;
+  /** HTTP status code */
+  statusCode: number;
+  /** Response headers */
+  headers: Record<string, string>;
+  /** Raw HTML content (if available) */
+  html?: string;
+  /** Markdown-converted content (if convertToMarkdown was true) */
+  markdown?: string;
+  /** Page title extracted from HTML */
+  title?: string;
+  /** Whether this result was served from cache */
+  fromCache: boolean;
+  /** Request metadata */
+  metadata: {
+    responseTime: number;
+    contentLength?: number;
+    contentType?: string;
+    redirected?: boolean;
+    finalUrl?: string;
+    cacheKey?: string;
+  };
+  /** AI analysis results (present when prompt was provided) */
+  analysis?: {
+    content: string;
+    model: string;
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+    };
+    truncated: boolean;
+    originalContentLength: number;
+    analyzedContentLength: number;
+  };
+  /** Error message if AI analysis failed (analysis result will be undefined) */
+  analysisError?: string;
 }
 
 /**
@@ -65,6 +138,7 @@ export class MultimodalInputError extends Error {
  */
 export class MultimodalInputHandler {
   private readonly config: Required<MultimodalInputHandlerConfig>;
+  private readonly webFetchTool: WebFetchTool;
 
   /** Default configuration */
   private static readonly DEFAULT_CONFIG: Required<MultimodalInputHandlerConfig> = {
@@ -86,6 +160,7 @@ export class MultimodalInputHandler {
       ...MultimodalInputHandler.DEFAULT_CONFIG,
       ...config,
     };
+    this.webFetchTool = new WebFetchTool();
   }
 
   /**
@@ -131,6 +206,106 @@ export class MultimodalInputHandler {
       throw new MultimodalInputError(
         `Failed to process image file: ${error instanceof Error ? error.message : String(error)}`,
         'PROCESSING_ERROR'
+      );
+    }
+  }
+
+  /**
+   * Process a web page URL and return structured content
+   *
+   * @param url - URL of the web page to process
+   * @param options - Optional processing options
+   * @returns Promise resolving to WebPageContent
+   * @throws MultimodalInputError for validation failures or fetch errors
+   */
+  async processWebPage(url: string, options?: WebPageOptions): Promise<WebPageContent> {
+    try {
+      // Validate URL format
+      this.validateUrl(url);
+
+      // Prepare WebFetch parameters
+      const webFetchParams: WebFetchParams = {
+        url,
+        method: options?.method || 'GET',
+        headers: options?.headers,
+        body: options?.body,
+        timeout: options?.timeout || 10000,
+        convertToMarkdown: options?.convertToMarkdown !== false, // Default true
+        bypassCache: options?.bypassCache || false,
+        cacheTtl: options?.cacheTtl,
+        prompt: options?.prompt,
+        maxAnalysisContent: options?.maxAnalysisContent,
+      };
+
+      // Execute web fetch
+      const webFetchResult = await this.webFetchTool.execute(webFetchParams);
+
+      // Handle fetch errors
+      if (!webFetchResult.success) {
+        throw new MultimodalInputError(
+          `Failed to fetch web page: ${webFetchResult.error || 'Unknown error'}`,
+          'FETCH_ERROR'
+        );
+      }
+
+      // Validate successful HTTP status
+      if (webFetchResult.status && (webFetchResult.status < 200 || webFetchResult.status >= 300)) {
+        throw new MultimodalInputError(
+          `HTTP error ${webFetchResult.status} when fetching URL: ${url}`,
+          'HTTP_ERROR'
+        );
+      }
+
+      // Extract title from HTML if available
+      const title = this.extractTitleFromHtml(webFetchResult.data || '');
+
+      // Build WebPageContent result
+      const webPageContent: WebPageContent = {
+        url,
+        statusCode: webFetchResult.status!,
+        headers: webFetchResult.headers || {},
+        html: options?.convertToMarkdown === false ? webFetchResult.data : undefined,
+        markdown: options?.convertToMarkdown !== false ? webFetchResult.data : undefined,
+        title,
+        fromCache: webFetchResult.fromCache || false,
+        metadata: {
+          responseTime: webFetchResult.metadata?.responseTime || 0,
+          contentLength: webFetchResult.metadata?.contentLength,
+          contentType: webFetchResult.metadata?.contentType,
+          redirected: webFetchResult.metadata?.redirected,
+          finalUrl: webFetchResult.metadata?.finalUrl,
+          cacheKey: webFetchResult.metadata?.cacheKey,
+        },
+      };
+
+      // Add analysis results if present
+      if (webFetchResult.analysis) {
+        webPageContent.analysis = {
+          content: webFetchResult.analysis.content,
+          model: webFetchResult.analysis.model,
+          usage: {
+            inputTokens: webFetchResult.analysis.usage.inputTokens,
+            outputTokens: webFetchResult.analysis.usage.outputTokens,
+          },
+          truncated: webFetchResult.analysis.truncated,
+          originalContentLength: webFetchResult.analysis.originalContentLength,
+          analyzedContentLength: webFetchResult.analysis.analyzedContentLength,
+        };
+      }
+
+      // Add analysis error if present
+      if (webFetchResult.analysisError) {
+        webPageContent.analysisError = webFetchResult.analysisError;
+      }
+
+      return webPageContent;
+    } catch (error) {
+      if (error instanceof MultimodalInputError) {
+        throw error;
+      }
+      throw new MultimodalInputError(
+        `Failed to process web page: ${error instanceof Error ? error.message : String(error)}`,
+        'WEB_PAGE_PROCESSING_ERROR'
       );
     }
   }
@@ -213,6 +388,39 @@ export class MultimodalInputHandler {
   }
 
   /**
+   * Validate URL format
+   */
+  private validateUrl(url: string): void {
+    try {
+      new URL(url);
+    } catch (error) {
+      throw new MultimodalInputError(
+        `Invalid URL format: ${url}`,
+        'INVALID_URL'
+      );
+    }
+  }
+
+  /**
+   * Extract title from HTML content
+   */
+  private extractTitleFromHtml(htmlOrMarkdown: string): string | undefined {
+    // Try to extract title from HTML first
+    const titleMatch = htmlOrMarkdown.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch) {
+      return titleMatch[1].trim();
+    }
+
+    // If not HTML, try to find markdown heading (# Title)
+    const markdownTitleMatch = htmlOrMarkdown.match(/^#\s+(.+)$/m);
+    if (markdownTitleMatch) {
+      return markdownTitleMatch[1].trim();
+    }
+
+    return undefined;
+  }
+
+  /**
    * Get current configuration
    */
   getConfig(): Required<MultimodalInputHandlerConfig> {
@@ -249,4 +457,12 @@ export const multimodalInputHandler = new MultimodalInputHandler();
 export async function processImageFile(imagePath: string, config?: MultimodalInputHandlerConfig): Promise<ImageProcessResult> {
   const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
   return handler.processImageFile(imagePath);
+}
+
+/**
+ * Convenience function for processing web page URLs
+ */
+export async function processWebPage(url: string, options?: WebPageOptions, config?: MultimodalInputHandlerConfig): Promise<WebPageContent> {
+  const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
+  return handler.processWebPage(url, options);
 }
