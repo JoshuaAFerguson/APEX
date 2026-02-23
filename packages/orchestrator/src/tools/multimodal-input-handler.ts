@@ -1,6 +1,7 @@
 import { readFile, stat } from 'fs/promises';
 import { extname } from 'path';
 import { WebFetchTool, type WebFetchParams, type WebFetchResult, type HttpMethod } from './webfetch';
+import type { FigmaUrlInfo, FigmaUrlParseResult } from './design-mockup-types';
 
 /**
  * Claude SDK compatible ImageBlockParam structure
@@ -189,6 +190,24 @@ export class MultimodalInputHandler {
     // raw.githubusercontent.com URLs (for repository files)
     /https?:\/\/raw\.githubusercontent\.com\/[^)\s]*/g,
   ];
+
+  /** Figma URL patterns for detection and parsing */
+  private static readonly FIGMA_URL_PATTERNS = {
+    // Main Figma URL pattern: https://www.figma.com/{type}/{fileKey}/{fileName}
+    MAIN: /^https?:\/\/(?:www\.)?figma\.com\/(file|design|proto|board|embed)\/([A-Za-z0-9]{22,})\/?([^/?#]*)?/,
+    // Node ID parameter: ?node-id=123:456
+    NODE_ID: /[?&]node-id=([^&#]+)/,
+    // Version parameter: ?version-id=123456789
+    VERSION_ID: /[?&]version-id=([^&#]+)/,
+    // Branch parameter: ?branch-name=feature-branch
+    BRANCH_NAME: /[?&]branch-name=([^&#]+)/,
+    // Mode parameter: ?mode=dev or ?mode=design
+    MODE: /[?&]mode=(dev|design)/,
+    // Scale parameter: ?scale-factor=2
+    SCALE_FACTOR: /[?&]scale-factor=([0-9.]+)/,
+    // Viewport parameter: ?viewport=123,456,789,101
+    VIEWPORT: /[?&]viewport=([0-9,]+)/,
+  };
 
   constructor(config?: MultimodalInputHandlerConfig) {
     this.config = {
@@ -685,6 +704,129 @@ export class MultimodalInputHandler {
       const extension = format === 'jpg' ? '.jpeg' : `.${format}`;
       return MultimodalInputHandler.MEDIA_TYPE_MAP[extension];
     }).filter(Boolean) as ImageBlockParam['source']['media_type'][];
+  }
+
+  /**
+   * Check if a URL is a Figma URL
+   *
+   * @param url - The URL to check
+   * @returns true if the URL is a valid Figma URL
+   *
+   * @example
+   * ```typescript
+   * const handler = new MultimodalInputHandler();
+   *
+   * // These will return true
+   * handler.isFigmaUrl('https://www.figma.com/file/abc123xyz/Login-Screens');
+   * handler.isFigmaUrl('https://figma.com/design/abc123xyz/Dashboard');
+   * handler.isFigmaUrl('https://www.figma.com/proto/abc123xyz/Mobile-App');
+   *
+   * // These will return false
+   * handler.isFigmaUrl('https://sketch.com/file/123');
+   * handler.isFigmaUrl('https://example.com/image.png');
+   * ```
+   */
+  private isFigmaUrl(url: string): boolean {
+    try {
+      new URL(url); // Validate URL format first
+      return MultimodalInputHandler.FIGMA_URL_PATTERNS.MAIN.test(url);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Parse a Figma URL and extract metadata
+   *
+   * @param url - The Figma URL to parse
+   * @returns FigmaUrlParseResult containing parsed information or error
+   *
+   * @example
+   * ```typescript
+   * const handler = new MultimodalInputHandler();
+   *
+   * // Parse a basic file URL
+   * const result = handler.parseFigmaUrl('https://www.figma.com/file/abc123xyz/Login-Screens');
+   * if (result.success) {
+   *   console.log(result.info.fileKey); // 'abc123xyz'
+   *   console.log(result.info.fileName); // 'Login-Screens'
+   *   console.log(result.info.urlType); // 'file'
+   * }
+   *
+   * // Parse a URL with node ID
+   * const result2 = handler.parseFigmaUrl(
+   *   'https://www.figma.com/file/abc123xyz/Login-Screens?node-id=123:456'
+   * );
+   * if (result2.success) {
+   *   console.log(result2.info.nodeId); // '123:456'
+   * }
+   * ```
+   */
+  private parseFigmaUrl(url: string): FigmaUrlParseResult {
+    try {
+      // First validate it's a valid URL
+      const urlObj = new URL(url);
+    } catch {
+      return {
+        success: false,
+        error: 'Invalid URL format',
+      };
+    }
+
+    // Check if it's a Figma URL
+    if (!this.isFigmaUrl(url)) {
+      return {
+        success: false,
+        error: 'URL is not a valid Figma URL',
+      };
+    }
+
+    const mainMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.MAIN);
+    if (!mainMatch) {
+      return {
+        success: false,
+        error: 'Failed to parse Figma URL structure',
+      };
+    }
+
+    const [, urlType, fileKey, fileName] = mainMatch;
+
+    // Validate URL type
+    const validUrlTypes = ['file', 'design', 'proto', 'board', 'embed'] as const;
+    if (!validUrlTypes.includes(urlType as any)) {
+      return {
+        success: false,
+        error: `Invalid Figma URL type: ${urlType}`,
+      };
+    }
+
+    // Extract optional parameters
+    const nodeIdMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.NODE_ID);
+    const nodeId = nodeIdMatch ? decodeURIComponent(nodeIdMatch[1]) : undefined;
+
+    const versionIdMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.VERSION_ID);
+    const hasVersionParams = !!versionIdMatch;
+
+    const branchNameMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.BRANCH_NAME);
+    const branchName = branchNameMatch ? decodeURIComponent(branchNameMatch[1]) : undefined;
+
+    // Decode and clean fileName if present
+    const decodedFileName = fileName ? decodeURIComponent(fileName) : undefined;
+
+    const info: FigmaUrlInfo = {
+      fileKey,
+      fileName: decodedFileName,
+      nodeId,
+      urlType: urlType as FigmaUrlInfo['urlType'],
+      originalUrl: url,
+      hasVersionParams,
+      branchName,
+    };
+
+    return {
+      success: true,
+      info,
+    };
   }
 }
 
