@@ -149,13 +149,30 @@ export interface FigmaUrlInfo {
   /** Node ID if specified in the URL (format: "123:456") */
   nodeId?: string;
   /** Type of Figma URL */
-  urlType: 'file' | 'design' | 'proto' | 'board' | 'embed';
+  urlType: 'file' | 'design' | 'proto' | 'board' | 'embed' | 'image-export';
   /** The original URL that was parsed */
   originalUrl: string;
   /** Whether the URL includes version-specific parameters */
   hasVersionParams?: boolean;
   /** Branch name if the URL points to a branch */
   branchName?: string;
+  /** Mode parameter from URL (dev or design) */
+  mode?: 'dev' | 'design';
+  /** Scale factor parameter for exports */
+  scaleFactor?: number;
+  /** Viewport parameters (x, y, width, height) */
+  viewport?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  /** Version ID if specified in the URL */
+  versionId?: string;
+  /** Export format for image URLs */
+  exportFormat?: 'png' | 'jpg' | 'jpeg' | 'svg' | 'pdf';
+  /** Export scale for image URLs */
+  exportScale?: number;
 }
 
 /**

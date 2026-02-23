@@ -46,6 +46,8 @@ export {
   processImageFile,
   processWebPage,
   processGitHubIssueImages,
+  isFigmaUrl,
+  parseFigmaUrl,
   type ImageBlockParam,
   type MultimodalInputHandlerConfig,
   type ImageProcessResult,

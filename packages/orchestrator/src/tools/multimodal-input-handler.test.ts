@@ -7,6 +7,8 @@ import {
   processImageFile,
   processWebPage,
   processGitHubIssueImages,
+  isFigmaUrl,
+  parseFigmaUrl,
   type MultimodalInputHandlerConfig,
   type ImageProcessResult,
   type WebPageOptions,
@@ -1019,45 +1021,44 @@ https://user-images.githubusercontent.com/12345/screenshot.png
   describe('Figma URL parsing', () => {
     describe('isFigmaUrl', () => {
       it('should correctly identify valid Figma file URLs', () => {
-        // Access private method for testing
-        const result = (handler as any).isFigmaUrl('https://www.figma.com/file/abc123xyz456789012345678/Login-Screens');
+        const result = handler.isFigmaUrl('https://www.figma.com/file/abc123xyz456789012345678/Login-Screens');
         expect(result).toBe(true);
       });
 
       it('should correctly identify valid Figma design URLs', () => {
-        const result = (handler as any).isFigmaUrl('https://figma.com/design/abc123xyz456789012345678/Dashboard');
+        const result = handler.isFigmaUrl('https://figma.com/design/abc123xyz456789012345678/Dashboard');
         expect(result).toBe(true);
       });
 
       it('should correctly identify valid Figma prototype URLs', () => {
-        const result = (handler as any).isFigmaUrl('https://www.figma.com/proto/abc123xyz456789012345678/Mobile-App');
+        const result = handler.isFigmaUrl('https://www.figma.com/proto/abc123xyz456789012345678/Mobile-App');
         expect(result).toBe(true);
       });
 
       it('should correctly identify valid Figma board URLs', () => {
-        const result = (handler as any).isFigmaUrl('https://figma.com/board/abc123xyz456789012345678/Brainstorm');
+        const result = handler.isFigmaUrl('https://figma.com/board/abc123xyz456789012345678/Brainstorm');
         expect(result).toBe(true);
       });
 
       it('should correctly identify valid Figma embed URLs', () => {
-        const result = (handler as any).isFigmaUrl('https://www.figma.com/embed/abc123xyz456789012345678/Presentation');
+        const result = handler.isFigmaUrl('https://www.figma.com/embed/abc123xyz456789012345678/Presentation');
         expect(result).toBe(true);
       });
 
       it('should reject non-Figma URLs', () => {
-        expect((handler as any).isFigmaUrl('https://sketch.com/file/123')).toBe(false);
-        expect((handler as any).isFigmaUrl('https://example.com/image.png')).toBe(false);
-        expect((handler as any).isFigmaUrl('https://adobe.com/xd/file/123')).toBe(false);
+        expect(handler.isFigmaUrl('https://sketch.com/file/123')).toBe(false);
+        expect(handler.isFigmaUrl('https://example.com/image.png')).toBe(false);
+        expect(handler.isFigmaUrl('https://adobe.com/xd/file/123')).toBe(false);
       });
 
       it('should reject malformed URLs', () => {
-        expect((handler as any).isFigmaUrl('not-a-url')).toBe(false);
-        expect((handler as any).isFigmaUrl('figma.com/file/123')).toBe(false); // Missing protocol
-        expect((handler as any).isFigmaUrl('')).toBe(false);
+        expect(handler.isFigmaUrl('not-a-url')).toBe(false);
+        expect(handler.isFigmaUrl('figma.com/file/123')).toBe(false); // Missing protocol
+        expect(handler.isFigmaUrl('')).toBe(false);
       });
 
       it('should handle URLs with query parameters', () => {
-        const result = (handler as any).isFigmaUrl('https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?node-id=123:456');
+        const result = handler.isFigmaUrl('https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?node-id=123:456');
         expect(result).toBe(true);
       });
     });
@@ -1065,7 +1066,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
     describe('parseFigmaUrl', () => {
       it('should successfully parse basic Figma file URL', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe('abc123xyz456789012345678');
@@ -1079,7 +1080,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should successfully parse Figma URL with node ID', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?node-id=123:456';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe('abc123xyz456789012345678');
@@ -1091,7 +1092,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should successfully parse Figma URL with URL-encoded node ID', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?node-id=123%3A456';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.nodeId).toBe('123:456');
@@ -1099,7 +1100,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should successfully parse Figma URL with version parameters', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?version-id=123456789';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.hasVersionParams).toBe(true);
@@ -1107,7 +1108,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should successfully parse Figma URL with branch name', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?branch-name=feature-redesign';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.branchName).toBe('feature-redesign');
@@ -1115,7 +1116,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should successfully parse Figma URL with URL-encoded branch name', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?branch-name=feature%2Dredesign';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.branchName).toBe('feature-redesign');
@@ -1123,7 +1124,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should successfully parse Figma URL with multiple parameters', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?node-id=123:456&branch-name=feature-branch&version-id=987654321';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.nodeId).toBe('123:456');
@@ -1133,7 +1134,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URL-encoded file names', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login%20Screens%20-%20Mobile';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileName).toBe('Login Screens - Mobile');
@@ -1148,7 +1149,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
         ];
 
         testCases.forEach(({ url, expectedType }) => {
-          const result = (handler as any).parseFigmaUrl(url);
+          const result = handler.parseFigmaUrl(url);
           expect(result.success).toBe(true);
           expect(result.info.urlType).toBe(expectedType);
         });
@@ -1156,7 +1157,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URLs without file names', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileName).toBe('');
@@ -1164,27 +1165,27 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URLs with no file name at all', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileName).toBeUndefined();
       });
 
       it('should return error for invalid URL format', () => {
-        const result = (handler as any).parseFigmaUrl('not-a-url');
+        const result = handler.parseFigmaUrl('not-a-url');
         expect(result.success).toBe(false);
         expect(result.error).toBe('Invalid URL format');
       });
 
       it('should return error for non-Figma URLs', () => {
-        const result = (handler as any).parseFigmaUrl('https://sketch.com/file/123');
+        const result = handler.parseFigmaUrl('https://sketch.com/file/123');
         expect(result.success).toBe(false);
         expect(result.error).toBe('URL is not a valid Figma URL');
       });
 
       it('should handle complex node IDs with special characters', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?node-id=1234%3A5678-9abc%3Adef0';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.nodeId).toBe('1234:5678-9abc:def0');
@@ -1192,7 +1193,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should preserve original URL exactly', () => {
         const originalUrl = 'https://www.figma.com/file/abc123xyz456789012345678/Login%20Screens?node-id=123%3A456&utm_source=test';
-        const result = (handler as any).parseFigmaUrl(originalUrl);
+        const result = handler.parseFigmaUrl(originalUrl);
 
         expect(result.success).toBe(true);
         expect(result.info.originalUrl).toBe(originalUrl);
@@ -1202,7 +1203,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
     describe('edge cases and error handling', () => {
       it('should handle very short file keys', () => {
         const url = 'https://www.figma.com/file/abc/Test';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('URL is not a valid Figma URL');
@@ -1210,7 +1211,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URLs with fragments', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens#section1';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe('abc123xyz456789012345678');
@@ -1218,7 +1219,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URLs with trailing slashes', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens/';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileName).toBe('Login-Screens');
@@ -1226,7 +1227,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle mixed case in domain', () => {
         const url = 'https://Www.FIGMA.com/file/abc123xyz456789012345678/Login-Screens';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe('abc123xyz456789012345678');
@@ -1235,12 +1236,12 @@ https://user-images.githubusercontent.com/12345/screenshot.png
       it('should validate file key length', () => {
         // Test with standard 22-character file key
         const validUrl = 'https://www.figma.com/file/abcdefghij1234567890ab/Test';
-        const validResult = (handler as any).parseFigmaUrl(validUrl);
+        const validResult = handler.parseFigmaUrl(validUrl);
         expect(validResult.success).toBe(true);
 
         // Test with longer file key (should still work due to {22,} in regex)
         const longerUrl = 'https://www.figma.com/file/abcdefghij1234567890abcdef/Test';
-        const longerResult = (handler as any).parseFigmaUrl(longerUrl);
+        const longerResult = handler.parseFigmaUrl(longerUrl);
         expect(longerResult.success).toBe(true);
       });
     });
@@ -1248,7 +1249,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
     describe('type safety and structure validation', () => {
       it('should return properly structured FigmaUrlParseResult for successful parse', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Login-Screens?node-id=123:456';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result).toHaveProperty('success');
         expect(result).toHaveProperty('info');
@@ -1271,7 +1272,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
       });
 
       it('should return properly structured FigmaUrlParseResult for failed parse', () => {
-        const result = (handler as any).parseFigmaUrl('invalid-url');
+        const result = handler.parseFigmaUrl('invalid-url');
 
         expect(result).toHaveProperty('success');
         expect(result).toHaveProperty('error');
@@ -1285,7 +1286,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
         validTypes.forEach(type => {
           const url = `https://www.figma.com/${type}/abc123xyz456789012345678/Test`;
-          const result = (handler as any).parseFigmaUrl(url);
+          const result = handler.parseFigmaUrl(url);
 
           expect(result.success).toBe(true);
           expect(result.info.urlType).toBe(type);
@@ -1296,7 +1297,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
     describe('additional edge cases for comprehensive coverage', () => {
       it('should handle HTTP protocol (non-HTTPS)', () => {
         const url = 'http://www.figma.com/file/abc123xyz456789012345678/Test';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe('abc123xyz456789012345678');
@@ -1304,7 +1305,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URLs with multiple query parameters in different order', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?version-id=123&branch-name=main&node-id=456:789';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.hasVersionParams).toBe(true);
@@ -1313,26 +1314,26 @@ https://user-images.githubusercontent.com/12345/screenshot.png
       });
 
       it('should handle empty string URL', () => {
-        const result = (handler as any).parseFigmaUrl('');
+        const result = handler.parseFigmaUrl('');
         expect(result.success).toBe(false);
         expect(result.error).toBe('Invalid URL format');
       });
 
       it('should handle null input gracefully', () => {
-        const result = (handler as any).parseFigmaUrl(null as any);
+        const result = handler.parseFigmaUrl(null as any);
         expect(result.success).toBe(false);
         expect(result.error).toBe('Invalid URL format');
       });
 
       it('should handle undefined input gracefully', () => {
-        const result = (handler as any).parseFigmaUrl(undefined as any);
+        const result = handler.parseFigmaUrl(undefined as any);
         expect(result.success).toBe(false);
         expect(result.error).toBe('Invalid URL format');
       });
 
       it('should handle URLs with special characters in file names properly', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test%20File%20%26%20More%20%2D%20Special%20Characters';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileName).toBe('Test File & More - Special Characters');
@@ -1340,7 +1341,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URLs with only ampersand separators in query params', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test&node-id=123:456&version-id=789';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.nodeId).toBe('123:456');
@@ -1349,7 +1350,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should validate file key minimum length requirement', () => {
         const shortFileKey = 'https://www.figma.com/file/shortkey/Test';
-        const result = (handler as any).parseFigmaUrl(shortFileKey);
+        const result = handler.parseFigmaUrl(shortFileKey);
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('URL is not a valid Figma URL');
@@ -1357,7 +1358,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URLs with extra slashes', () => {
         const url = 'https://www.figma.com//file//abc123xyz456789012345678//Test//';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         // This should fail because the regex expects specific structure
         expect(result.success).toBe(false);
@@ -1365,7 +1366,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle case-sensitive file keys correctly', () => {
         const url = 'https://www.figma.com/file/AbC123xyZ456789012345678/Test';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe('AbC123xyZ456789012345678');
@@ -1373,7 +1374,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should preserve all URL parameters in originalUrl', () => {
         const originalUrl = 'https://www.figma.com/file/abc123xyz456789012345678/Test?node-id=123:456&utm_source=share&utm_medium=figma&custom=param#anchor';
-        const result = (handler as any).parseFigmaUrl(originalUrl);
+        const result = handler.parseFigmaUrl(originalUrl);
 
         expect(result.success).toBe(true);
         expect(result.info.originalUrl).toBe(originalUrl);
@@ -1382,7 +1383,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
       it('should handle file key at exactly minimum length (22 chars)', () => {
         const minLengthFileKey = 'abcdefghij1234567890ab'; // exactly 22 chars
         const url = `https://www.figma.com/file/${minLengthFileKey}/Test`;
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe(minLengthFileKey);
@@ -1391,7 +1392,7 @@ https://user-images.githubusercontent.com/12345/screenshot.png
       it('should handle very long file key (more than 22 chars)', () => {
         const longFileKey = 'abcdefghij1234567890abcdefghijklmnop'; // much longer than 22 chars
         const url = `https://www.figma.com/file/${longFileKey}/Test`;
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe(longFileKey);
@@ -1399,11 +1400,199 @@ https://user-images.githubusercontent.com/12345/screenshot.png
 
       it('should handle URLs with only question mark but no parameters', () => {
         const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?';
-        const result = (handler as any).parseFigmaUrl(url);
+        const result = handler.parseFigmaUrl(url);
 
         expect(result.success).toBe(true);
         expect(result.info.fileKey).toBe('abc123xyz456789012345678');
         expect(result.info.nodeId).toBeUndefined();
+      });
+    });
+  });
+
+  describe('Figma URL convenience functions', () => {
+    describe('isFigmaUrl convenience function', () => {
+      it('should use default handler when no config provided', () => {
+        const result = isFigmaUrl('https://www.figma.com/file/abc123xyz456789012345678/Test');
+        expect(result).toBe(true);
+      });
+
+      it('should create new handler when config provided', () => {
+        const customConfig: MultimodalInputHandlerConfig = {
+          maxFileSizeBytes: 5 * 1024 * 1024,
+        };
+        const result = isFigmaUrl('https://www.figma.com/file/abc123xyz456789012345678/Test', customConfig);
+        expect(result).toBe(true);
+      });
+
+      it('should return false for non-Figma URLs', () => {
+        expect(isFigmaUrl('https://sketch.com/file/123')).toBe(false);
+        expect(isFigmaUrl('https://example.com')).toBe(false);
+      });
+    });
+
+    describe('parseFigmaUrl convenience function', () => {
+      it('should use default handler when no config provided', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?node-id=123:456';
+        const result = parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.fileKey).toBe('abc123xyz456789012345678');
+        expect(result.info.nodeId).toBe('123:456');
+      });
+
+      it('should create new handler when config provided', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test';
+        const customConfig: MultimodalInputHandlerConfig = {
+          maxFileSizeBytes: 5 * 1024 * 1024,
+        };
+        const result = parseFigmaUrl(url, customConfig);
+
+        expect(result.success).toBe(true);
+        expect(result.info.fileKey).toBe('abc123xyz456789012345678');
+      });
+
+      it('should return error for invalid URLs', () => {
+        const result = parseFigmaUrl('not-a-url');
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Invalid URL format');
+      });
+    });
+
+    describe('enhanced URL parameter parsing', () => {
+      it('should parse mode parameter correctly', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?mode=dev';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.mode).toBe('dev');
+      });
+
+      it('should parse scale factor parameter correctly', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?scale-factor=2.5';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.scaleFactor).toBe(2.5);
+      });
+
+      it('should parse viewport parameter correctly', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?viewport=10,20,800,600';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.viewport).toEqual({
+          x: 10,
+          y: 20,
+          width: 800,
+          height: 600,
+        });
+      });
+
+      it('should parse version ID parameter correctly', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?version-id=123456789';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.versionId).toBe('123456789');
+        expect(result.info.hasVersionParams).toBe(true);
+      });
+
+      it('should parse all parameters together correctly', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?node-id=123:456&mode=design&scale-factor=2&viewport=0,0,1024,768&version-id=999&branch-name=feature';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.nodeId).toBe('123:456');
+        expect(result.info.mode).toBe('design');
+        expect(result.info.scaleFactor).toBe(2);
+        expect(result.info.viewport).toEqual({
+          x: 0,
+          y: 0,
+          width: 1024,
+          height: 768,
+        });
+        expect(result.info.versionId).toBe('999');
+        expect(result.info.hasVersionParams).toBe(true);
+        expect(result.info.branchName).toBe('feature');
+      });
+
+      it('should handle invalid viewport format gracefully', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?viewport=invalid,format';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.viewport).toBeUndefined();
+      });
+
+      it('should handle non-numeric scale factor gracefully', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/Test?scale-factor=not-a-number';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.scaleFactor).toBeNaN();
+      });
+    });
+
+    describe('Figma image export URL support', () => {
+      it('should detect image export URLs correctly', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/image/123:456';
+        expect(handler.isFigmaUrl(url)).toBe(true);
+      });
+
+      it('should parse basic image export URL correctly', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/image/123:456';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.fileKey).toBe('abc123xyz456789012345678');
+        expect(result.info.nodeId).toBe('123:456');
+        expect(result.info.urlType).toBe('image-export');
+        expect(result.info.originalUrl).toBe(url);
+      });
+
+      it('should parse image export URL with format parameter', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/image/123:456?format=png';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.exportFormat).toBe('png');
+      });
+
+      it('should parse image export URL with scale parameter', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/image/123:456?scale=2';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.exportScale).toBe(2);
+      });
+
+      it('should parse image export URL with both format and scale', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/image/123:456?format=svg&scale=3';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.exportFormat).toBe('svg');
+        expect(result.info.exportScale).toBe(3);
+      });
+
+      it('should handle URL-encoded node IDs in image export URLs', () => {
+        const url = 'https://www.figma.com/file/abc123xyz456789012345678/image/123%3A456%2D789%3Aabc';
+        const result = handler.parseFigmaUrl(url);
+
+        expect(result.success).toBe(true);
+        expect(result.info.nodeId).toBe('123:456-789:abc');
+      });
+
+      it('should handle various image export formats', () => {
+        const formats = ['png', 'jpg', 'jpeg', 'svg', 'pdf'];
+
+        formats.forEach(format => {
+          const url = `https://www.figma.com/file/abc123xyz456789012345678/image/123:456?format=${format}`;
+          const result = handler.parseFigmaUrl(url);
+
+          expect(result.success).toBe(true);
+          expect(result.info.exportFormat).toBe(format);
+        });
       });
     });
   });

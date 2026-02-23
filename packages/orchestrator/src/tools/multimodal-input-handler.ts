@@ -195,6 +195,8 @@ export class MultimodalInputHandler {
   private static readonly FIGMA_URL_PATTERNS = {
     // Main Figma URL pattern: https://www.figma.com/{type}/{fileKey}/{fileName}
     MAIN: /^https?:\/\/(?:www\.)?figma\.com\/(file|design|proto|board|embed)\/([A-Za-z0-9]{22,})\/?([^/?#]*)?/,
+    // Figma image export URL pattern: https://www.figma.com/file/{fileKey}/image/{nodeId}
+    IMAGE_EXPORT: /^https?:\/\/(?:www\.)?figma\.com\/file\/([A-Za-z0-9]{22,})\/image\/([^/?#]+)/,
     // Node ID parameter: ?node-id=123:456
     NODE_ID: /[?&]node-id=([^&#]+)/,
     // Version parameter: ?version-id=123456789
@@ -207,6 +209,10 @@ export class MultimodalInputHandler {
     SCALE_FACTOR: /[?&]scale-factor=([0-9.]+)/,
     // Viewport parameter: ?viewport=123,456,789,101
     VIEWPORT: /[?&]viewport=([0-9,]+)/,
+    // Format parameter for exports: ?format=png
+    EXPORT_FORMAT: /[?&]format=(png|jpg|jpeg|svg|pdf)/,
+    // Export scale parameter: ?scale=2
+    EXPORT_SCALE: /[?&]scale=([0-9.]+)/,
   };
 
   constructor(config?: MultimodalInputHandlerConfig) {
@@ -707,6 +713,81 @@ export class MultimodalInputHandler {
   }
 
   /**
+   * Extract mode parameter from Figma URL
+   * @private
+   */
+  private _extractModeFromUrl(url: string): 'dev' | 'design' | undefined {
+    const modeMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.MODE);
+    return modeMatch ? (modeMatch[1] as 'dev' | 'design') : undefined;
+  }
+
+  /**
+   * Extract scale factor parameter from Figma URL
+   * @private
+   */
+  private _extractScaleFactorFromUrl(url: string): number | undefined {
+    const scaleMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.SCALE_FACTOR);
+    return scaleMatch ? parseFloat(scaleMatch[1]) : undefined;
+  }
+
+  /**
+   * Extract viewport parameters from Figma URL
+   * @private
+   */
+  private _extractViewportFromUrl(url: string): { x: number; y: number; width: number; height: number } | undefined {
+    const viewportMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.VIEWPORT);
+    if (!viewportMatch) return undefined;
+
+    const values = viewportMatch[1].split(',').map(v => parseFloat(v.trim()));
+    if (values.length !== 4 || values.some(v => isNaN(v))) return undefined;
+
+    return {
+      x: values[0],
+      y: values[1],
+      width: values[2],
+      height: values[3],
+    };
+  }
+
+  /**
+   * Extract export format parameter from Figma URL
+   * @private
+   */
+  private _extractExportFormatFromUrl(url: string): 'png' | 'jpg' | 'jpeg' | 'svg' | 'pdf' | undefined {
+    const formatMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.EXPORT_FORMAT);
+    return formatMatch ? (formatMatch[1] as 'png' | 'jpg' | 'jpeg' | 'svg' | 'pdf') : undefined;
+  }
+
+  /**
+   * Extract export scale parameter from Figma URL
+   * @private
+   */
+  private _extractExportScaleFromUrl(url: string): number | undefined {
+    const scaleMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.EXPORT_SCALE);
+    return scaleMatch ? parseFloat(scaleMatch[1]) : undefined;
+  }
+
+  /**
+   * Parse Figma image export URL
+   * @private
+   */
+  private _parseFigmaImageExportUrl(url: string): FigmaUrlInfo | null {
+    const imageExportMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.IMAGE_EXPORT);
+    if (!imageExportMatch) return null;
+
+    const [, fileKey, nodeId] = imageExportMatch;
+
+    return {
+      fileKey,
+      nodeId: decodeURIComponent(nodeId),
+      urlType: 'image-export',
+      originalUrl: url,
+      exportFormat: this._extractExportFormatFromUrl(url),
+      exportScale: this._extractExportScaleFromUrl(url),
+    };
+  }
+
+  /**
    * Check if a URL is a Figma URL
    *
    * @param url - The URL to check
@@ -726,10 +807,11 @@ export class MultimodalInputHandler {
    * handler.isFigmaUrl('https://example.com/image.png');
    * ```
    */
-  private isFigmaUrl(url: string): boolean {
+  isFigmaUrl(url: string): boolean {
     try {
       new URL(url); // Validate URL format first
-      return MultimodalInputHandler.FIGMA_URL_PATTERNS.MAIN.test(url);
+      return MultimodalInputHandler.FIGMA_URL_PATTERNS.MAIN.test(url) ||
+             MultimodalInputHandler.FIGMA_URL_PATTERNS.IMAGE_EXPORT.test(url);
     } catch {
       return false;
     }
@@ -762,7 +844,7 @@ export class MultimodalInputHandler {
    * }
    * ```
    */
-  private parseFigmaUrl(url: string): FigmaUrlParseResult {
+  parseFigmaUrl(url: string): FigmaUrlParseResult {
     try {
       // First validate it's a valid URL
       const urlObj = new URL(url);
@@ -781,6 +863,16 @@ export class MultimodalInputHandler {
       };
     }
 
+    // Try parsing as image export URL first
+    const imageExportInfo = this._parseFigmaImageExportUrl(url);
+    if (imageExportInfo) {
+      return {
+        success: true,
+        info: imageExportInfo,
+      };
+    }
+
+    // Fall back to main URL pattern
     const mainMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.MAIN);
     if (!mainMatch) {
       return {
@@ -806,9 +898,15 @@ export class MultimodalInputHandler {
 
     const versionIdMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.VERSION_ID);
     const hasVersionParams = !!versionIdMatch;
+    const versionId = versionIdMatch ? versionIdMatch[1] : undefined;
 
     const branchNameMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.BRANCH_NAME);
     const branchName = branchNameMatch ? decodeURIComponent(branchNameMatch[1]) : undefined;
+
+    // Extract additional parameters using private helper methods
+    const mode = this._extractModeFromUrl(url);
+    const scaleFactor = this._extractScaleFactorFromUrl(url);
+    const viewport = this._extractViewportFromUrl(url);
 
     // Decode and clean fileName if present
     const decodedFileName = fileName ? decodeURIComponent(fileName) : undefined;
@@ -821,6 +919,10 @@ export class MultimodalInputHandler {
       originalUrl: url,
       hasVersionParams,
       branchName,
+      mode,
+      scaleFactor,
+      viewport,
+      versionId,
     };
 
     return {
@@ -857,4 +959,20 @@ export async function processWebPage(url: string, options?: WebPageOptions, conf
 export async function processGitHubIssueImages(issueContent: string, config?: MultimodalInputHandlerConfig): Promise<GitHubIssueImageResult> {
   const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
   return handler.processGitHubIssueImages(issueContent);
+}
+
+/**
+ * Convenience function to check if a URL is a Figma URL
+ */
+export function isFigmaUrl(url: string, config?: MultimodalInputHandlerConfig): boolean {
+  const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
+  return handler.isFigmaUrl(url);
+}
+
+/**
+ * Convenience function to parse a Figma URL and extract metadata
+ */
+export function parseFigmaUrl(url: string, config?: MultimodalInputHandlerConfig): FigmaUrlParseResult {
+  const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
+  return handler.parseFigmaUrl(url);
 }
