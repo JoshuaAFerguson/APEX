@@ -1,27 +1,27 @@
 /**
  * Edge case tests for processDesignMockup functionality
- * @jest/environment node
  */
 
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MultimodalInputHandler } from '../multimodal-input-handler';
 import { DesignMockupError } from '../design-mockup-types';
 import type { DesignMockupOptions } from '../design-mockup-types';
 
 // Mock WebFetchTool
-jest.mock('../webfetch', () => ({
-  WebFetchTool: jest.fn().mockImplementation(() => ({
-    execute: jest.fn(),
+vi.mock('../webfetch', () => ({
+  WebFetchTool: vi.fn().mockImplementation(() => ({
+    execute: vi.fn(),
   })),
 }));
 
 describe('MultimodalInputHandler - processDesignMockup Edge Cases', () => {
   let handler: MultimodalInputHandler;
-  let mockWebFetch: jest.MockedFunction<any>;
+  let mockWebFetch: any;
 
   beforeEach(() => {
     handler = new MultimodalInputHandler();
     mockWebFetch = (handler as any).webFetchTool.execute;
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('Data format handling edge cases', () => {

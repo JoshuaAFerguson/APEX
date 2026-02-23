@@ -1,8 +1,8 @@
 /**
  * Comprehensive tests for Figma URL parsing functionality
- * @jest/environment node
  */
 
+import { describe, it, expect, beforeEach } from 'vitest';
 import { MultimodalInputHandler } from '../multimodal-input-handler';
 
 describe('MultimodalInputHandler - Figma URL Parsing', () => {

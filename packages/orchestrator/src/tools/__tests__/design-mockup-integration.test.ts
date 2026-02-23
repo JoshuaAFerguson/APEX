@@ -1,40 +1,40 @@
 /**
  * Integration tests for processDesignMockup convenience functions and advanced scenarios
- * @jest/environment node
  */
 
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { processDesignMockup, isFigmaUrl, parseFigmaUrl } from '../multimodal-input-handler';
 import { DesignMockupError } from '../design-mockup-types';
 import type { DesignMockupOptions, DesignTool } from '../design-mockup-types';
 
 // Mock WebFetchTool
-jest.mock('../webfetch', () => ({
-  WebFetchTool: jest.fn().mockImplementation(() => ({
-    execute: jest.fn(),
+vi.mock('../webfetch', () => ({
+  WebFetchTool: vi.fn().mockImplementation(() => ({
+    execute: vi.fn(),
   })),
 }));
 
 describe('Design Mockup Integration Tests', () => {
   describe('Convenience function - processDesignMockup', () => {
-    let mockWebFetch: jest.MockedFunction<any>;
+    let mockWebFetch: any;
 
     beforeEach(() => {
       // Reset modules to ensure clean state
-      jest.resetModules();
+      vi.resetModules();
 
       // Mock the WebFetchTool execution
       const mockWebFetchTool = {
-        execute: jest.fn(),
+        execute: vi.fn(),
       };
       mockWebFetch = mockWebFetchTool.execute;
 
-      jest.doMock('../webfetch', () => ({
-        WebFetchTool: jest.fn().mockImplementation(() => mockWebFetchTool),
+      vi.doMock('../webfetch', () => ({
+        WebFetchTool: vi.fn().mockImplementation(() => mockWebFetchTool),
       }));
     });
 
     afterEach(() => {
-      jest.resetAllMocks();
+      vi.resetAllMocks();
     });
 
     it('should process design mockup with default configuration', async () => {
