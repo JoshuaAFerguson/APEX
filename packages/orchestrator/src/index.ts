@@ -100,12 +100,18 @@ import {
   TestVisualComparisonSchema,
   getMCPServers,
   sanitizeErrorMessage,
+  MultimodalInput,
+  MultimodalContext,
+  ProcessedMultimodalInput,
+  MultimodalProcessingStatus,
+  MultimodalInputCounts,
 } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
 import { AliasResolver } from './alias-resolver';
 import { PolicyEnforcer, createPolicyEnforcer, type ApprovalCheckContext, type ApprovalRequirement } from './policy';
 import type { PolicyEngine } from './policy-engine';
+import { MultimodalInputHandler } from './tools/multimodal-input-handler';
 import { AutonomyEnforcer, type AutonomyEnforcerConfig, type ActionMetadata } from './autonomy-enforcer';
 import { WorkspaceManager, type WorkspaceInfo, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
@@ -1326,6 +1332,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private hookManager!: HookManager;
   private customToolsServer?: CustomToolsServer;
   private mcpServerManager?: MCPServerManager;
+  private multimodalInputHandler!: MultimodalInputHandler;
   private mcpInstaller?: MCPInstaller;
   private mcpMarketplaceService?: MCPMarketplaceService;
   private mcpConnectionManager?: MCPConnectionManager;
@@ -1441,6 +1448,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Set up MCP event forwarding
     this.setupMCPEventForwarding();
+
+    // Initialize multimodal input handler (v0.6.0)
+    this.multimodalInputHandler = new MultimodalInputHandler();
 
     // Initialize MCP tool registry for tool discovery
     if (this.mcpConnectionManager) {
@@ -1963,6 +1973,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     parentTaskId?: string;
     subtaskStrategy?: SubtaskStrategy;
     dryRun?: boolean;
+    multimodalInputs?: MultimodalInput[];
   }): Promise<Task> {
     await this.ensureInitialized();
 
@@ -1972,6 +1983,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const priority = options.priority || 'normal';
     const effort = options.effort || 'medium';
     const maxRetries = options.maxRetries ?? this.effectiveConfig.limits.maxRetries;
+
+    // Process multimodal inputs if provided
+    let multimodalContext: MultimodalContext | undefined;
+    if (options.multimodalInputs && options.multimodalInputs.length > 0) {
+      try {
+        multimodalContext = await this.multimodalInputHandler.processInputs(options.multimodalInputs);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Multimodal input processing failed: ${errorMessage}`);
+      }
+    }
 
     // Subtasks share the parent's branch, parent tasks get a new branch
     let branchName: string | undefined;
@@ -2018,6 +2040,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
       logs: [],
       artifacts: [],
+      multimodalContext,
     };
 
     await this.store.createTask(task);

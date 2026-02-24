@@ -4765,6 +4765,14 @@ export interface Task {
   // v0.5.0 approval state
   /** Current approval state when task requires user approval to continue */
   approvalState?: ApprovalState;
+
+  // v0.6.0 multimodal support
+  /**
+   * Processed multimodal context for the task.
+   * Contains processed multimodal inputs (images, web pages, design mockups)
+   * with extracted content and processing status for agent consumption.
+   */
+  multimodalContext?: MultimodalContext;
 }
 
 /**
@@ -5831,6 +5839,14 @@ export interface CreateTaskRequest {
   priority?: TaskPriority;
   effort?: TaskEffort;
   projectPath?: string; // Optional when calling via API (server knows the project path)
+
+  // v0.6.0 Multimodal support
+  /**
+   * Optional multimodal inputs to provide visual/contextual information for the task.
+   * Can include images, web page captures, design mockups, etc.
+   * These inputs will be processed and made available to agents as MultimodalContext.
+   */
+  multimodalInputs?: MultimodalInput[];
 }
 
 export interface CreateTaskResponse {
@@ -12098,3 +12114,221 @@ export const MultimodalInputCollectionSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type MultimodalInputCollection = z.infer<typeof MultimodalInputCollectionSchema>;
+
+// ============================================================================
+// Multimodal Context Types (v0.6.0) - Processed Multimodal Data for Tasks
+// ============================================================================
+
+/**
+ * Processing status for individual multimodal inputs
+ * Tracks the lifecycle of multimodal input processing
+ *
+ * @example
+ * ```typescript
+ * const status: MultimodalProcessingStatus = 'processing';
+ *
+ * // Status flow: pending -> processing -> completed/failed/skipped
+ * ```
+ */
+export const MultimodalProcessingStatusSchema = z.enum([
+  'pending',      // Not yet processed
+  'processing',   // Currently being processed
+  'completed',    // Successfully processed
+  'failed',       // Processing failed
+  'skipped',      // Skipped (e.g., unsupported type)
+]);
+export type MultimodalProcessingStatus = z.infer<typeof MultimodalProcessingStatusSchema>;
+
+/**
+ * Entity detected/extracted from multimodal input
+ * Represents structured information extracted during processing
+ *
+ * @example
+ * ```typescript
+ * const entity: ExtractedEntity = {
+ *   type: 'button',
+ *   value: 'Submit',
+ *   confidence: 0.95,
+ *   bounds: { x: 100, y: 200, width: 80, height: 40 }
+ * };
+ * ```
+ */
+export const ExtractedEntitySchema = z.object({
+  /** Type of entity (e.g., 'button', 'text', 'image', 'input', 'link') */
+  type: z.string().min(1),
+
+  /** Value or content of the entity */
+  value: z.string(),
+
+  /** Confidence score for the extraction (0.0 to 1.0) */
+  confidence: z.number().min(0).max(1).optional(),
+
+  /** Bounding box coordinates if applicable (for visual entities) */
+  bounds: z.object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  }).optional(),
+});
+export type ExtractedEntity = z.infer<typeof ExtractedEntitySchema>;
+
+/**
+ * Content extracted from a multimodal input during processing
+ * Contains text, structured data, and detected entities
+ *
+ * @example
+ * ```typescript
+ * const content: ExtractedContent = {
+ *   text: 'Welcome to our application',
+ *   structuredData: { pageTitle: 'Home', hasLogin: true },
+ *   entities: [
+ *     { type: 'heading', value: 'Welcome', confidence: 0.99 },
+ *     { type: 'button', value: 'Sign In', confidence: 0.95 }
+ *   ]
+ * };
+ * ```
+ */
+export const ExtractedContentSchema = z.object({
+  /** Text content extracted from the input */
+  text: z.string().optional(),
+
+  /** Structured data extracted from the input */
+  structuredData: z.record(z.string(), z.unknown()).optional(),
+
+  /** Detected entities (UI components, text regions, etc.) */
+  entities: z.array(ExtractedEntitySchema).optional(),
+});
+export type ExtractedContent = z.infer<typeof ExtractedContentSchema>;
+
+/**
+ * A multimodal input that has been processed with status and results
+ * Wraps the original input with processing metadata and extracted content
+ *
+ * @example
+ * ```typescript
+ * const processed: ProcessedMultimodalInput = {
+ *   input: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *   },
+ *   status: 'completed',
+ *   processedAt: new Date(),
+ *   processingDurationMs: 1500,
+ *   extractedContent: {
+ *     text: 'Login form with username and password fields',
+ *     entities: [
+ *       { type: 'input', value: 'username', confidence: 0.98 },
+ *       { type: 'input', value: 'password', confidence: 0.97 },
+ *       { type: 'button', value: 'Login', confidence: 0.99 }
+ *     ]
+ *   }
+ * };
+ * ```
+ */
+export const ProcessedMultimodalInputSchema = z.object({
+  /** Original multimodal input */
+  input: MultimodalInputSchema,
+
+  /** Current processing status */
+  status: MultimodalProcessingStatusSchema,
+
+  /** Timestamp when processing started/completed */
+  processedAt: z.date().optional(),
+
+  /** Processing duration in milliseconds */
+  processingDurationMs: z.number().min(0).optional(),
+
+  /** Error message if processing failed */
+  error: z.string().optional(),
+
+  /** Extracted/analyzed content from the input */
+  extractedContent: ExtractedContentSchema.optional(),
+});
+export type ProcessedMultimodalInput = z.infer<typeof ProcessedMultimodalInputSchema>;
+
+/**
+ * Input counts by type for quick reference
+ * Provides a summary of multimodal input types in a context
+ *
+ * @example
+ * ```typescript
+ * const counts: MultimodalInputCounts = {
+ *   images: 3,
+ *   webPages: 1,
+ *   designMockups: 2
+ * };
+ * ```
+ */
+export const MultimodalInputCountsSchema = z.object({
+  /** Number of image inputs */
+  images: z.number().int().min(0).default(0),
+
+  /** Number of web page inputs */
+  webPages: z.number().int().min(0).default(0),
+
+  /** Number of design mockup inputs */
+  designMockups: z.number().int().min(0).default(0),
+});
+export type MultimodalInputCounts = z.infer<typeof MultimodalInputCountsSchema>;
+
+/**
+ * Multimodal context for a task - contains processed multimodal inputs
+ * and aggregated context information for agent consumption
+ *
+ * This type represents the processed state of multimodal inputs attached
+ * to a task, including processing status, extracted content, and summary.
+ *
+ * @example
+ * ```typescript
+ * const context: MultimodalContext = {
+ *   inputs: [
+ *     {
+ *       input: { type: 'design_mockup', designTool: 'figma', ... },
+ *       status: 'completed',
+ *       processedAt: new Date(),
+ *       extractedContent: { text: 'Login screen mockup', entities: [...] }
+ *     },
+ *     {
+ *       input: { type: 'web_page', url: 'https://example.com', ... },
+ *       status: 'completed',
+ *       processedAt: new Date(),
+ *       extractedContent: { text: 'Current implementation', structuredData: {...} }
+ *     }
+ *   ],
+ *   status: 'completed',
+ *   contextSummary: 'Task includes a Figma login screen mockup and the current implementation webpage for reference.',
+ *   createdAt: new Date('2024-01-15T10:00:00Z'),
+ *   completedAt: new Date('2024-01-15T10:00:05Z'),
+ *   totalProcessingTimeMs: 5000,
+ *   inputCounts: { images: 0, webPages: 1, designMockups: 1 }
+ * };
+ * ```
+ */
+export const MultimodalContextSchema = z.object({
+  /** Array of processed multimodal inputs */
+  inputs: z.array(ProcessedMultimodalInputSchema),
+
+  /** Overall processing status */
+  status: MultimodalProcessingStatusSchema,
+
+  /** Combined context summary for agent consumption */
+  contextSummary: z.string().optional(),
+
+  /** Timestamp when context was created */
+  createdAt: z.date(),
+
+  /** Timestamp when all processing completed */
+  completedAt: z.date().optional(),
+
+  /** Total processing time across all inputs in milliseconds */
+  totalProcessingTimeMs: z.number().min(0).optional(),
+
+  /** Count of inputs by type for quick reference */
+  inputCounts: MultimodalInputCountsSchema,
+
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type MultimodalContext = z.infer<typeof MultimodalContextSchema>;

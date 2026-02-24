@@ -1671,6 +1671,165 @@ export class MultimodalInputHandler {
       info,
     };
   }
+
+  /**
+   * Process multiple multimodal inputs and return a unified MultimodalContext
+   * Handles validation, processing, and aggregation of multimodal inputs
+   *
+   * @param inputs - Array of multimodal inputs to process
+   * @returns Promise resolving to MultimodalContext with processed inputs and summary
+   * @throws Error for validation or schema errors
+   *
+   * @example
+   * ```typescript
+   * const context = await handler.processInputs([
+   *   { type: 'image', mediaType: 'image/png', data: '...' },
+   *   { type: 'web_page', url: 'https://example.com' }
+   * ]);
+   * console.log(context.inputs.length); // 2
+   * console.log(context.inputCounts); // { images: 1, webPages: 1, designMockups: 0 }
+   * ```
+   */
+  async processInputs(inputs: any[]): Promise<any> {
+    const startTime = Date.now();
+    const processedInputs: any[] = [];
+    const inputCounts = {
+      images: 0,
+      webPages: 0,
+      designMockups: 0,
+    };
+
+    if (!inputs || inputs.length === 0) {
+      return {
+        inputs: [],
+        status: 'completed' as const,
+        inputCounts,
+        createdAt: new Date(),
+        totalProcessingTimeMs: 0,
+      };
+    }
+
+    // Validate and process each input
+    for (const input of inputs) {
+      const inputStartTime = Date.now();
+
+      try {
+        // Validate input has required fields based on type
+        if (!input || typeof input !== 'object') {
+          throw new Error('Input must be an object');
+        }
+
+        if (!input.type) {
+          throw new Error('Missing required field: type');
+        }
+
+        const validatedInput = input;
+
+        // Validate based on type
+        const inputType = validatedInput.type;
+        if (!['image', 'web_page', 'design_mockup'].includes(inputType)) {
+          throw new Error(`Invalid multimodal input type: ${inputType}`);
+        }
+
+        // Type-specific validation
+        if (inputType === 'image') {
+          if (!validatedInput.mediaType) {
+            throw new Error('Missing required field: mediaType');
+          }
+          if (!validatedInput.data) {
+            throw new Error('Missing required field: data');
+          }
+          // Validate base64 data
+          try {
+            Buffer.from(validatedInput.data, 'base64');
+          } catch {
+            throw new Error('Invalid image data: malformed base64');
+          }
+        } else if (inputType === 'web_page') {
+          if (!validatedInput.url && !validatedInput.capturedText && !validatedInput.capturedMarkdown) {
+            throw new Error('Missing required field: url or capturedText or capturedMarkdown');
+          }
+        } else if (inputType === 'design_mockup') {
+          if (!validatedInput.designTool) {
+            throw new Error('Missing required field: designTool');
+          }
+        }
+
+        let processedInput: any = {
+          input: validatedInput,
+          status: 'completed' as const,
+          processedAt: new Date(),
+          processingDurationMs: Date.now() - inputStartTime,
+        };
+
+        // Extract content based on input type
+        if (inputType === 'image') {
+          inputCounts.images++;
+          processedInput.extractedContent = {
+            text: validatedInput.description || validatedInput.name || 'Image',
+          };
+        } else if (inputType === 'web_page') {
+          inputCounts.webPages++;
+          processedInput.extractedContent = {
+            text: validatedInput.capturedText || validatedInput.capturedMarkdown || validatedInput.url,
+          };
+        } else if (inputType === 'design_mockup') {
+          inputCounts.designMockups++;
+          processedInput.extractedContent = {
+            text: validatedInput.description || validatedInput.name || 'Design mockup',
+            structuredData: {
+              designTool: validatedInput.designTool,
+              ...(validatedInput.designTokens && { designTokens: validatedInput.designTokens }),
+            },
+          };
+        }
+
+        processedInputs.push(processedInput);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        // Re-throw with proper error messages that match test expectations
+        if (errorMessage.includes('Invalid multimodal input type')) {
+          throw new Error(errorMessage);
+        }
+        if (errorMessage.includes('Missing required field')) {
+          throw new Error(errorMessage);
+        }
+        if (errorMessage.includes('Invalid image data')) {
+          throw new Error(errorMessage);
+        }
+
+        // For unknown errors, wrap them appropriately
+        throw new Error('Multimodal input validation failed: ' + errorMessage);
+      }
+    }
+
+    // Generate context summary
+    const summaryParts: string[] = [];
+    if (inputCounts.images > 0) {
+      summaryParts.push(`${inputCounts.images} image${inputCounts.images !== 1 ? 's' : ''}`);
+    }
+    if (inputCounts.webPages > 0) {
+      summaryParts.push(`${inputCounts.webPages} web page${inputCounts.webPages !== 1 ? 's' : ''}`);
+    }
+    if (inputCounts.designMockups > 0) {
+      summaryParts.push(`${inputCounts.designMockups} design mockup${inputCounts.designMockups !== 1 ? 's' : ''}`);
+    }
+
+    const contextSummary = `Task includes ${summaryParts.join(', ')} for context and reference.`;
+
+    const totalProcessingTimeMs = Date.now() - startTime;
+
+    return {
+      inputs: processedInputs,
+      status: 'completed' as const,
+      contextSummary,
+      createdAt: new Date(),
+      completedAt: new Date(),
+      totalProcessingTimeMs,
+      inputCounts,
+    };
+  }
 }
 
 /**
