@@ -1,5 +1,6 @@
 import { readFile, stat } from 'fs/promises';
-import { extname } from 'path';
+import { extname, basename } from 'path';
+import * as path from 'path';
 import { WebFetchTool, type WebFetchParams, type WebFetchResult, type HttpMethod } from './webfetch';
 import type {
   FigmaUrlInfo,
@@ -175,7 +176,7 @@ export class MultimodalInputHandler {
   /** Default configuration */
   private static readonly DEFAULT_CONFIG: Required<MultimodalInputHandlerConfig> = {
     maxFileSizeBytes: 20 * 1024 * 1024, // 20MB
-    supportedFormats: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+    supportedFormats: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf'],
   };
 
   /** Mapping of file extensions to Claude SDK media types */
@@ -185,6 +186,8 @@ export class MultimodalInputHandler {
     '.jpeg': 'image/jpeg',
     '.gif': 'image/gif',
     '.webp': 'image/webp',
+    '.svg': 'image/png', // SVG converted to PNG for Claude SDK compatibility
+    '.pdf': 'image/png', // PDF converted to PNG for Claude SDK compatibility
   };
 
   /** GitHub image URL patterns for extraction */
@@ -356,7 +359,7 @@ export class MultimodalInputHandler {
    * - Metadata extraction from URL structure
    * - Optional AI analysis of the design
    *
-   * @param url - The design mockup URL to process
+   * @param urlOrPath - The design mockup URL to process or path to a local file
    * @param options - Optional processing options
    * @returns Promise resolving to DesignMockupProcessResult
    * @throws DesignMockupError for validation or processing failures
@@ -376,23 +379,33 @@ export class MultimodalInputHandler {
    *   'https://example.com/designs/dashboard-mockup.png'
    * );
    *
+   * // Process a local design file
+   * const localResult = await handler.processDesignMockup(
+   *   '/path/to/designs/LoginScreen_Mobile_2x.png'
+   * );
+   *
    * console.log(figmaResult.imageBlock); // Ready to use with Claude SDK
-   * console.log(figmaResult.metadata); // File metadata extracted from URL
+   * console.log(figmaResult.metadata); // File/URL metadata extracted
    * ```
    */
   async processDesignMockup(
-    url: string,
+    urlOrPath: string,
     options?: Partial<DesignMockupOptions>
   ): Promise<DesignMockupProcessResult> {
     try {
-      // Validate URL format first
-      this.validateUrl(url);
+      // Check if input is a local file path or URL
+      if (this.isLocalFilePath(urlOrPath)) {
+        return await this.processLocalDesignMockup(urlOrPath, options);
+      }
+
+      // Handle URLs - validate format first
+      this.validateUrl(urlOrPath);
 
       // Route to appropriate handler based on URL type
-      if (this.isFigmaUrl(url)) {
-        return await this.processFigmaDesignMockup(url, options);
+      if (this.isFigmaUrl(urlOrPath)) {
+        return await this.processFigmaDesignMockup(urlOrPath, options);
       } else {
-        return await this.processGenericDesignMockup(url, options);
+        return await this.processGenericDesignMockup(urlOrPath, options);
       }
     } catch (error) {
       if (error instanceof DesignMockupError) {
@@ -593,6 +606,24 @@ export class MultimodalInputHandler {
         `Invalid URL format: ${url}`,
         'INVALID_URL'
       );
+    }
+  }
+
+  /**
+   * Check if input is a local file path or a URL
+   */
+  private isLocalFilePath(input: string): boolean {
+    // Check if it's a valid URL first
+    try {
+      const url = new URL(input);
+      return url.protocol === 'file:'; // file:// URLs are considered local
+    } catch {
+      // Not a valid URL, check if it looks like a file path
+      // Unix/Mac absolute path, Windows absolute path, or relative path
+      return input.includes('/') || input.includes('\\') ||
+             input.match(/^[a-zA-Z]:[\\\/]/) !== null ||
+             input.startsWith('./') || input.startsWith('../') ||
+             !input.includes('://'); // If no protocol, assume file path
     }
   }
 
@@ -938,6 +969,211 @@ export class MultimodalInputHandler {
       return lastDotIndex > 0 ? pathname.substring(lastDotIndex + 1) : '';
     } catch {
       return '';
+    }
+  }
+
+  /**
+   * Detect export format from file path
+   * @private
+   */
+  private detectExportFormatFromPath(filePath: string): DesignExportFormat | null {
+    const extension = path.extname(filePath).toLowerCase().slice(1);
+
+    switch (extension) {
+      case 'png':
+        return 'png';
+      case 'jpg':
+      case 'jpeg':
+        return 'jpeg';
+      case 'svg':
+        return 'svg';
+      case 'pdf':
+        return 'pdf';
+      case 'webp':
+        return 'webp';
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Extract metadata from filename patterns
+   * @private
+   */
+  private extractMetadataFromFilename(filePath: string): {
+    fileName: string;
+    designTool?: DesignTool;
+    frameName?: string;
+    artboardName?: string;
+    componentName?: string;
+    pageNumber?: number;
+    scaleFactor?: number;
+    platformName?: string;
+    stateName?: string;
+    version?: string;
+  } {
+    const fileName = path.basename(filePath);
+    const baseName = path.basename(filePath, path.extname(filePath));
+
+    // Common filename patterns:
+    // - LoginScreen_Mobile_2x.png
+    // - Button-Primary-Hover.png
+    // - Dashboard_Desktop_v1.2.jpg
+    // - UserProfile@2x.png
+    // - Header-Component-Large.svg
+    // - Figma_Export_Frame1.png
+
+    const metadata: any = { fileName };
+
+    // Extract scale factor (@2x, @3x, _2x, _3x, etc.)
+    const scaleMatch = baseName.match(/@?(\d+)x/i);
+    if (scaleMatch) {
+      metadata.scaleFactor = parseInt(scaleMatch[1], 10);
+    }
+
+    // Extract version (v1.2, _v2, etc.)
+    const versionMatch = baseName.match(/[_-]?v(\d+(?:\.\d+)?)/i);
+    if (versionMatch) {
+      metadata.version = versionMatch[1];
+    }
+
+    // Extract platform/device names
+    const platformKeywords = ['mobile', 'desktop', 'tablet', 'iphone', 'ipad', 'android', 'web'];
+    for (const platform of platformKeywords) {
+      if (baseName.toLowerCase().includes(platform)) {
+        metadata.platformName = platform;
+        break;
+      }
+    }
+
+    // Extract states (hover, active, disabled, etc.)
+    const stateKeywords = ['hover', 'active', 'disabled', 'selected', 'pressed', 'focused'];
+    for (const state of stateKeywords) {
+      if (baseName.toLowerCase().includes(state)) {
+        metadata.stateName = state;
+        break;
+      }
+    }
+
+    // Extract component names (Button, Header, Card, etc.)
+    const componentKeywords = ['button', 'header', 'card', 'modal', 'form', 'input', 'dropdown'];
+    for (const component of componentKeywords) {
+      if (baseName.toLowerCase().includes(component)) {
+        metadata.componentName = component;
+        break;
+      }
+    }
+
+    // Extract page numbers (Page1, _p1, etc.)
+    const pageMatch = baseName.match(/(?:page|p)[-_]?(\d+)/i);
+    if (pageMatch) {
+      metadata.pageNumber = parseInt(pageMatch[1], 10);
+    }
+
+    // Try to extract frame/artboard name (everything before scale/version/platform indicators)
+    let frameName = baseName;
+    frameName = frameName.replace(/@?\d+x/i, ''); // Remove scale
+    frameName = frameName.replace(/[_-]?v\d+(?:\.\d+)?/i, ''); // Remove version
+    frameName = frameName.replace(/[_-]?(mobile|desktop|tablet|iphone|ipad|android|web)/i, ''); // Remove platform
+    frameName = frameName.replace(/[_-]?(hover|active|disabled|selected|pressed|focused)/i, ''); // Remove state
+    frameName = frameName.replace(/[_-]+$/, ''); // Clean trailing separators
+
+    if (frameName && frameName !== baseName) {
+      metadata.frameName = frameName;
+      metadata.artboardName = frameName; // Use same value for artboard
+    }
+
+    // Detect design tool from filename patterns
+    if (baseName.toLowerCase().includes('figma')) {
+      metadata.designTool = 'figma';
+    } else if (baseName.toLowerCase().includes('sketch')) {
+      metadata.designTool = 'sketch';
+    } else if (baseName.toLowerCase().includes('xd') || baseName.toLowerCase().includes('adobe')) {
+      metadata.designTool = 'adobe_xd';
+    } else if (baseName.toLowerCase().includes('framer')) {
+      metadata.designTool = 'framer';
+    } else if (baseName.toLowerCase().includes('canva')) {
+      metadata.designTool = 'canva';
+    }
+
+    return metadata;
+  }
+
+  /**
+   * Process a local design mockup file
+   * @private
+   */
+  private async processLocalDesignMockup(
+    filePath: string,
+    options?: Partial<DesignMockupOptions>
+  ): Promise<DesignMockupProcessResult> {
+    const startTime = Date.now();
+
+    try {
+      // Validate file exists and get stats
+      const fileStats = await this.validateFileExists(filePath);
+
+      // Validate file size
+      this.validateFileSize(fileStats.size);
+
+      // Validate and get media type
+      const mediaType = this.validateAndGetMediaType(filePath);
+
+      // Extract metadata from filename
+      const metadata = this.extractMetadataFromFilename(filePath);
+
+      // Detect design tool from filename if not provided
+      const designTool = options?.designTool || metadata.designTool || 'other';
+
+      // Detect export format from file extension
+      const exportFormat = this.detectExportFormatFromPath(filePath) || 'png';
+
+      // Read and convert file to base64
+      const base64Data = await this.convertToBase64(filePath);
+
+      // Create Claude SDK compatible structure
+      const imageBlock: ImageBlockParam = {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: base64Data,
+        },
+      };
+
+      const processingTime = Date.now() - startTime;
+
+      return {
+        imageBlock,
+        designTool: designTool as DesignTool,
+        metadata: {
+          fileName: metadata.fileName,
+          filePath: filePath,
+          frameName: metadata.frameName,
+          artboardName: metadata.artboardName,
+          componentName: metadata.componentName,
+          pageNumber: metadata.pageNumber,
+          scaleFactor: metadata.scaleFactor,
+          platformName: metadata.platformName,
+          stateName: metadata.stateName,
+          version: metadata.version,
+          lastModified: fileStats.mtime.toISOString(),
+        },
+        exportFormat: exportFormat as DesignExportFormat,
+        exportScale: options?.exportScale || metadata.scaleFactor || 1,
+        fileSizeBytes: fileStats.size,
+        mediaType: `image/${exportFormat}`,
+        processingTime,
+        fromCache: false,
+      };
+    } catch (error) {
+      if (error instanceof DesignMockupError || error instanceof MultimodalInputError) {
+        throw error;
+      }
+      throw new DesignMockupError(
+        `Failed to process local design mockup: ${error instanceof Error ? error.message : String(error)}`,
+        'PROCESSING_ERROR'
+      );
     }
   }
 
@@ -1504,10 +1740,10 @@ export function parseFigmaUrl(url: string, config?: MultimodalInputHandlerConfig
  * ```
  */
 export async function processDesignMockup(
-  url: string,
+  urlOrPath: string,
   options?: Partial<DesignMockupOptions>,
   config?: MultimodalInputHandlerConfig
 ): Promise<DesignMockupProcessResult> {
   const handler = config ? new MultimodalInputHandler(config) : multimodalInputHandler;
-  return handler.processDesignMockup(url, options);
+  return handler.processDesignMockup(urlOrPath, options);
 }
