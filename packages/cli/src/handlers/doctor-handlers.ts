@@ -69,7 +69,7 @@ async function checkNodeVersion(): Promise<DoctorCheckResult> {
         name: 'node',
         currentVersion: cleanVersion,
         requiredVersion: minVersion,
-        location: process.execPath,
+        path: process.execPath,
         required: true,
       },
       durationMs: Date.now() - start,
@@ -292,10 +292,10 @@ async function checkApexConfigurationComprehensive(ctx: CliContext): Promise<Doc
 
   try {
     // Use the comprehensive validation from the config-validation module
-    const validationResult = await validateApexConfiguration(ctx.projectPath);
+    const validationResult = await validateApexConfiguration(ctx.cwd);
 
     // Convert the validation result to a DoctorCheckResult
-    return createApexConfigValidationCheck(ctx.projectPath, validationResult);
+    return createApexConfigValidationCheck(ctx.cwd, validationResult);
 
   } catch (error) {
     // Fallback to basic check if comprehensive validation fails

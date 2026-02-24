@@ -59,7 +59,7 @@ export async function handleMapCodebase(ctx: CliContext, args: Record<string, an
       };
     }
 
-    const repositoryMap = await indexer.indexDirectory(ctx.cwd, indexingOptions, progressCallback);
+    const repositoryMap = await indexer.indexDirectoryWithProgress(ctx.cwd, indexingOptions, progressCallback);
 
     console.log(chalk.green('✓ Analysis Complete\n'));
 

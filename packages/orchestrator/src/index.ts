@@ -5314,7 +5314,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async setPreset(preset: PermissionPreset): Promise<void> {
     await this.ensureInitialized();
-    await this.permissionPresetManager.applyPreset(preset);
+    await this._permissionPresetManager.applyPreset(preset);
   }
 
   /**
@@ -10610,14 +10610,6 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Get the custom tools server instance
-   * Provides access to custom tools server capabilities
-   */
-  get customToolsServer(): CustomToolsServer | undefined {
-    return this.customToolsServer;
-  }
-
-  /**
    * Iterate on a running task with new instructions
    */
   async iterateTask(
@@ -12491,41 +12483,13 @@ export type {
   CodebaseAnalyzerBase,
   AnalysisOutputWriter,
   OutputFormat,
-  AnalysisDomain,
   AnalysisPhase,
 } from './codebase-analyzer/types.js';
 
-export {
-  StackAnalyzer,
-} from './codebase-analyzer/analyzers/stack-analyzer.js';
-
-export {
-  ArchitectureAnalyzer,
-} from './codebase-analyzer/analyzers/architecture-analyzer.js';
-
+// Codebase analyzer - only export modules that exist
 export {
   ConventionAnalyzer,
 } from './codebase-analyzer/analyzers/convention-analyzer.js';
-
-export {
-  TechnicalDebtAnalyzer,
-} from './codebase-analyzer/analyzers/debt-analyzer.js';
-
-export {
-  DocumentationAnalyzer,
-} from './codebase-analyzer/analyzers/documentation-analyzer.js';
-
-export {
-  MarkdownWriter,
-} from './codebase-analyzer/output/markdown-writer.js';
-
-export {
-  JsonWriter,
-} from './codebase-analyzer/output/json-writer.js';
-
-export {
-  YamlWriter,
-} from './codebase-analyzer/output/yaml-writer.js';
 
 // =============================================================================
 // Codebase Intelligence
