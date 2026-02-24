@@ -1,4 +1,4 @@
-import type { AgentDefinition as SDKAgentDefinition } from '@anthropic-ai/claude-agent-sdk';
+import type { AgentDefinition as SDKAgentDefinition, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import {
   ApexConfig,
   AgentDefinition,
@@ -10,7 +10,38 @@ import {
   SubtaskStrategy,
   TaskCheckpoint,
   getEffectiveConfig,
+  MultimodalContext,
 } from '@apexcli/core';
+import type { ImageBlockParam } from './tools/multimodal-input-handler';
+
+// ============================================================================
+// Multimodal Prompt Support Types
+// ============================================================================
+
+/**
+ * Text block for multimodal content as expected by Claude SDK
+ */
+export interface TextBlockParam {
+  type: 'text';
+  text: string;
+}
+
+/**
+ * Content block for multimodal prompts - can be text or image
+ */
+export type ContentBlockParam = TextBlockParam | ImageBlockParam;
+
+/**
+ * Result of multimodal prompt building with both text and structured content
+ */
+export interface MultimodalPromptResult {
+  /** Simple text prompt for backward compatibility */
+  textPrompt: string;
+  /** Structured content for Claude SDK multimodal support */
+  contentBlocks: ContentBlockParam[];
+  /** Whether the prompt contains multimodal content */
+  hasMultimodalContent: boolean;
+}
 
 /**
  * Parsed decomposition request from planner output containing subtask breakdown details.
@@ -80,6 +111,169 @@ export interface PromptContext {
   task: Task;
   /** Available agents mapped by name */
   agents: Record<string, AgentDefinition>;
+}
+
+// ============================================================================
+// Multimodal Prompt Helper Functions
+// ============================================================================
+
+/**
+ * Build multimodal content from text and optional images
+ *
+ * @param textContent - The text content for the prompt
+ * @param images - Optional array of ImageBlockParam structures
+ * @returns MultimodalPromptResult with both text and content blocks
+ *
+ * @example
+ * ```typescript
+ * const result = buildMultimodalContent(
+ *   "Implement the login screen based on this design:",
+ *   [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: '...' } }]
+ * );
+ *
+ * // For simple text-only prompts
+ * if (!result.hasMultimodalContent) {
+ *   return query({ prompt: result.textPrompt, options });
+ * }
+ *
+ * // For multimodal prompts
+ * const userMessage: SDKUserMessage = {
+ *   type: 'user',
+ *   message: { role: 'user', content: result.contentBlocks },
+ *   parent_tool_use_id: null,
+ *   session_id: 'session-id'
+ * };
+ * return query({ prompt: [userMessage], options });
+ * ```
+ */
+export function buildMultimodalContent(
+  textContent: string,
+  images?: ImageBlockParam[]
+): MultimodalPromptResult {
+  const contentBlocks: ContentBlockParam[] = [];
+
+  // Add text block
+  if (textContent.trim()) {
+    contentBlocks.push({
+      type: 'text',
+      text: textContent,
+    });
+  }
+
+  // Add image blocks if provided
+  if (images && images.length > 0) {
+    contentBlocks.push(...images);
+  }
+
+  const hasMultimodalContent = images && images.length > 0;
+
+  return {
+    textPrompt: textContent,
+    contentBlocks,
+    hasMultimodalContent,
+  };
+}
+
+/**
+ * Extract images from multimodal context for prompt building
+ *
+ * @param multimodalContext - The processed multimodal context from a task
+ * @returns Array of ImageBlockParam structures ready for Claude SDK
+ *
+ * @example
+ * ```typescript
+ * const task: Task = {
+ *   // ... other fields
+ *   multimodalContext: {
+ *     inputs: [
+ *       {
+ *         input: { type: 'image', mediaType: 'image/png', data: '...' },
+ *         status: 'completed',
+ *         extractedContent: { text: 'Login screen mockup' }
+ *       }
+ *     ]
+ *   }
+ * };
+ *
+ * const images = extractImagesFromMultimodalContext(task.multimodalContext);
+ * console.log(images); // [{ type: 'image', source: { ... } }]
+ * ```
+ */
+export function extractImagesFromMultimodalContext(
+  multimodalContext?: MultimodalContext
+): ImageBlockParam[] {
+  if (!multimodalContext || !multimodalContext.inputs) {
+    return [];
+  }
+
+  const imageBlocks: ImageBlockParam[] = [];
+
+  for (const processedInput of multimodalContext.inputs) {
+    if (processedInput.status === 'completed' && processedInput.input.type === 'image') {
+      const imageInput = processedInput.input as any; // Type assertion needed due to union type
+
+      if (imageInput.data && imageInput.mediaType) {
+        // Convert from MultimodalInput format to Claude SDK format
+        const imageBlock: ImageBlockParam = {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: imageInput.mediaType as ImageBlockParam['source']['media_type'],
+            data: imageInput.data,
+          },
+        };
+        imageBlocks.push(imageBlock);
+      }
+    }
+  }
+
+  return imageBlocks;
+}
+
+/**
+ * Build multimodal context description for inclusion in text prompts
+ *
+ * @param multimodalContext - The processed multimodal context from a task
+ * @returns Human-readable description of the multimodal content
+ *
+ * @example
+ * ```typescript
+ * const description = buildMultimodalContextDescription(task.multimodalContext);
+ * console.log(description);
+ * // "This task includes 2 images, 1 web page, and 1 design mockup for context and reference."
+ * ```
+ */
+export function buildMultimodalContextDescription(
+  multimodalContext?: MultimodalContext
+): string {
+  if (!multimodalContext || !multimodalContext.inputCounts) {
+    return '';
+  }
+
+  const { inputCounts, contextSummary } = multimodalContext;
+  const { images, webPages, designMockups } = inputCounts;
+
+  if (images === 0 && webPages === 0 && designMockups === 0) {
+    return '';
+  }
+
+  // Use the contextSummary if available, otherwise build from counts
+  if (contextSummary) {
+    return `\n\n## Multimodal Context\n${contextSummary}`;
+  }
+
+  const parts: string[] = [];
+  if (images > 0) {
+    parts.push(`${images} image${images !== 1 ? 's' : ''}`);
+  }
+  if (webPages > 0) {
+    parts.push(`${webPages} web page${webPages !== 1 ? 's' : ''}`);
+  }
+  if (designMockups > 0) {
+    parts.push(`${designMockups} design mockup${designMockups !== 1 ? 's' : ''}`);
+  }
+
+  return `\n\n## Multimodal Context\nThis task includes ${parts.join(', ')} for context and reference.`;
 }
 
 /**
@@ -406,6 +600,47 @@ export interface StagePromptContext {
  * ```
  */
 export function buildStagePrompt(context: StagePromptContext): string {
+  // For backward compatibility, return the text prompt from the multimodal result
+  const result = buildStagePromptMultimodal(context);
+  return result.textPrompt;
+}
+
+/**
+ * Build a focused multimodal prompt for a specific workflow stage.
+ *
+ * Creates targeted prompts for individual agents working on specific workflow stages.
+ * Supports both text and multimodal content including images from the task's multimodal context.
+ * This is the new multimodal-aware version of buildStagePrompt.
+ *
+ * @param context - Complete stage context including task, agent, workflow, and previous results
+ * @returns MultimodalPromptResult with both text and structured content for Claude SDK
+ *
+ * @example
+ * ```typescript
+ * const stageContext: StagePromptContext = {
+ *   task: {
+ *     id: 'task-123',
+ *     description: 'Add auth',
+ *     multimodalContext: { inputs: [...] } // Contains processed images
+ *   },
+ *   stage: { name: 'implementation', agent: 'developer' },
+ *   agent: { name: 'developer', description: 'Writes code' },
+ *   workflow: { name: 'feature', stages: [...] },
+ *   config: getEffectiveConfig('/project'),
+ *   previousStageResults: new Map([['planning', { status: 'completed', summary: '...' }]])
+ * };
+ *
+ * const result = buildStagePromptMultimodal(stageContext);
+ * if (result.hasMultimodalContent) {
+ *   // Use multimodal API
+ *   const userMessage = { content: result.contentBlocks, ... };
+ * } else {
+ *   // Use text-only API
+ *   const prompt = result.textPrompt;
+ * }
+ * ```
+ */
+export function buildStagePromptMultimodal(context: StagePromptContext): MultimodalPromptResult {
   const { task, stage, agent, workflow, config, previousStageResults } = context;
 
   // Get inputs from previous stages
@@ -414,7 +649,11 @@ export function buildStagePrompt(context: StagePromptContext): string {
   // Format previous stage summaries for context
   const previousWork = formatPreviousStages(stage, workflow, previousStageResults);
 
-  return `# ${agent.name.charAt(0).toUpperCase() + agent.name.slice(1)} Agent - ${stage.name} Stage
+  // Build multimodal context description
+  const multimodalDescription = buildMultimodalContextDescription(task.multimodalContext);
+
+  // Build the text content for the prompt
+  const textContent = `# ${agent.name.charAt(0).toUpperCase() + agent.name.slice(1)} Agent - ${stage.name} Stage
 
 You are the **${agent.name}** agent working on the **${stage.name}** stage of a ${workflow.name} workflow.
 
@@ -438,6 +677,7 @@ ${formatExpectedOutputs(stage)}
 ${config.project.language ? `- **Language**: ${config.project.language}` : ''}
 ${config.project.framework ? `- **Framework**: ${config.project.framework}` : ''}
 - **Branch**: ${task.branchName || 'main'}
+${multimodalDescription}
 
 ## Instructions
 1. Focus ONLY on your assigned stage: **${stage.name}**
@@ -466,6 +706,12 @@ When you complete your work, end with a structured summary:
 \`\`\`
 
 Begin your work on the ${stage.name} stage now.`;
+
+  // Extract images from multimodal context
+  const images = extractImagesFromMultimodalContext(task.multimodalContext);
+
+  // Build multimodal content
+  return buildMultimodalContent(textContent, images);
 }
 
 /**
@@ -566,9 +812,46 @@ function formatExpectedOutputs(stage: WorkflowStage): string {
  * ```
  */
 export function buildPlannerStagePrompt(context: StagePromptContext): string {
+  // For backward compatibility, return the text prompt from the multimodal result
+  const result = buildPlannerStagePromptMultimodal(context);
+  return result.textPrompt;
+}
+
+/**
+ * Build a specialized multimodal prompt for the planning stage with decomposition support.
+ *
+ * Creates targeted prompts for planner agents that include comprehensive instructions
+ * for task analysis and decomposition. Supports multimodal content including images
+ * for visual context when planning implementations.
+ *
+ * @param context - Stage context containing task, agent, workflow and configuration
+ * @returns MultimodalPromptResult with planning stage prompt and optional images
+ *
+ * @example
+ * ```typescript
+ * const plannerContext: StagePromptContext = {
+ *   task: {
+ *     description: 'Implement full user management system',
+ *     multimodalContext: { inputs: [{ type: 'image', ... }] }
+ *   },
+ *   stage: { name: 'planning', agent: 'planner' },
+ *   agent: { name: 'planner', description: 'Plans implementation' },
+ *   workflow: { name: 'feature', stages: [...] },
+ *   config: getEffectiveConfig('/project'),
+ *   previousStageResults: new Map()
+ * };
+ *
+ * const result = buildPlannerStagePromptMultimodal(plannerContext);
+ * // Returns planning prompt with decomposition instructions and optional design images
+ * ```
+ */
+export function buildPlannerStagePromptMultimodal(context: StagePromptContext): MultimodalPromptResult {
   const { task, stage, agent, workflow, config, previousStageResults } = context;
 
-  return `# ${agent.name.charAt(0).toUpperCase() + agent.name.slice(1)} Agent - Planning Stage
+  // Build multimodal context description
+  const multimodalDescription = buildMultimodalContextDescription(task.multimodalContext);
+
+  const textContent = `# ${agent.name.charAt(0).toUpperCase() + agent.name.slice(1)} Agent - Planning Stage
 
 You are the **${agent.name}** agent responsible for planning the implementation of a task.
 
@@ -584,6 +867,7 @@ ${task.acceptanceCriteria ? `\n### Acceptance Criteria\n${task.acceptanceCriteri
 ${config.project.language ? `- **Language**: ${config.project.language}` : ''}
 ${config.project.framework ? `- **Framework**: ${config.project.framework}` : ''}
 - **Workflow**: ${workflow.name}
+${multimodalDescription}
 
 ## CRITICAL: Task Analysis and Decomposition
 
@@ -650,6 +934,12 @@ If DECOMPOSING (complex task):
 3. The system will create subtasks and execute them according to the strategy
 
 Begin your analysis now.`;
+
+  // Extract images from multimodal context
+  const images = extractImagesFromMultimodalContext(task.multimodalContext);
+
+  // Build multimodal content
+  return buildMultimodalContent(textContent, images);
 }
 
 /**

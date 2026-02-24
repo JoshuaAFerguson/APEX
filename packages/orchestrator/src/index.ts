@@ -1,4 +1,4 @@
-import { query, type AgentDefinition as SDKAgentDefinition, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
+import { query, type AgentDefinition as SDKAgentDefinition, type McpServerConfig, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { RepairLoop, resolveRepairConfig, ErrorClassifier } from './repair-loop/index.js';
 import type { RepairLoopHost, RepairQueryOptions, RepairQueryResult, RepairContext, RepairLoopEvents, RepairConfig } from './repair-loop/index.js';
 import { EventEmitter } from 'eventemitter3';
@@ -118,12 +118,15 @@ import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
   buildStagePrompt,
+  buildStagePromptMultimodal,
   buildPlannerStagePrompt,
+  buildPlannerStagePromptMultimodal,
   buildResumePrompt,
   parseDecompositionRequest,
   isPlanningStage,
   isCodeGenerationStage,
   type DecompositionRequest,
+  type TextBlockParam,
 } from './prompts';
 import { createHooks, FILE_MODIFYING_TOOLS, type HookContext } from './hooks';
 import { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';
@@ -3561,8 +3564,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Build focused prompt for this stage
     // Use special planner prompt if this is a planning stage
-    let stagePrompt = isPlanner
-      ? buildPlannerStagePrompt({
+    const stagePromptResult = isPlanner
+      ? buildPlannerStagePromptMultimodal({
           task,
           stage,
           agent,
@@ -3570,7 +3573,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           config: this.effectiveConfig,
           previousStageResults: previousResults,
         })
-      : buildStagePrompt({
+      : buildStagePromptMultimodal({
           task,
           stage,
           agent,
@@ -3580,8 +3583,64 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
 
     // Inject resume context if available (only for the first stage being resumed)
+    let stagePrompt: string | AsyncIterable<SDKUserMessage>;
     if (resumeContext) {
-      stagePrompt = `${resumeContext}\n\n${stagePrompt}`;
+      if (stagePromptResult.hasMultimodalContent) {
+        // For multimodal content, prepend resume context to the text block
+        const resumeTextBlock: TextBlockParam = {
+          type: 'text',
+          text: resumeContext,
+        };
+
+        // Update the first text block to include resume context
+        const updatedContentBlocks = [...stagePromptResult.contentBlocks];
+        const firstTextBlockIndex = updatedContentBlocks.findIndex(block => block.type === 'text');
+        if (firstTextBlockIndex >= 0) {
+          const firstTextBlock = updatedContentBlocks[firstTextBlockIndex] as TextBlockParam;
+          updatedContentBlocks[firstTextBlockIndex] = {
+            type: 'text',
+            text: `${resumeContext}\n\n${firstTextBlock.text}`,
+          };
+        } else {
+          // If no text block found, insert at the beginning
+          updatedContentBlocks.unshift(resumeTextBlock);
+        }
+
+        // Create the multimodal prompt
+        stagePrompt = (async function* () {
+          yield {
+            type: 'user' as const,
+            message: {
+              role: 'user' as const,
+              content: updatedContentBlocks,
+            },
+            parent_tool_use_id: null,
+            session_id: `stage-${stage.name}-${task.id}`,
+          };
+        })();
+      } else {
+        // For text-only content, use simple concatenation
+        stagePrompt = `${resumeContext}\n\n${stagePromptResult.textPrompt}`;
+      }
+    } else {
+      // No resume context
+      if (stagePromptResult.hasMultimodalContent) {
+        // Create the multimodal prompt
+        stagePrompt = (async function* () {
+          yield {
+            type: 'user' as const,
+            message: {
+              role: 'user' as const,
+              content: stagePromptResult.contentBlocks,
+            },
+            parent_tool_use_id: null,
+            session_id: `stage-${stage.name}-${task.id}`,
+          };
+        })();
+      } else {
+        // Use simple text prompt
+        stagePrompt = stagePromptResult.textPrompt;
+      }
     }
 
     // Create hooks context for this stage
