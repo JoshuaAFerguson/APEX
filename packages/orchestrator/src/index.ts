@@ -11993,6 +11993,9 @@ export {
   processImageFile,
   processWebPage,
   processGitHubIssueImages,
+  processDesignMockup,
+  isFigmaUrl,
+  parseFigmaUrl,
   type ImageBlockParam,
   type MultimodalInputHandlerConfig,
   type ImageProcessResult,
@@ -12000,6 +12003,27 @@ export {
   type WebPageContent,
   type GitHubIssueImageResult,
 } from './tools/multimodal-input-handler';
+
+// Design mockup types for MultimodalInputHandler
+export {
+  DesignMockupError,
+  type DesignTool,
+  type DesignExportFormat,
+  type DesignDimensionUnit,
+  type DesignDimensions,
+  type TypographyValue,
+  type DesignTokens,
+  type ComponentBounds,
+  type DesignComponent,
+  type DesignAnnotation,
+  type FigmaUrlInfo,
+  type DesignMockupOptions,
+  type DesignFileMetadata,
+  type DesignMockupProcessResult,
+  type FigmaUrlParseResult,
+  type DesignMockupHandlerConfig,
+  type DesignMockupErrorCode,
+} from './tools/design-mockup-types';
 
 // Test utilities for state cleanup and test isolation
 export {

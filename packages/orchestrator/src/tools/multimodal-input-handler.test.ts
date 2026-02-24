@@ -7,6 +7,7 @@ import {
   processImageFile,
   processWebPage,
   processGitHubIssueImages,
+  processDesignMockup,
   isFigmaUrl,
   parseFigmaUrl,
   type MultimodalInputHandlerConfig,
@@ -15,6 +16,7 @@ import {
   type WebPageContent,
   type GitHubIssueImageResult
 } from './multimodal-input-handler';
+import { DesignMockupError } from './design-mockup-types';
 import { WebFetchTool, type WebFetchResult } from './webfetch';
 
 // Mock fs/promises
@@ -1594,6 +1596,211 @@ https://user-images.githubusercontent.com/12345/screenshot.png
           expect(result.info.exportFormat).toBe(format);
         });
       });
+    });
+  });
+
+  describe('processDesignMockup convenience function', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('should use default handler when no config provided', async () => {
+      const mockWebFetchResult = {
+        success: true,
+        data: Buffer.from('test-design-mockup'),
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+        fromCache: false,
+        metadata: { responseTime: 250 },
+      };
+
+      // Mock the WebFetchTool instance
+      const mockWebFetchInstance = {
+        execute: vi.fn().mockResolvedValue(mockWebFetchResult),
+      };
+      MockWebFetchTool.mockImplementation(() => mockWebFetchInstance);
+
+      const url = 'https://example.com/design.png';
+      const result = await processDesignMockup(url);
+
+      expect(result).toBeDefined();
+      expect(result.imageBlock).toBeDefined();
+      expect(result.imageBlock.type).toBe('image');
+      expect(result.imageBlock.source.type).toBe('base64');
+      expect(result.imageBlock.source.media_type).toBe('image/png');
+      expect(result.imageBlock.source.data).toBe(Buffer.from('test-design-mockup').toString('base64'));
+      expect(result.fileSizeBytes).toBe(18); // Buffer.from('test-design-mockup').length
+      expect(result.mediaType).toBe('image/png');
+      expect(result.processingTime).toBe(250);
+    });
+
+    it('should create new handler when config provided', async () => {
+      const customConfig = {
+        maxFileSizeBytes: 15 * 1024 * 1024,
+        supportedFormats: ['png', 'jpg'],
+      };
+
+      const mockWebFetchResult = {
+        success: true,
+        data: Buffer.from('test-custom-config'),
+        status: 200,
+        headers: { 'content-type': 'image/jpeg' },
+        fromCache: false,
+        metadata: { responseTime: 300 },
+      };
+
+      // Mock the WebFetchTool instance
+      const mockWebFetchInstance = {
+        execute: vi.fn().mockResolvedValue(mockWebFetchResult),
+      };
+      MockWebFetchTool.mockImplementation(() => mockWebFetchInstance);
+
+      const url = 'https://example.com/design.jpg';
+      const result = await processDesignMockup(url, {}, customConfig);
+
+      expect(result).toBeDefined();
+      expect(result.imageBlock.source.media_type).toBe('image/jpeg');
+      expect(result.mediaType).toBe('image/jpeg');
+      expect(result.processingTime).toBe(300);
+    });
+
+    it('should handle Figma URLs correctly', async () => {
+      const mockWebFetchResult = {
+        success: true,
+        data: Buffer.from('figma-design-data'),
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+        fromCache: false,
+        metadata: { responseTime: 400 },
+      };
+
+      // Mock the WebFetchTool instance
+      const mockWebFetchInstance = {
+        execute: vi.fn().mockResolvedValue(mockWebFetchResult),
+      };
+      MockWebFetchTool.mockImplementation(() => mockWebFetchInstance);
+
+      const figmaUrl = 'https://www.figma.com/file/abc123xyz456789012345678/Test?node-id=123:456';
+      const options = { exportFormat: 'png' as const, exportScale: 2 };
+
+      const result = await processDesignMockup(figmaUrl, options);
+
+      expect(result).toBeDefined();
+      expect(result.imageBlock.type).toBe('image');
+      expect(result.imageBlock.source.media_type).toBe('image/png');
+      expect(result.metadata).toBeDefined();
+      expect(result.metadata.figmaInfo).toBeDefined();
+      expect(result.metadata.figmaInfo!.fileKey).toBe('abc123xyz456789012345678');
+      expect(result.metadata.figmaInfo!.nodeId).toBe('123:456');
+    });
+
+    it('should propagate errors correctly', async () => {
+      const mockWebFetchInstance = {
+        execute: vi.fn().mockResolvedValue({
+          success: false,
+          status: 404,
+          error: 'Not Found',
+          headers: {},
+          fromCache: false,
+          metadata: { responseTime: 100 },
+        }),
+      };
+      MockWebFetchTool.mockImplementation(() => mockWebFetchInstance);
+
+      const url = 'https://example.com/nonexistent.png';
+
+      try {
+        await processDesignMockup(url);
+        // Should not reach here
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(DesignMockupError);
+        expect((error as DesignMockupError).code).toBe('API_ERROR');
+        expect((error as DesignMockupError).message).toContain('Failed to fetch design mockup');
+      }
+    });
+
+    it('should handle invalid URLs correctly', async () => {
+      const invalidUrl = 'not-a-url';
+
+      try {
+        await processDesignMockup(invalidUrl);
+        // Should not reach here
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(DesignMockupError);
+        expect((error as DesignMockupError).code).toBe('INVALID_URL');
+        expect((error as DesignMockupError).message).toContain('Invalid URL format');
+      }
+    });
+
+    it('should handle local file paths', async () => {
+      const filePath = '/path/to/local/design.png';
+
+      mockStat.mockResolvedValue({
+        isFile: () => true,
+        size: 2048,
+      } as any);
+
+      mockReadFile.mockResolvedValue(Buffer.from('local-file-data'));
+
+      const result = await processDesignMockup(filePath);
+
+      expect(result).toBeDefined();
+      expect(result.imageBlock.type).toBe('image');
+      expect(result.imageBlock.source.media_type).toBe('image/png');
+      expect(result.fileSizeBytes).toBe(15); // Buffer.from('local-file-data').length
+      expect(result.metadata.localFileInfo).toBeDefined();
+      expect(result.metadata.localFileInfo!.originalPath).toBe(filePath);
+      expect(result.metadata.localFileInfo!.fileName).toBe('design.png');
+    });
+
+    it('should handle various design tools and options', async () => {
+      const mockWebFetchResult = {
+        success: true,
+        data: Buffer.from('sketch-design-data'),
+        status: 200,
+        headers: { 'content-type': 'image/svg+xml' },
+        fromCache: false,
+        metadata: { responseTime: 350 },
+      };
+
+      const mockWebFetchInstance = {
+        execute: vi.fn().mockResolvedValue(mockWebFetchResult),
+      };
+      MockWebFetchTool.mockImplementation(() => mockWebFetchInstance);
+
+      const url = 'https://example.com/sketch-design.svg';
+      const options = {
+        designTool: 'sketch' as const,
+        exportFormat: 'svg' as const,
+        extractTokens: true,
+        extractComponents: true,
+      };
+
+      const result = await processDesignMockup(url, options);
+
+      expect(result).toBeDefined();
+      expect(result.imageBlock.source.media_type).toBe('image/svg+xml');
+      expect(result.metadata.designTool).toBe('sketch');
+    });
+
+    it('should handle timeout and error recovery', async () => {
+      const mockWebFetchInstance = {
+        execute: vi.fn().mockRejectedValue(new Error('Request timeout')),
+      };
+      MockWebFetchTool.mockImplementation(() => mockWebFetchInstance);
+
+      const url = 'https://slow-server.com/design.png';
+
+      try {
+        await processDesignMockup(url, { timeout: 1000 });
+        // Should not reach here
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(DesignMockupError);
+        expect((error as DesignMockupError).message).toContain('Failed to process design mockup');
+      }
     });
   });
 });
