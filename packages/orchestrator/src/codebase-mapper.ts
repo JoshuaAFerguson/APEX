@@ -169,18 +169,27 @@ export class CodebaseMapper extends EventEmitter<CodebaseMapperEvents> {
 
       // Create analysis options for the orchestrator
       const analysisOptions: AnalysisOptions = {
-        projectPath: this.config.projectPath,
-        outputDir: '/tmp', // We don't actually write output in this service
-        parallel: this.config.maxConcurrentAgents,
-        include: this.config.includePatterns,
-        exclude: this.config.excludePatterns,
-        format: 'json', // Internal format
-        quick: this.config.quickMode,
-        verbose: this.config.verbose,
+        includeDetails: !this.config.quickMode,
+        maxDepth: 10,
+        excludePatterns: this.config.excludePatterns,
+        enableParsing: true,
       };
 
       // Run the analysis
-      const analysis = await this.analysisOrchestrator.analyze(analysisOptions);
+      const results = await this.analysisOrchestrator.analyze(this.config.projectPath, analysisOptions);
+
+      // Aggregate results into CodebaseAnalysis
+      const analysis: CodebaseAnalysis = {
+        timestamp: new Date(),
+      };
+
+      for (const result of results) {
+        if (result.success && result.data) {
+          if (result.phase === 'conventions') {
+            analysis.conventions = result.data;
+          }
+        }
+      }
 
       // Calculate duration and emit completion
       const duration = Date.now() - (this.startTime?.getTime() || Date.now());
@@ -237,7 +246,6 @@ export class CodebaseMapper extends EventEmitter<CodebaseMapperEvents> {
    */
   cancel(): void {
     if (this.isRunning) {
-      this.analysisOrchestrator.cancel();
       this.isRunning = false;
 
       // Mark all running agents as failed
@@ -264,27 +272,18 @@ export class CodebaseMapper extends EventEmitter<CodebaseMapperEvents> {
   // =============================================================================
 
   private async initializeAgents(): Promise<void> {
-    // Get analyzers from the orchestrator to create corresponding agents
-    const analyzers = this.analysisOrchestrator.getAnalyzers();
+    // Create agents from supported analysis phases
+    const phases = this.analysisOrchestrator.getSupportedPhases();
 
     this.agents.clear();
 
-    for (const analyzer of analyzers) {
+    for (const phase of phases) {
       const agent: AnalysisAgent = {
-        id: `agent-${analyzer.domain}`,
-        name: analyzer.name,
-        domain: analyzer.domain,
-        description: `Analyzes ${analyzer.domain} aspects of the codebase`,
-        estimatedComplexity: analyzer.estimateComplexity({
-          projectPath: this.config.projectPath,
-          files: [], // Will be populated by the orchestrator
-          options: {
-            projectPath: this.config.projectPath,
-            outputDir: '/tmp',
-            parallel: this.config.maxConcurrentAgents,
-            format: 'json',
-          },
-        }),
+        id: `agent-${phase}`,
+        name: `${phase} analyzer`,
+        domain: phase,
+        description: `Analyzes ${phase} aspects of the codebase`,
+        estimatedComplexity: 5,
         status: 'pending',
       };
 
@@ -298,9 +297,9 @@ export class CodebaseMapper extends EventEmitter<CodebaseMapperEvents> {
 
   private setupEventForwarding(): void {
     // Forward analysis progress events with enhanced context
-    this.analysisOrchestrator.on('analysis:progress', (progress: AnalysisProgress) => {
+    this.analysisOrchestrator.onProgress((progress: AnalysisProgress) => {
       // Find corresponding agent and update status
-      const agentId = `agent-${progress.domain}`;
+      const agentId = `agent-${progress.phase}`;
       const agent = this.agents.get(agentId);
 
       if (agent && agent.status === 'pending') {
@@ -313,39 +312,17 @@ export class CodebaseMapper extends EventEmitter<CodebaseMapperEvents> {
       this.emit('analysis:agent-progress', {
         agentId,
         progress: progress.progress,
-        message: progress.message,
+        message: progress.currentFile || '',
       });
 
       // Emit overall progress
       this.emit('analysis:progress', this.getProgress());
     });
 
-    // Forward domain completion events
-    this.analysisOrchestrator.on('analysis:domain-complete', ({ domain, result }) => {
-      const agentId = `agent-${domain}`;
-      const agent = this.agents.get(agentId);
-
-      if (agent) {
-        agent.status = result.success ? 'completed' : 'failed';
-        agent.endTime = new Date();
-        agent.result = result.data;
-
-        if (result.success) {
-          this.emit('analysis:agent-completed', { agent, result: result.data });
-        } else {
-          agent.error = result.errors.length > 0 ? result.errors[0].error : 'Unknown error';
-          this.emit('analysis:agent-failed', { agent, error: agent.error });
-        }
-      }
-
-      // Emit overall progress update
-      this.emit('analysis:progress', this.getProgress());
-    });
-
     // Forward error events
-    this.analysisOrchestrator.on('analysis:error', (error: AnalysisError) => {
+    this.analysisOrchestrator.onError((error: AnalysisError) => {
       this.emit('analysis:error', {
-        error: error.error,
+        error: error.message,
         phase: this.getCurrentPhase(),
       });
     });

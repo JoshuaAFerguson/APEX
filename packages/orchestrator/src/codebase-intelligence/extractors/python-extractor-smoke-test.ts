@@ -4,7 +4,8 @@
  */
 
 import { PythonExtractor } from './python-extractor.js';
-import { SupportedLanguage, SymbolKind } from './types.js';
+import { SymbolKind } from './types.js';
+import { SupportedLanguage } from '../parsers/types.js';
 
 async function runSmokeTest() {
   console.log('🔍 Starting Python Extractor Smoke Test...');

@@ -1118,12 +1118,12 @@ export class ImportGraphBuilder {
     );
 
     const files = await glob(patterns, {
-      ignore: options.excludePatterns.map(p =>
+      ignore: options.excludePatterns.map((p: string) =>
         path.isAbsolute(p) ? p : path.join(rootPath, p)
       ),
       nodir: true,
       absolute: true,
-      followSymbolicLinks: options.followSymlinks
+      follow: options.followSymlinks
     });
 
     return files;

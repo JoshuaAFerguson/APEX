@@ -95,7 +95,7 @@ export class TechnicalDebtAnalyzer extends BaseAnalyzer {
         'Refactor Critical Complexity Hotspots',
         `Found ${criticalHotspots.length} functions with critical complexity (>50). These create high maintenance burden and bug risk.`,
         {
-          priority: 'critical',
+          priority: 'urgent',
           effort: 'high',
           workflow: 'refactoring',
           rationale: 'Critical complexity hotspots significantly increase bug risk and maintenance cost',
@@ -153,7 +153,7 @@ export class TechnicalDebtAnalyzer extends BaseAnalyzer {
         'Fix Critical Code Smells',
         `Found ${criticalSmells.length} critical code smells that need immediate attention.`,
         {
-          priority: 'critical',
+          priority: 'urgent',
           effort: 'high',
           workflow: 'refactoring',
           rationale: 'Critical code smells indicate serious design issues',
@@ -268,7 +268,7 @@ export class TechnicalDebtAnalyzer extends BaseAnalyzer {
         'Fix Security Vulnerabilities',
         `Found ${vulnerabilities.length} security vulnerabilities (${criticalVulns.length} critical, ${highVulns.length} high). Update vulnerable packages immediately.`,
         {
-          priority: criticalVulns.length > 0 ? 'critical' : 'high',
+          priority: criticalVulns.length > 0 ? 'urgent' : 'high',
           effort: 'medium',
           workflow: 'maintenance',
           rationale: 'Security vulnerabilities pose immediate risk to application security',
@@ -403,7 +403,7 @@ export class TechnicalDebtAnalyzer extends BaseAnalyzer {
           'Fix Critical Outdated Documentation',
           `Found ${criticalDocs.length} critical outdated documentation issues. These may mislead users and developers.`,
           {
-            priority: 'critical',
+            priority: 'urgent',
             effort: 'medium',
             workflow: 'documentation',
             rationale: 'Critical outdated documentation can mislead users and cause integration issues',
@@ -594,7 +594,7 @@ export class TechnicalDebtAnalyzer extends BaseAnalyzer {
         'Test Critical Public APIs',
         `Found ${publicApiExports.length} untested public API exports. Public APIs must be thoroughly tested to ensure reliability for consumers.`,
         {
-          priority: 'critical',
+          priority: 'urgent',
           effort: 'high',
           workflow: 'testing',
           rationale: 'Untested public APIs pose significant risk to API consumers and application stability',
@@ -688,7 +688,7 @@ export class TechnicalDebtAnalyzer extends BaseAnalyzer {
       'Improve Branch Coverage',
       `Branch coverage is ${branchCoverage.percentage}% with ${uncoveredCount} uncovered branches. Target 80%+ for robust testing.`,
       {
-        priority: severity === 'critical' ? 'critical' : 'high',
+        priority: severity === 'critical' ? 'urgent' : 'high',
         effort: 'high',
         workflow: 'testing',
         rationale: 'Low branch coverage indicates many code paths are untested, increasing bug risk',
@@ -866,7 +866,7 @@ export class TechnicalDebtAnalyzer extends BaseAnalyzer {
 
       if (criticalOutdatedCount > 0) {
         documentationSeverity = 'critical';
-      } else if (mediumOutdatedCount > 2 && documentationSeverity !== 'critical') {
+      } else if (mediumOutdatedCount > 2) {
         documentationSeverity = 'high';
       } else if (mediumOutdatedCount > 0 && documentationSeverity === 'low') {
         documentationSeverity = 'medium';
@@ -1039,7 +1039,9 @@ export class TechnicalDebtAnalyzer extends BaseAnalyzer {
           examples.push(`${publicExports.length} untested public exports`);
           estimatedEffort = '3-5 days';
         } else if (untestedExports.length > 10) {
-          severity = Math.max(severity === 'low' ? 'medium' : severity, 'medium') as 'low' | 'medium' | 'high' | 'critical';
+          if (severity === 'low') {
+            severity = 'medium';
+          }
           examples.push(`${untestedExports.length} untested exports`);
           estimatedEffort = '1-2 days';
         }

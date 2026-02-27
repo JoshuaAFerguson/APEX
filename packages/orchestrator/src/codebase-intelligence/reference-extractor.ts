@@ -21,11 +21,12 @@ import type {
   RepositoryMap,
   CodeSymbol,
   SymbolReference,
-  SupportedLanguage,
-} from '@apexcli/core/types';
+} from '@apexcli/core';
+import { promises as fs } from 'fs';
+import * as nodePath from 'path';
 import { TreeSitterWrapper } from './parsers/tree-sitter-wrapper.js';
 import { SymbolResolver, type SymbolDefinition } from './symbol-resolver.js';
-import type { SyntaxNode } from './parsers/types.js';
+import { SupportedLanguage, type SyntaxNode } from './parsers/types.js';
 
 /**
  * Reference resolution result with confidence scoring
@@ -116,7 +117,7 @@ export class ReferenceExtractor {
     try {
       // Parse the source code
       const parseResult = await this.treeWrapper.parse(sourceCode, language);
-      if (!parseResult.success || !parseResult.tree) {
+      if (parseResult.hasErrors || !parseResult.tree) {
         console.warn(`Failed to parse ${filePath} for reference extraction`);
         return [];
       }
@@ -153,14 +154,13 @@ export class ReferenceExtractor {
   async resolveReference(reference: SymbolReference): Promise<ReferenceResolution | null> {
     try {
       // Try exact symbol resolution first
-      const exactMatch = await this.resolver.findDefinition(reference.symbolName, {
+      const exactMatches = this.resolver.findDefinition(reference.symbolName, {
         filePath: reference.sourceFile,
-        includeExternal: true,
       });
 
-      if (exactMatch) {
+      if (exactMatches.length > 0) {
         return {
-          definition: exactMatch,
+          definition: exactMatches[0],
           confidence: 0.9,
           method: 'exact',
         };
@@ -199,23 +199,29 @@ export class ReferenceExtractor {
    * @param filePath File to update references for
    */
   async updateRepositoryMapReferences(filePath: string): Promise<void> {
-    const file = this.repoMap.files.find(f => f.filePath === filePath);
+    const file = this.repoMap.files.find((f) => f.path === filePath);
     if (!file) {
       console.warn(`File ${filePath} not found in repository map`);
       return;
     }
 
     try {
+      // Read file content from disk since CodeFile doesn't store content
+      const absolutePath = nodePath.isAbsolute(filePath)
+        ? filePath
+        : nodePath.join(this.repoMap.rootPath, filePath);
+      const content = await fs.readFile(absolutePath, 'utf-8');
+
       // Extract references from the file
       const references = await this.extractReferencesFromFile(
         filePath,
-        file.content || '',
+        content,
         file.language as SupportedLanguage
       );
 
       // Add to global references (avoiding duplicates)
       for (const reference of references) {
-        const exists = this.repoMap.references.some(existing =>
+        const exists = this.repoMap.references.some((existing: SymbolReference) =>
           existing.symbolName === reference.symbolName &&
           existing.sourceFile === reference.sourceFile &&
           existing.sourceLine === reference.sourceLine &&
@@ -353,7 +359,7 @@ export class ReferenceExtractor {
 
     // Check against known patterns
     for (const [refType, patterns] of Object.entries(REFERENCE_PATTERNS)) {
-      if (patterns.includes(nodeType) || (parentType && patterns.includes(parentType))) {
+      if ((patterns as readonly string[]).includes(nodeType) || (parentType && (patterns as readonly string[]).includes(parentType))) {
         return refType as SymbolReference['referenceType'];
       }
     }
@@ -444,7 +450,7 @@ export class ReferenceExtractor {
    * Check if node represents an import statement
    */
   private isImportNode(node: SyntaxNode): boolean {
-    return REFERENCE_PATTERNS.import.includes(node.type);
+    return (REFERENCE_PATTERNS.import as readonly string[]).includes(node.type);
   }
 
   /**
@@ -603,12 +609,11 @@ export class ReferenceExtractor {
     }
 
     // Try to find definition in current repository
-    const definition = await this.resolver.findDefinition(symbolName, {
+    const definitions = this.resolver.findDefinition(symbolName, {
       filePath: context.filePath,
-      includeExternal: false,
     });
 
-    return definition?.filePath || null;
+    return definitions.length > 0 ? definitions[0].filePath : null;
   }
 
   /**
@@ -620,8 +625,8 @@ export class ReferenceExtractor {
     if (!originalName) return null;
 
     // Look for files that export this symbol
-    for (const file of this.repoMap.files) {
-      for (const symbol of file.symbols) {
+    for (const file of this.repoMap.files as any[]) {
+      for (const symbol of file.symbols as CodeSymbol[]) {
         if (symbol.name === originalName && symbol.exported) {
           return file.filePath;
         }
@@ -637,29 +642,33 @@ export class ReferenceExtractor {
   private async heuristicResolve(reference: SymbolReference): Promise<SymbolDefinition | null> {
     // Find symbols with similar names in related files
     const candidates = this.repoMap.files
-      .flatMap(file => file.symbols)
-      .filter(symbol =>
+      .flatMap((file) => file.symbols)
+      .filter((symbol: CodeSymbol) =>
         symbol.name === reference.symbolName ||
         this.isNameVariant(symbol.name, reference.symbolName)
       );
 
     // Score candidates based on context
-    const scored = candidates.map(symbol => ({
+    const scored = candidates.map((symbol: CodeSymbol) => ({
       symbol,
       score: this.calculateHeuristicScore(symbol, reference),
     }));
 
     // Return highest scoring candidate
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort((a: { score: number }, b: { score: number }) => b.score - a.score);
     const best = scored[0];
 
     if (best && best.score > 0.3) {
-      return {
-        filePath: best.symbol.filePath,
-        startLine: best.symbol.startLine,
-        endLine: best.symbol.endLine,
-        symbol: best.symbol,
-      };
+      const matchFile = this.repoMap.files.find((f) => f.path === best.symbol.filePath);
+      if (matchFile) {
+        return {
+          symbol: best.symbol,
+          file: matchFile,
+          filePath: best.symbol.filePath,
+          confidence: best.score,
+          isReExport: false,
+        };
+      }
     }
 
     return null;

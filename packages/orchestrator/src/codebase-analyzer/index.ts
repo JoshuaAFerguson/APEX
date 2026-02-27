@@ -23,7 +23,6 @@ export type {
   DomainAnalysisResult,
   CodebaseAnalyzerBase,
   AnalysisOutputWriter,
-  OutputFormat
 } from './types.js';
 
 // Export enums

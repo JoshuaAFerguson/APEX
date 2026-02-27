@@ -16,6 +16,8 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
+import { MockTransport } from './mock-transport.js';
+import { MockBehaviorEngine } from './mock-behavior-engine.js';
 import type {
   MockMCPServerConfig,
   MockMCPServerDefinition,
@@ -24,10 +26,6 @@ import type {
   MockErrorSimulationConfig,
   MockErrorScenarioPreset,
   MockMalformedResponseConfig,
-} from '@apexcli/core';
-import { MockTransport } from './mock-transport.js';
-import { MockBehaviorEngine } from './mock-behavior-engine.js';
-import type {
   MockTransportOptions,
   MockServerFacadeEvents,
   MockServerStats,

@@ -12,7 +12,7 @@ import type {
   TaskEffort,
   TaskUsage,
   TaskLog,
-  Artifact
+  TaskArtifact,
 } from '../../types.js';
 import type { TaskFactoryOptions, FixtureFactory } from '../types.js';
 
@@ -21,16 +21,12 @@ import type { TaskFactoryOptions, FixtureFactory } from '../types.js';
  */
 function createDefaultUsage(): TaskUsage {
   return {
-    tokenUsage: {
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadInputTokens: 0,
-      cacheWriteInputTokens: 0,
-    },
-    costEstimate: 0,
-    agentCosts: {},
-    stageCosts: {},
-    toolCosts: {},
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    estimatedCost: 0,
+    totalCostCents: 0,
+    executionTimeMs: 0,
   };
 }
 
@@ -43,7 +39,7 @@ function createDefaultLogs(): TaskLog[] {
       level: 'info',
       message: 'Task created',
       timestamp: new Date(),
-      source: 'orchestrator',
+      agent: 'orchestrator',
     },
   ];
 }
@@ -51,7 +47,7 @@ function createDefaultLogs(): TaskLog[] {
 /**
  * Creates default artifacts array
  */
-function createDefaultArtifacts(): Artifact[] {
+function createDefaultArtifacts(): TaskArtifact[] {
   return [];
 }
 
@@ -93,7 +89,6 @@ export const createTask: FixtureFactory<Task, TaskFactoryOptions> = (
     resumeAttempts: 0,
     createdAt: now,
     updatedAt: now,
-    startedAt: overrides.status !== 'pending' ? now : undefined,
     completedAt: overrides.status === 'completed' || overrides.status === 'failed' ? now : undefined,
     usage: options.includeUsage !== false ? createDefaultUsage() : undefined,
     logs: options.includeLogs !== false ? createDefaultLogs() : [],
@@ -113,7 +108,7 @@ export const createPendingTask: FixtureFactory<Task> = (overrides = {}) =>
  * Creates a running task fixture
  */
 export const createRunningTask: FixtureFactory<Task> = (overrides = {}) =>
-  createTask(overrides, { status: 'running' });
+  createTask(overrides, { status: 'in-progress' });
 
 /**
  * Creates a completed task fixture
@@ -158,32 +153,12 @@ export const createTaskWithWorkflow = (workflow: string, overrides: Partial<Task
 export const createHighUsageTask: FixtureFactory<Task> = (overrides = {}) =>
   createTask({
     usage: {
-      tokenUsage: {
-        inputTokens: 50000,
-        outputTokens: 25000,
-        cacheReadInputTokens: 10000,
-        cacheWriteInputTokens: 5000,
-      },
-      costEstimate: 15.50,
-      agentCosts: {
-        'planner': 2.50,
-        'architect': 3.75,
-        'developer': 6.25,
-        'reviewer': 2.00,
-        'tester': 1.00,
-      },
-      stageCosts: {
-        'planning': 2.50,
-        'architecture': 3.75,
-        'implementation': 6.25,
-        'review': 2.00,
-        'testing': 1.00,
-      },
-      toolCosts: {
-        'Read': 0.25,
-        'Write': 0.50,
-        'Bash': 1.25,
-      },
+      inputTokens: 50000,
+      outputTokens: 25000,
+      totalTokens: 75000,
+      estimatedCost: 15.50,
+      totalCostCents: 1550,
+      executionTimeMs: 120000,
     },
     ...overrides,
   });
@@ -198,39 +173,39 @@ export const createTaskWithLogs: FixtureFactory<Task> = (overrides = {}) =>
         level: 'info',
         message: 'Task created',
         timestamp: new Date(Date.now() - 60000),
-        source: 'orchestrator',
+        agent: 'orchestrator',
       },
       {
         level: 'info',
         message: 'Planning stage started',
         timestamp: new Date(Date.now() - 45000),
-        source: 'planner',
+        agent: 'planner',
         metadata: { stage: 'planning' },
       },
       {
         level: 'debug',
         message: 'Analyzing project structure',
         timestamp: new Date(Date.now() - 40000),
-        source: 'planner',
+        agent: 'planner',
       },
       {
         level: 'info',
         message: 'Architecture stage started',
         timestamp: new Date(Date.now() - 30000),
-        source: 'architect',
+        agent: 'architect',
         metadata: { stage: 'architecture' },
       },
       {
         level: 'warn',
         message: 'Potential breaking change detected',
         timestamp: new Date(Date.now() - 25000),
-        source: 'architect',
+        agent: 'architect',
       },
       {
         level: 'info',
         message: 'Implementation stage started',
         timestamp: new Date(Date.now() - 15000),
-        source: 'developer',
+        agent: 'developer',
         metadata: { stage: 'implementation' },
       },
     ],
@@ -247,28 +222,19 @@ export const createTaskWithArtifacts: FixtureFactory<Task> = (overrides = {}) =>
         type: 'file',
         name: 'implementation-plan.md',
         path: '/test/project/docs/implementation-plan.md',
-        size: 2048,
-        mimeType: 'text/markdown',
         createdAt: new Date(Date.now() - 30000),
-        description: 'Implementation plan document',
       },
       {
         type: 'file',
         name: 'feature.js',
         path: '/test/project/src/feature.js',
-        size: 4096,
-        mimeType: 'text/javascript',
         createdAt: new Date(Date.now() - 15000),
-        description: 'Main feature implementation',
       },
       {
         type: 'diff',
         name: 'changes.patch',
         path: '/test/project/changes.patch',
-        size: 1024,
-        mimeType: 'text/plain',
         createdAt: new Date(Date.now() - 5000),
-        description: 'Code changes patch',
       },
     ],
     ...overrides,
@@ -307,11 +273,11 @@ export const TaskPresets = {
 
   /** Tasks with different effort estimates */
   efforts: {
-    minimal: () => createTask({ effort: 'minimal' as TaskEffort }),
+    xs: () => createTask({ effort: 'xs' as TaskEffort }),
     small: () => createTask({ effort: 'small' as TaskEffort }),
     medium: () => createTask({ effort: 'medium' as TaskEffort }),
     large: () => createTask({ effort: 'large' as TaskEffort }),
-    xlarge: () => createTask({ effort: 'xlarge' as TaskEffort }),
+    xl: () => createTask({ effort: 'xl' as TaskEffort }),
   },
 
   /** Tasks with rich data for testing */

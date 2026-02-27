@@ -36,7 +36,7 @@ import type {
   MockErrorSimulationConfig,
   MockErrorScenarioPreset,
   MCPServerCapabilities,
-} from '@apexcli/core';
+} from './types.js';
 import { MockMCPServerFacade } from './mock-server-facade.js';
 import { MockMCPServerBuilder } from './mock-mcp-server-builder.js';
 import {

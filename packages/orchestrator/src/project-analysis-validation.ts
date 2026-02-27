@@ -8,6 +8,7 @@ import { ComplexityHotspot, CodeSmell, DuplicatePattern } from '@apexcli/core';
 function createTestAnalysis(): ProjectAnalysis {
   const complexityHotspot: ComplexityHotspot = {
     file: 'src/complex-service.ts',
+    functionName: 'processComplexData',
     cyclomaticComplexity: 25,
     cognitiveComplexity: 30,
     lineCount: 250,

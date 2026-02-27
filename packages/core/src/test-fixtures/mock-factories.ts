@@ -65,7 +65,7 @@ export function createMockTask(overrides: Partial<Task> = {}): Task {
     description: 'Mock task description',
     acceptanceCriteria: 'Task should complete successfully',
     workflow: 'feature-development',
-    autonomy: 'supervised',
+    autonomy: 'review-before-commit',
     status: 'pending',
     priority: 'normal',
     effort: 'medium',
@@ -160,7 +160,6 @@ export function createMockAgentDefinition(overrides: Partial<AgentDefinition> = 
   const baseAgent: AgentDefinition = {
     name: 'mock-agent',
     model: 'sonnet',
-    role: 'Mock Agent Role',
     tools: ['task', 'grep', 'read', 'edit', 'write'],
     description: 'Mock agent for testing purposes',
     prompt: 'You are a mock agent used for testing.'
@@ -177,17 +176,14 @@ export function createMockWorkflowStage(overrides: Partial<WorkflowStage> = {}):
     name: 'mock-stage',
     agent: 'mock-agent',
     description: 'Mock workflow stage',
-    prompt: 'Execute mock stage operations',
-    tools: ['task', 'read', 'write'],
     inputs: undefined,
     outputs: undefined,
-    gates: undefined,
-    autonomy: undefined,
-    retries: undefined,
-    timeout: undefined,
     parallel: undefined,
-    conditions: undefined,
-    isolation: undefined
+    dependsOn: undefined,
+    condition: undefined,
+    actions: undefined,
+    gate: undefined,
+    maxRetries: undefined,
   };
 
   return { ...baseStage, ...overrides };
@@ -198,12 +194,12 @@ export function createMockWorkflowStage(overrides: Partial<WorkflowStage> = {}):
  */
 export function createMockWorkflowGate(overrides: Partial<WorkflowGate> = {}): WorkflowGate {
   const baseGate: WorkflowGate = {
-    type: 'approval',
-    condition: 'always',
-    title: 'Mock Approval Gate',
+    id: 'gate-mock-' + Math.random().toString(36).substr(2, 9),
+    trigger: 'stage:mock-stage:completed',
+    name: 'Mock Approval Gate',
     description: 'Mock gate for testing',
     timeout: 300000,
-    required: true
+    required: true,
   };
 
   return { ...baseGate, ...overrides };
@@ -217,9 +213,8 @@ export function createMockWorkflowDefinition(overrides: Partial<WorkflowDefiniti
     name: 'mock-workflow',
     description: 'Mock workflow for testing',
     stages: [createMockWorkflowStage()],
-    autonomy: undefined,
     gates: undefined,
-    isolation: undefined
+    isolation: undefined,
   };
 
   return { ...baseWorkflow, ...overrides };
@@ -230,10 +225,10 @@ export function createMockWorkflowDefinition(overrides: Partial<WorkflowDefiniti
  */
 export function createMockPermission(overrides: Partial<Permission> = {}): Permission {
   const basePermission: Permission = {
-    level: 'full',
-    scope: ['read', 'write'],
-    paths: ['/allowed/**'],
-    restrictions: undefined
+    tool: 'Read',
+    level: 'allow-always',
+    scope: '/allowed/**',
+    createdAt: new Date(),
   };
 
   return { ...basePermission, ...overrides };
@@ -286,11 +281,9 @@ export function createMockContainerConfig(overrides: Partial<ContainerConfig> = 
 export function createMockIsolationConfig(overrides: Partial<IsolationConfig> = {}): IsolationConfig {
   const baseConfig: IsolationConfig = {
     mode: 'worktree',
-    worktreeName: undefined,
-    worktreeBaseBranch: undefined,
-    cleanupOnComplete: undefined,
-    preserveGitState: undefined,
-    container: undefined
+    cleanupOnComplete: true,
+    preserveOnFailure: false,
+    container: undefined,
   };
 
   return { ...baseConfig, ...overrides };
@@ -302,10 +295,10 @@ export function createMockIsolationConfig(overrides: Partial<IsolationConfig> = 
 export function createMockWorkspaceConfig(overrides: Partial<WorkspaceConfig> = {}): WorkspaceConfig {
   const baseConfig: WorkspaceConfig = {
     strategy: 'directory',
-    directory: undefined,
-    isolation: undefined,
+    path: undefined,
     container: undefined,
-    cleanup: undefined
+    cleanup: true,
+    preserveOnFailure: false,
   };
 
   return { ...baseConfig, ...overrides };
@@ -317,26 +310,6 @@ export function createMockWorkspaceConfig(overrides: Partial<WorkspaceConfig> = 
 export function createMockProjectConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
   const baseConfig: ProjectConfig = {
     name: 'mock-project',
-    description: 'Mock project for testing',
-    agents: {},
-    workflows: {},
-    autonomy: undefined,
-    limits: undefined,
-    workspace: undefined,
-    git: undefined,
-    models: undefined,
-    ui: undefined,
-    linter: undefined,
-    codeQuality: undefined,
-    secretScanning: undefined,
-    service: undefined,
-    daemon: undefined,
-    logging: undefined,
-    mcp: undefined,
-    tdd: undefined,
-    visualRegression: undefined,
-    slack: undefined,
-    api: undefined
   };
 
   return { ...baseConfig, ...overrides };
@@ -350,17 +323,10 @@ export function createMockApexConfig(overrides: Partial<ApexConfig> = {}): ApexC
     version: '0.5.0',
     project: createMockProjectConfig(),
     tools: undefined,
-    permissions: undefined,
-    allowedPaths: undefined,
-    requiredTests: undefined,
-    approvalRules: undefined,
-    policies: undefined,
-    guardrails: undefined,
-    hooks: undefined,
-    toolHooks: undefined,
-    repairLoop: undefined,
-    autoFix: undefined,
-    rules: undefined
+    autonomy: undefined,
+    limits: undefined,
+    git: undefined,
+    repair: undefined,
   };
 
   return { ...baseConfig, ...overrides };
@@ -453,8 +419,8 @@ export function createMockComplexWorkflow(overrides: Partial<WorkflowDefinition>
       createMockWorkflowStage({ name: 'review', agent: 'reviewer' })
     ],
     gates: [
-      createMockWorkflowGate({ type: 'approval', title: 'Plan Approval' }),
-      createMockWorkflowGate({ type: 'policy', title: 'Security Check' })
+      createMockWorkflowGate({ id: 'plan-approval', name: 'Plan Approval', trigger: 'stage:planning:completed' }),
+      createMockWorkflowGate({ id: 'security-check', name: 'Security Check', trigger: 'stage:review:completed' })
     ],
     ...overrides
   });

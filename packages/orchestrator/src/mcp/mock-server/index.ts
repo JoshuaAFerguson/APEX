@@ -70,6 +70,29 @@
 
 // Types
 export type {
+  // Mock configuration types
+  MockTransportType,
+  MCPServerCapabilities,
+  MockMCPServerConfig,
+  MockToolResultContent,
+  MockToolHandler,
+  MockDynamicHandlerFunction,
+  MockDynamicHandler,
+  MockResponseSequence,
+  MockResponseDelay,
+  MockErrorInjection,
+  MockNotificationTrigger,
+  MockStateTransition,
+  MockStateBehavior,
+  MockStatefulBehaviorConfig,
+  MockBehaviorConfig,
+  MockScenario,
+  MockMCPServerDefinition,
+  MockErrorScenarioPreset,
+  MockNetworkConditions,
+  MockErrorSimulationConfig,
+  MockMalformedResponseConfig,
+  // Internal types
   RecordedRequest,
   RecordedNotification,
   MockTransportOptions,
@@ -94,7 +117,7 @@ export {
   ERROR_SIMULATION_PRESETS,
   getErrorPreset,
   mergePresetWithOverrides,
-  getAvailablePresets,
+  getAvailablePresets as getAvailableErrorPresets,
   getPresetsByCategory,
 } from './error-presets.js';
 

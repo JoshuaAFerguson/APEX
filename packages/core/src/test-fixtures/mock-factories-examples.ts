@@ -130,7 +130,7 @@ export function exampleComprehensiveMocking() {
   console.assert(typeof agent.name === 'string');
   console.assert(Array.isArray(workflow.stages));
   console.assert(typeof stage.name === 'string');
-  console.assert(typeof gate.type === 'string');
+  console.assert(typeof gate.id === 'string');
   console.assert(typeof permission.level === 'string');
   console.assert(typeof container.image === 'string');
   console.assert(typeof workspace.strategy === 'string');

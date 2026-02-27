@@ -25,13 +25,11 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import * as yaml from 'yaml';
 import { CustomToolConfigSchema, type CustomToolConfig } from '../../../types.js';
 
-// ESM-compatible __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Use __dirname directly (CommonJS target)
+const fixturesDir = __dirname;
 
 /**
  * Fixture categories
@@ -51,7 +49,7 @@ const fixtureCache = new Map<string, unknown>();
  * @returns Absolute path to the fixture file
  */
 export function getFixturePath(category: FixtureCategory, filename: string): string {
-  return path.join(__dirname, category, filename);
+  return path.join(fixturesDir, category, filename);
 }
 
 /**
@@ -60,7 +58,7 @@ export function getFixturePath(category: FixtureCategory, filename: string): str
  * @returns Absolute path to the fixtures directory
  */
 export function getFixturesDirectory(): string {
-  return __dirname;
+  return fixturesDir;
 }
 
 /**
@@ -108,7 +106,7 @@ export async function loadFixtureFile<T = unknown>(
 export async function loadCategoryFixtures(
   category: FixtureCategory
 ): Promise<Map<string, unknown>> {
-  const categoryPath = path.join(__dirname, category);
+  const categoryPath = path.join(fixturesDir, category);
   const fixtures = new Map<string, unknown>();
 
   try {

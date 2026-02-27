@@ -6,7 +6,7 @@
  * setup is correct for the comprehensive test suite.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { BrowserTool } from './browser-tool';
 import type {
   BrowserOperation,
@@ -190,7 +190,7 @@ describe('Browser Tool Test Verification', () => {
           title: 'Example Page',
           executionTime: 150,
           permissionGranted: true,
-          permissionLevel: 'full',
+          permissionLevel: 'allow-always',
           target: 'https://example.com',
           consoleMessages: [],
           runtimeErrors: [],

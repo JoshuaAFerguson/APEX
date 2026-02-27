@@ -63,11 +63,9 @@ function createTestAnalysis(): ProjectAnalysis {
       codeSmells: [
         {
           file: 'smelly.ts',
-          type: 'god-class',
+          type: 'large-class',
           severity: 'medium' as const,
-          line: 1,
-          description: 'Class with too many responsibilities',
-          suggestion: 'Break into smaller classes'
+          details: 'Class with too many responsibilities. Suggestion: Break into smaller classes'
         }
       ]
     },
@@ -93,7 +91,8 @@ function createTestAnalysis(): ProjectAnalysis {
         uncoveredBranches: []
       },
       antiPatterns: [],
-      untestedExports: []
+      untestedExports: [],
+      missingIntegrationTests: []
     }
   };
 }

@@ -17,6 +17,17 @@ import type {
   ApprovalGate,
 } from '../../types.js';
 import type { FixtureFactory } from '../types.js';
+
+/**
+ * Extended project config for test fixtures that includes additional fields
+ * beyond what the base ProjectConfig schema requires.
+ */
+interface ExtendedProjectConfig extends ProjectConfig {
+  description?: string;
+  autonomy?: AutonomyConfig;
+  agents?: Record<string, AgentDefinition>;
+  workflows?: Record<string, WorkflowDefinition>;
+}
 import {
   createAutonomyConfig,
   createFullAutoConfig,
@@ -85,10 +96,10 @@ export interface PermissionConfigFactoryOptions {
  * });
  * ```
  */
-export const createProjectConfig: FixtureFactory<ProjectConfig, ProjectConfigFactoryOptions> = (
+export const createProjectConfig: FixtureFactory<ExtendedProjectConfig, ProjectConfigFactoryOptions> = (
   overrides = {},
   options = {}
-): ProjectConfig => {
+): ExtendedProjectConfig => {
   const {
     includeAutonomy = true,
     includeWorkflows = true,
@@ -99,7 +110,7 @@ export const createProjectConfig: FixtureFactory<ProjectConfig, ProjectConfigFac
     workflowCount = 2,
   } = options;
 
-  const config: ProjectConfig = {
+  const config: ExtendedProjectConfig = {
     name: 'test-project',
     description: 'Test project configuration',
     ...overrides,
@@ -132,7 +143,7 @@ export const createProjectConfig: FixtureFactory<ProjectConfig, ProjectConfigFac
 /**
  * Creates autonomy-permission integration configurations
  */
-export const createIntegratedConfig: FixtureFactory<ProjectConfig> = (overrides = {}) => {
+export const createIntegratedConfig: FixtureFactory<ExtendedProjectConfig> = (overrides = {}) => {
   return createProjectConfig({
     name: 'integrated-test-project',
     description: 'Test project with integrated autonomy and permissions',
@@ -153,7 +164,7 @@ export const createIntegratedConfig: FixtureFactory<ProjectConfig> = (overrides 
 /**
  * Creates a project config optimized for full automation
  */
-export const createFullAutoProjectConfig: FixtureFactory<ProjectConfig> = (overrides = {}) =>
+export const createFullAutoProjectConfig: FixtureFactory<ExtendedProjectConfig> = (overrides = {}) =>
   createProjectConfig({
     name: 'full-auto-project',
     description: 'Fully autonomous project configuration',
@@ -167,7 +178,7 @@ export const createFullAutoProjectConfig: FixtureFactory<ProjectConfig> = (overr
 /**
  * Creates a project config with review-before-commit autonomy
  */
-export const createReviewBeforeCommitProjectConfig: FixtureFactory<ProjectConfig> = (overrides = {}) =>
+export const createReviewBeforeCommitProjectConfig: FixtureFactory<ExtendedProjectConfig> = (overrides = {}) =>
   createProjectConfig({
     name: 'review-before-commit-project',
     description: 'Project with review-before-commit autonomy',
@@ -181,7 +192,7 @@ export const createReviewBeforeCommitProjectConfig: FixtureFactory<ProjectConfig
 /**
  * Creates a project config with maximum review requirements
  */
-export const createReviewAllProjectConfig: FixtureFactory<ProjectConfig> = (overrides = {}) =>
+export const createReviewAllProjectConfig: FixtureFactory<ExtendedProjectConfig> = (overrides = {}) =>
   createProjectConfig({
     name: 'review-all-project',
     description: 'Project with review-all autonomy level',
@@ -255,12 +266,10 @@ export const createResourceConstrainedConfigs = () => ({
     autonomy: createAutonomyConfig({
       level: 'review-before-commit',
       limits: {
-        maxDuration: 15, // 15 minutes
+        maxTimeMs: 900000, // 15 minutes
         maxTokens: 10000,
         maxCost: 1.00,
-        maxRetries: 1,
-        maxFileSize: 1048576, // 1MB
-        maxFiles: 10,
+        maxFilesCreated: 10,
       },
     }),
   }),
@@ -270,12 +279,10 @@ export const createResourceConstrainedConfigs = () => ({
     autonomy: createAutonomyConfig({
       level: 'review-before-commit',
       limits: {
-        maxDuration: 60, // 1 hour
+        maxTimeMs: 3600000, // 1 hour
         maxTokens: 100000,
         maxCost: 10.00,
-        maxRetries: 3,
-        maxFileSize: 10485760, // 10MB
-        maxFiles: 100,
+        maxFilesCreated: 100,
       },
     }),
   }),
@@ -285,12 +292,10 @@ export const createResourceConstrainedConfigs = () => ({
     autonomy: createAutonomyConfig({
       level: 'full-auto',
       limits: {
-        maxDuration: 240, // 4 hours
+        maxTimeMs: 14400000, // 4 hours
         maxTokens: 1000000,
         maxCost: 100.00,
-        maxRetries: 10,
-        maxFileSize: 104857600, // 100MB
-        maxFiles: 1000,
+        maxFilesCreated: 1000,
       },
     }),
   }),
@@ -430,29 +435,24 @@ function createDefaultWorkflows(count: number = 2): Record<string, WorkflowDefin
           name: 'planning',
           description: 'Plan the feature implementation',
           agent: 'developer',
-          tools: ['Read', 'Write'],
-          timeout: 30,
         },
         {
           name: 'implementation',
           description: 'Implement the feature',
           agent: 'developer',
-          tools: ['Read', 'Write', 'Edit', 'Bash'],
-          timeout: 120,
+          dependsOn: ['planning'],
         },
         {
           name: 'testing',
           description: 'Test the implementation',
           agent: 'tester',
-          tools: ['Read', 'Write', 'Bash'],
-          timeout: 60,
+          dependsOn: ['implementation'],
         },
         {
           name: 'review',
           description: 'Review the implementation',
           agent: 'reviewer',
-          tools: ['Read', 'Grep'],
-          timeout: 45,
+          dependsOn: ['testing'],
         },
       ],
     };
@@ -467,22 +467,18 @@ function createDefaultWorkflows(count: number = 2): Record<string, WorkflowDefin
           name: 'investigation',
           description: 'Investigate the bug',
           agent: 'developer',
-          tools: ['Read', 'Grep', 'Bash'],
-          timeout: 45,
         },
         {
           name: 'fix',
           description: 'Implement the fix',
           agent: 'developer',
-          tools: ['Read', 'Write', 'Edit'],
-          timeout: 60,
+          dependsOn: ['investigation'],
         },
         {
           name: 'testing',
           description: 'Test the fix',
           agent: 'tester',
-          tools: ['Read', 'Write', 'Bash'],
-          timeout: 30,
+          dependsOn: ['fix'],
         },
       ],
     };
@@ -538,12 +534,10 @@ export const ConfigPresets = {
       autonomy: createAutonomyConfig({
         level: 'full-auto',
         limits: {
-          maxDuration: 5,
+          maxTimeMs: 300000, // 5 minutes
           maxTokens: 1000,
           maxCost: 0.10,
-          maxRetries: 1,
-          maxFileSize: 1024,
-          maxFiles: 5,
+          maxFilesCreated: 5,
         },
       }),
     }),
@@ -553,12 +547,10 @@ export const ConfigPresets = {
       autonomy: createAutonomyConfig({
         level: 'review-before-commit',
         limits: {
-          maxDuration: 15,
+          maxTimeMs: 900000, // 15 minutes
           maxTokens: 10000,
           maxCost: 1.00,
-          maxRetries: 2,
-          maxFileSize: 10240,
-          maxFiles: 20,
+          maxFilesCreated: 20,
         },
       }),
     }),
@@ -568,12 +560,10 @@ export const ConfigPresets = {
       autonomy: createAutonomyConfig({
         level: 'review-all',
         limits: {
-          maxDuration: 30,
+          maxTimeMs: 1800000, // 30 minutes
           maxTokens: 50000,
           maxCost: 5.00,
-          maxRetries: 3,
-          maxFileSize: 51200,
-          maxFiles: 50,
+          maxFilesCreated: 50,
         },
       }),
     }),
@@ -598,7 +588,7 @@ export function validateProjectConfig(config: ProjectConfig): boolean {
 /**
  * Creates a collection of project configs with all autonomy levels
  */
-export function createAutonomyProjectCollection(): Record<AutonomyLevel, ProjectConfig> {
+export function createAutonomyProjectCollection(): Record<AutonomyLevel, ExtendedProjectConfig> {
   return {
     'full-auto': createFullAutoProjectConfig(),
     'review-before-commit': createReviewBeforeCommitProjectConfig(),
@@ -610,9 +600,9 @@ export function createAutonomyProjectCollection(): Record<AutonomyLevel, Project
  * Creates project configs for A/B testing different autonomy approaches
  */
 export function createAutonomyComparisonConfigs(): {
-  conservative: ProjectConfig;
-  moderate: ProjectConfig;
-  aggressive: ProjectConfig;
+  conservative: ExtendedProjectConfig;
+  moderate: ExtendedProjectConfig;
+  aggressive: ExtendedProjectConfig;
 } {
   return {
     conservative: createReviewAllProjectConfig({

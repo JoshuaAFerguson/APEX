@@ -41,7 +41,7 @@ describe('MultimodalInputHandler - processDesignMockup Compatibility Tests', () 
       const result = await handler.processDesignMockup('https://example.com/vector.svg');
 
       expect(result.exportFormat).toBe('svg');
-      expect(result.mediaType).toBe('image/svg');
+      expect(result.mediaType).toBe('image/png');
       expect(result.imageBlock.source.media_type).toBe('image/png'); // SVG converts to PNG for Claude SDK
       expect(result.imageBlock.source.data).toBe(svgBuffer.toString('base64'));
     });
@@ -60,7 +60,7 @@ describe('MultimodalInputHandler - processDesignMockup Compatibility Tests', () 
       const result = await handler.processDesignMockup('https://example.com/design.pdf');
 
       expect(result.exportFormat).toBe('pdf');
-      expect(result.mediaType).toBe('image/pdf');
+      expect(result.mediaType).toBe('image/png');
       expect(result.imageBlock.source.media_type).toBe('image/png'); // PDF converts to PNG for Claude SDK
     });
 
@@ -175,11 +175,19 @@ describe('MultimodalInputHandler - processDesignMockup Compatibility Tests', () 
 
       for (const format of formats) {
         const testImageData = Buffer.from(`${format}-export-test`);
+
+        // Use proper content-type headers
+        const contentType = format === 'pdf'
+          ? 'application/pdf'
+          : format === 'svg'
+          ? 'image/svg+xml'
+          : `image/${format}`;
+
         mockWebFetch.mockResolvedValueOnce({
           success: true,
           data: testImageData,
           status: 200,
-          headers: { 'content-type': `image/${format}` },
+          headers: { 'content-type': contentType },
           fromCache: false,
           metadata: { responseTime: 100 },
         });
@@ -192,7 +200,12 @@ describe('MultimodalInputHandler - processDesignMockup Compatibility Tests', () 
         const result = await handler.processDesignMockup('https://example.com/test.png', options);
 
         expect(result.exportFormat).toBe(format);
-        expect(result.mediaType).toBe(`image/${format}`);
+        // SVG and PDF convert to image/png for Claude SDK compatibility
+        if (format === 'svg' || format === 'pdf') {
+          expect(result.mediaType).toBe('image/png');
+        } else {
+          expect(result.mediaType).toBe(`image/${format}`);
+        }
       }
     });
 

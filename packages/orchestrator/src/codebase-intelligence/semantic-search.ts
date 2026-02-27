@@ -25,7 +25,7 @@ import type {
   CodeSymbol,
   CodeFile,
   SymbolType,
-} from '@apexcli/core/types';
+} from '@apexcli/core';
 
 /**
  * Configuration options for semantic search operations
@@ -263,10 +263,10 @@ export class SemanticSearch {
         index.byType.get(symbol.type)!.push(symbol);
 
         // Index by file
-        if (!index.byFile.has(file.filePath)) {
-          index.byFile.set(file.filePath, []);
+        if (!index.byFile.has(file.path)) {
+          index.byFile.set(file.path, []);
         }
-        index.byFile.get(file.filePath)!.push(symbol);
+        index.byFile.get(file.path)!.push(symbol);
 
         // Index keywords from documentation
         if (symbol.documentation) {
@@ -504,7 +504,7 @@ export class SemanticSearch {
    * Find the file containing a symbol
    */
   private findFileForSymbol(symbol: CodeSymbol): CodeFile | undefined {
-    return this.repoMap.files.find(file => file.filePath === symbol.filePath);
+    return this.repoMap.files.find((file: CodeFile) => file.path === symbol.filePath);
   }
 
   /**

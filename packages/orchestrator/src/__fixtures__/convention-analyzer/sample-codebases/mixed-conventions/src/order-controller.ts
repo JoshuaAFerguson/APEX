@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Mixed conventions - kebab-case file name
  */

@@ -143,7 +143,7 @@ export {
   createTestingStage,
   createReviewStage,
   createDeploymentStage,
-  createApprovalGate,
+  createApprovalGate as createWorkflowApprovalGate,
   createQualityGate,
   createSecurityGate,
   createDeploymentGate,

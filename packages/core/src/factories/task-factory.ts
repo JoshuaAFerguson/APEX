@@ -12,6 +12,7 @@ import type {
   TaskLog,
   TaskArtifact,
   AgentMessage,
+  AgentContentBlock,
   WorkspaceConfig,
   TaskSessionData,
   ThoughtCapture,
@@ -105,22 +106,14 @@ export function createTaskArtifact(overrides: TaskArtifactOverrides = {}): TaskA
 // ============================================================================
 
 export interface AgentMessageOverrides {
-  role?: 'user' | 'assistant';
-  content?: string;
-  timestamp?: Date;
-  agent?: string;
-  stage?: string;
-  metadata?: Record<string, unknown>;
+  type?: 'assistant' | 'user' | 'system';
+  content?: AgentContentBlock[];
 }
 
 export function createAgentMessage(overrides: AgentMessageOverrides = {}): AgentMessage {
   const defaults: AgentMessage = {
-    role: 'assistant',
-    content: 'I will start implementing the requested feature.',
-    timestamp: new Date(),
-    agent: 'developer',
-    stage: 'implementation',
-    metadata: { confidence: 0.95 },
+    type: 'assistant',
+    content: [{ type: 'text', text: 'I will start implementing the requested feature.' }],
   };
 
   return { ...defaults, ...overrides };
@@ -131,33 +124,18 @@ export function createAgentMessage(overrides: AgentMessageOverrides = {}): Agent
 // ============================================================================
 
 export interface WorkspaceConfigOverrides {
-  type?: 'local' | 'container' | 'remote';
+  strategy?: 'worktree' | 'directory' | 'container' | 'none';
   path?: string;
-  isolation?: boolean;
   cleanup?: boolean;
-  environment?: Record<string, string>;
-  resources?: {
-    cpu?: number;
-    memory?: string;
-    storage?: string;
-  };
+  preserveOnFailure?: boolean;
 }
 
 export function createWorkspaceConfig(overrides: WorkspaceConfigOverrides = {}): WorkspaceConfig {
   const defaults: WorkspaceConfig = {
-    type: 'local',
+    strategy: 'worktree',
     path: '/tmp/apex-workspace',
-    isolation: true,
     cleanup: true,
-    environment: {
-      NODE_ENV: 'development',
-      PATH: '/usr/local/bin:/usr/bin:/bin',
-    },
-    resources: {
-      cpu: 2,
-      memory: '4Gi',
-      storage: '10Gi',
-    },
+    preserveOnFailure: false,
   };
 
   return { ...defaults, ...overrides };
@@ -168,22 +146,25 @@ export function createWorkspaceConfig(overrides: WorkspaceConfigOverrides = {}):
 // ============================================================================
 
 export interface TaskSessionDataOverrides {
-  checkpoint?: string;
-  state?: Record<string, unknown>;
-  lastSaved?: Date;
-  version?: number;
+  lastCheckpoint?: Date;
+  contextSummary?: string;
+  stageState?: Record<string, unknown>;
+  resumePoint?: {
+    stage: string;
+    stepIndex: number;
+    metadata?: Record<string, unknown>;
+  };
 }
 
 export function createTaskSessionData(overrides: TaskSessionDataOverrides = {}): TaskSessionData {
   const defaults: TaskSessionData = {
-    checkpoint: 'implementation_started',
-    state: {
+    lastCheckpoint: new Date(),
+    contextSummary: 'Implementation started for login component',
+    stageState: {
       filesModified: ['src/components/Login.tsx'],
       currentStep: 'writing_tests',
       progress: 0.6,
     },
-    lastSaved: new Date(),
-    version: 1,
   };
 
   return { ...defaults, ...overrides };
@@ -196,24 +177,22 @@ export function createTaskSessionData(overrides: TaskSessionDataOverrides = {}):
 export interface ThoughtCaptureOverrides {
   id?: string;
   content?: string;
-  category?: string;
-  timestamp?: Date;
-  agent?: string;
-  stage?: string;
-  confidence?: number;
-  metadata?: Record<string, unknown>;
+  tags?: string[];
+  priority?: 'low' | 'medium' | 'high';
+  taskId?: string;
+  createdAt?: Date;
+  implementedAt?: Date;
+  status?: 'captured' | 'planned' | 'implemented' | 'discarded';
 }
 
 export function createThoughtCapture(overrides: ThoughtCaptureOverrides = {}): ThoughtCapture {
   const defaults: ThoughtCapture = {
     id: `thought_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     content: 'I should consider edge cases for user input validation',
-    category: 'implementation',
-    timestamp: new Date(),
-    agent: 'developer',
-    stage: 'implementation',
-    confidence: 0.8,
-    metadata: { priority: 'high', actionable: true },
+    tags: ['implementation', 'edge-cases'],
+    priority: 'high',
+    createdAt: new Date(),
+    status: 'captured',
   };
 
   return { ...defaults, ...overrides };
@@ -224,37 +203,41 @@ export function createThoughtCapture(overrides: ThoughtCaptureOverrides = {}): T
 // ============================================================================
 
 export interface IterationHistoryOverrides {
-  iterations?: Array<{
-    version: number;
-    description: string;
+  entries?: Array<{
+    id: string;
+    feedback: string;
     timestamp: Date;
-    changes: string[];
-    reason: string;
+    diffSummary?: string;
+    stage?: string;
+    modifiedFiles?: string[];
+    agent?: string;
   }>;
-  currentVersion?: number;
   totalIterations?: number;
+  lastIterationAt?: Date;
 }
 
 export function createIterationHistory(overrides: IterationHistoryOverrides = {}): IterationHistory {
   const defaults: IterationHistory = {
-    iterations: [
+    entries: [
       {
-        version: 1,
-        description: 'Initial implementation',
+        id: 'iter-1',
+        feedback: 'Initial implementation',
         timestamp: new Date(Date.now() - 3600000),
-        changes: ['Created LoginComponent'],
-        reason: 'Initial task requirements',
+        diffSummary: 'Created LoginComponent',
+        stage: 'implementation',
+        modifiedFiles: ['src/components/LoginComponent.tsx'],
       },
       {
-        version: 2,
-        description: 'Added validation',
+        id: 'iter-2',
+        feedback: 'Added validation',
         timestamp: new Date(),
-        changes: ['Added form validation', 'Added error handling'],
-        reason: 'Feedback from code review',
+        diffSummary: 'Added form validation and error handling',
+        stage: 'implementation',
+        modifiedFiles: ['src/components/LoginComponent.tsx', 'src/utils/validation.ts'],
       },
     ],
-    currentVersion: 2,
     totalIterations: 2,
+    lastIterationAt: new Date(),
   };
 
   return { ...defaults, ...overrides };
@@ -265,25 +248,29 @@ export function createIterationHistory(overrides: IterationHistoryOverrides = {}
 // ============================================================================
 
 export interface ApprovalStateOverrides {
-  required?: boolean;
-  pending?: boolean;
-  approved?: boolean;
+  id?: string;
+  taskId?: string;
+  gateName?: string;
+  status?: 'pending' | 'approved' | 'denied';
   approver?: string;
   requestedAt?: Date;
   respondedAt?: Date;
-  reason?: string;
-  metadata?: Record<string, unknown>;
+  comment?: string;
+  context?: Record<string, unknown>;
+  stage?: string;
+  agent?: string;
+  timeoutMinutes?: number;
 }
 
 export function createApprovalState(overrides: ApprovalStateOverrides = {}): ApprovalState {
   const defaults: ApprovalState = {
-    required: true,
-    pending: true,
-    approved: false,
+    id: `approval_${Date.now()}`,
+    taskId: 'task-123',
+    gateName: 'code-review',
+    status: 'pending',
     approver: 'user@example.com',
     requestedAt: new Date(),
-    reason: 'Code review required for production deployment',
-    metadata: { reviewType: 'security', severity: 'high' },
+    context: { reviewType: 'security', severity: 'high' },
   };
 
   return { ...defaults, ...overrides };
@@ -422,7 +409,7 @@ export function createTask(overrides: TaskOverrides = {}): Task {
     description: 'Create mock task for testing',
     acceptanceCriteria: 'Task should pass all tests and meet quality standards',
     workflow: 'feature-development',
-    autonomy: 'supervised',
+    autonomy: 'review-before-commit',
     status: 'pending',
     priority: 'normal',
     effort: 'medium',

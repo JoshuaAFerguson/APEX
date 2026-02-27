@@ -87,11 +87,9 @@ export interface ExtendedPermissionOverrides {
   level?: PermissionLevel;
   expiry?: Date;
   createdAt?: Date;
+  grantReason?: string;
   grantedBy?: string;
-  reason?: string;
-  context?: Record<string, unknown>;
-  usageCount?: number;
-  lastUsed?: Date;
+  tags?: string[];
 }
 
 /**
@@ -103,15 +101,9 @@ export function createExtendedPermission(overrides: ExtendedPermissionOverrides 
     scope: '/src/**/*.tsx',
     level: 'allow-always',
     createdAt: new Date(),
+    grantReason: 'Development work on React components',
     grantedBy: 'user@example.com',
-    reason: 'Development work on React components',
-    context: {
-      project: 'APEX',
-      environment: 'development',
-      riskLevel: 'low',
-    },
-    usageCount: 15,
-    lastUsed: new Date(Date.now() - 3600000), // 1 hour ago
+    tags: ['development', 'react'],
   };
 
   return { ...defaults, ...overrides };

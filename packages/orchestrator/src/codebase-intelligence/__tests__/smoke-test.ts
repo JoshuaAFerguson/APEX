@@ -59,7 +59,7 @@ try {
       console.error('✗ getCodebaseIndexer NOT exported from main orchestrator index');
     }
   } catch (err) {
-    console.error('✗ Main orchestrator import failed:', err.message);
+    console.error('✗ Main orchestrator import failed:', (err as Error).message);
   }
 
   // Test basic functionality
@@ -86,12 +86,12 @@ try {
     console.log('✓ Instance cleanup successful');
 
   } catch (err) {
-    console.error('✗ Basic functionality test failed:', err.message);
+    console.error('✗ Basic functionality test failed:', (err as Error).message);
   }
 
   console.log('\n✅ All CodebaseIndexer export tests passed!');
 
 } catch (err) {
-  console.error('✗ Smoke test failed:', err.message);
+  console.error('✗ Smoke test failed:', (err as Error).message);
   process.exit(1);
 }

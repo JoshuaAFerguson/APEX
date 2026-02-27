@@ -426,7 +426,7 @@ export class ProjectContextAnalyzer {
           };
         }
         return null;
-      }).filter((commit): commit is GitCommit => commit !== null);
+      }).filter((commit): commit is NonNullable<typeof commit> => commit !== null) as GitCommit[];
     } catch {
       // Keep default empty array
     }
@@ -753,7 +753,7 @@ export class ProjectContextAnalyzer {
               configInfo.keySettings = this.extractSafeSettings(parsed, config.purpose);
             } catch (parseError) {
               configInfo.isValid = false;
-              configInfo.parseError = `JSON parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`;
+              configInfo.validationError = `JSON parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`;
             }
           }
 
@@ -865,7 +865,7 @@ export class ProjectContextAnalyzer {
    */
   private async parseConfigurationContent(
     content: string,
-    format: 'json' | 'yaml' | 'toml' | 'javascript' | 'ini' | 'env' | 'xml' | 'other',
+    format: 'json' | 'yaml' | 'toml' | 'javascript' | 'typescript' | 'ini' | 'env' | 'xml' | 'other',
     fileName: string
   ): Promise<Record<string, unknown>> {
     switch (format) {
@@ -877,7 +877,8 @@ export class ProjectContextAnalyzer {
         return this.parseSimpleYaml(content);
 
       case 'javascript':
-        // For JavaScript config files, extract CommonJS/ESM exports
+      case 'typescript':
+        // For JavaScript/TypeScript config files, extract CommonJS/ESM exports
         return this.parseJavaScriptConfig(content, fileName);
 
       case 'env':

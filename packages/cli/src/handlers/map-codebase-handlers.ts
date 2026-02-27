@@ -68,11 +68,11 @@ export async function handleMapCodebase(ctx: CliContext, args: Record<string, an
       console.log(chalk.cyan('📈 Summary Statistics:\n'));
       console.log(`  ${chalk.yellow('Files indexed:')} ${repositoryMap.stats.totalFiles}`);
       console.log(`  ${chalk.yellow('Symbols found:')} ${repositoryMap.stats.totalSymbols}`);
-      console.log(`  ${chalk.yellow('Languages detected:')} ${repositoryMap.stats.languagesDetected?.join(', ')}`);
+      console.log(`  ${chalk.yellow('Languages detected:')} ${Object.keys(repositoryMap.stats.languageBreakdown || {}).join(', ')}`);
 
-      if (verbose && repositoryMap.stats.symbolsByKind) {
+      if (verbose && repositoryMap.stats.symbolTypeBreakdown) {
         console.log(chalk.cyan('\n  Symbol breakdown:\n'));
-        for (const [kind, count] of Object.entries(repositoryMap.stats.symbolsByKind)) {
+        for (const [kind, count] of Object.entries(repositoryMap.stats.symbolTypeBreakdown)) {
           console.log(`    ${chalk.gray(kind)}: ${count}`);
         }
       }
@@ -133,8 +133,8 @@ function generateMarkdownReport(repositoryMap: any): string {
     md += `- **Total Files:** ${repositoryMap.stats.totalFiles}\n`;
     md += `- **Total Symbols:** ${repositoryMap.stats.totalSymbols}\n`;
 
-    if (repositoryMap.stats.languagesDetected) {
-      md += `- **Languages:** ${repositoryMap.stats.languagesDetected.join(', ')}\n`;
+    if (repositoryMap.stats.languageBreakdown) {
+      md += `- **Languages:** ${Object.keys(repositoryMap.stats.languageBreakdown).join(', ')}\n`;
     }
 
     md += '\n';

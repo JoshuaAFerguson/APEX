@@ -100,70 +100,70 @@ export const ClaudeAgentErrors = {
 export const ApexErrors = {
   /** Configuration errors */
   configNotFound: new ApexError(
-    ApexErrorCode.CONFIG_NOT_FOUND,
     'APEX configuration not found',
-    { path: '.apex/config.yaml' }
+    ApexErrorCode.FILE_NOT_FOUND,
+    { metadata: { path: '.apex/config.yaml' } }
   ),
 
   configInvalid: new ApexError(
-    ApexErrorCode.CONFIG_INVALID,
     'Invalid configuration format',
-    { errors: ['missing required field: project_name'] }
+    ApexErrorCode.CONFIGURATION,
+    { metadata: { errors: ['missing required field: project_name'] } }
   ),
 
   /** Project errors */
   projectNotInitialized: new ApexError(
-    ApexErrorCode.PROJECT_NOT_INITIALIZED,
     'Project not initialized. Run "apex init" first.',
-    { directory: '/current/path' }
+    ApexErrorCode.WORKSPACE_NOT_INITIALIZED,
+    { metadata: { directory: '/current/path' } }
   ),
 
   /** Workflow errors */
   workflowNotFound: new ApexError(
-    ApexErrorCode.WORKFLOW_NOT_FOUND,
     'Workflow not found: "custom-flow"',
-    { workflow: 'custom-flow', available: ['feature', 'hotfix', 'bugfix'] }
+    ApexErrorCode.WORKFLOW_NOT_FOUND,
+    { metadata: { workflow: 'custom-flow', available: ['feature', 'hotfix', 'bugfix'] } }
   ),
 
   /** Agent errors */
   agentNotFound: new ApexError(
-    ApexErrorCode.AGENT_NOT_FOUND,
     'Agent not found: "custom-agent"',
-    { agent: 'custom-agent', available: ['planner', 'developer', 'tester'] }
+    ApexErrorCode.AGENT_NOT_FOUND,
+    { metadata: { agent: 'custom-agent', available: ['planner', 'developer', 'tester'] } }
   ),
 
   /** Task errors */
   taskNotFound: new ApexError(
-    ApexErrorCode.TASK_NOT_FOUND,
     'Task not found: "task-12345"',
+    ApexErrorCode.TASK_NOT_FOUND,
     { taskId: 'task-12345' }
   ),
 
   taskExecutionFailed: new ApexError(
-    ApexErrorCode.TASK_EXECUTION_FAILED,
     'Task execution failed in stage "implementation"',
-    { taskId: 'task-67890', stage: 'implementation', error: 'Tool execution timeout' }
+    ApexErrorCode.TASK_EXECUTION_FAILED,
+    { taskId: 'task-67890', stage: 'implementation', metadata: { error: 'Tool execution timeout' } }
   ),
 
   /** Tool errors */
   toolExecutionFailed: new ApexError(
-    ApexErrorCode.TOOL_EXECUTION_FAILED,
     'Tool execution failed: Read',
-    { tool: 'Read', error: 'File not found' }
+    ApexErrorCode.TOOL_INTEGRATION_FAILED,
+    { metadata: { tool: 'Read', error: 'File not found' } }
   ),
 
   /** Permission errors */
   permissionDenied: new ApexError(
-    ApexErrorCode.PERMISSION_DENIED,
     'Permission denied for operation',
-    { operation: 'file_write', path: '/restricted/file.txt' }
+    ApexErrorCode.PERMISSION_DENIED,
+    { operation: 'file_write', metadata: { path: '/restricted/file.txt' } }
   ),
 
   /** Validation errors */
   validationFailed: new ApexError(
-    ApexErrorCode.VALIDATION_FAILED,
     'Input validation failed',
-    { field: 'task.description', reason: 'required' }
+    ApexErrorCode.TASK_VALIDATION_FAILED,
+    { metadata: { field: 'task.description', reason: 'required' } }
   ),
 } as const;
 
@@ -235,9 +235,9 @@ export const createTimeoutError = (operation: string, timeoutMs: number): Error 
  */
 export const createValidationError = (field: string, reason: string): ApexError =>
   new ApexError(
-    ApexErrorCode.VALIDATION_FAILED,
     `Validation failed for field: ${field}`,
-    { field, reason, timestamp: new Date().toISOString() }
+    ApexErrorCode.TASK_VALIDATION_FAILED,
+    { metadata: { field, reason, timestamp: new Date().toISOString() } }
   );
 
 /**
@@ -245,9 +245,9 @@ export const createValidationError = (field: string, reason: string): ApexError 
  */
 export const createResourceNotFoundError = (resource: string, id: string): ApexError =>
   new ApexError(
-    ApexErrorCode.TASK_NOT_FOUND, // Reusing for generic not found
     `${resource} not found: ${id}`,
-    { resource, id, timestamp: new Date().toISOString() }
+    ApexErrorCode.TASK_NOT_FOUND, // Reusing for generic not found
+    { metadata: { resource, id, timestamp: new Date().toISOString() } }
   );
 
 /**
@@ -255,9 +255,9 @@ export const createResourceNotFoundError = (resource: string, id: string): ApexE
  */
 export const createPermissionError = (operation: string, context?: Record<string, unknown>): ApexError =>
   new ApexError(
-    ApexErrorCode.PERMISSION_DENIED,
     `Permission denied: ${operation}`,
-    { operation, timestamp: new Date().toISOString(), ...context }
+    ApexErrorCode.PERMISSION_DENIED,
+    { operation, metadata: { timestamp: new Date().toISOString(), ...context } }
   );
 
 /**

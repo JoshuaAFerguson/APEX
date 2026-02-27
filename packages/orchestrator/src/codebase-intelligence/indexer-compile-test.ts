@@ -7,7 +7,7 @@
 
 // Test imports
 import { CodebaseIndexer, type IndexingOptions } from './indexer.js';
-import type { RepositoryMap } from '@apexcli/core/types';
+import type { RepositoryMap } from '@apexcli/core';
 
 // Type-only tests to verify compilation
 export function testCompilation(): void {

@@ -12,7 +12,6 @@ import type {
   UIConfig,
   GitConfig,
   WorktreeConfig,
-  WorktreeStatus,
   ToolConfig,
   LoggingConfig,
   LogLevelType,
@@ -27,12 +26,12 @@ import type {
 
 export interface ProjectConfigOverrides {
   name?: string;
-  description?: string;
-  version?: string;
-  repository?: string;
-  framework?: string;
   language?: string;
-  packageManager?: string;
+  framework?: string;
+  testCommand?: string;
+  lintCommand?: string;
+  buildCommand?: string;
+  typecheckCommand?: string;
 }
 
 /**
@@ -41,12 +40,12 @@ export interface ProjectConfigOverrides {
 export function createProjectConfig(overrides: ProjectConfigOverrides = {}): ProjectConfig {
   const defaults: ProjectConfig = {
     name: 'apex-test-project',
-    description: 'Test project for APEX development workflows',
-    version: '1.0.0',
-    repository: 'https://github.com/example/apex-test-project.git',
     framework: 'react',
     language: 'typescript',
-    packageManager: 'npm',
+    testCommand: 'npm test',
+    lintCommand: 'npm run lint',
+    buildCommand: 'npm run build',
+    typecheckCommand: 'npm run typecheck',
   };
 
   return { ...defaults, ...overrides };
@@ -57,14 +56,10 @@ export function createProjectConfig(overrides: ProjectConfigOverrides = {}): Pro
 // ============================================================================
 
 export interface AutonomyConfigOverrides {
-  defaultLevel?: AutonomyLevel;
-  requireApproval?: boolean;
-  allowUpgrade?: boolean;
-  maxCostPerTask?: number;
-  maxTokensPerTask?: number;
-  timeoutMinutes?: number;
+  level?: AutonomyLevel;
+  stageOverrides?: Record<string, AutonomyLevel>;
   agentOverrides?: Record<string, AutonomyLevel>;
-  workflowOverrides?: Record<string, AutonomyLevel>;
+  approvalTimeout?: number;
 }
 
 /**
@@ -72,21 +67,12 @@ export interface AutonomyConfigOverrides {
  */
 export function createAutonomyConfig(overrides: AutonomyConfigOverrides = {}): AutonomyConfig {
   const defaults: AutonomyConfig = {
-    defaultLevel: 'supervised',
-    requireApproval: true,
-    allowUpgrade: false,
-    maxCostPerTask: 1.0,
-    maxTokensPerTask: 50000,
-    timeoutMinutes: 60,
+    level: 'review-before-commit',
+    rejectionBehavior: 'abort',
     agentOverrides: {
-      'developer': 'full',
-      'tester': 'supervised',
-      'reviewer': 'ask-first',
-    },
-    workflowOverrides: {
-      'feature-development': 'supervised',
-      'bug-fix': 'full',
-      'research': 'full',
+      'developer': 'full-auto',
+      'tester': 'review-before-commit',
+      'reviewer': 'review-all',
     },
   };
 
@@ -99,11 +85,15 @@ export function createAutonomyConfig(overrides: AutonomyConfigOverrides = {}): A
 
 export interface LimitsConfigOverrides {
   maxConcurrentTasks?: number;
-  maxTasksPerHour?: number;
-  maxCostPerHour?: number;
-  maxTokensPerHour?: number;
+  maxTokensPerTask?: number;
+  maxCostPerTask?: number;
+  maxExecutionTime?: number;
+  maxFileChanges?: number;
+  dailyBudget?: number;
+  maxTurns?: number;
   maxRetries?: number;
-  timeoutSeconds?: number;
+  retryDelayMs?: number;
+  retryBackoffFactor?: number;
 }
 
 /**
@@ -112,11 +102,10 @@ export interface LimitsConfigOverrides {
 export function createLimitsConfig(overrides: LimitsConfigOverrides = {}): LimitsConfig {
   const defaults: LimitsConfig = {
     maxConcurrentTasks: 5,
-    maxTasksPerHour: 20,
-    maxCostPerHour: 10.0,
-    maxTokensPerHour: 200000,
+    maxTokensPerTask: 500000,
+    maxCostPerTask: 10.0,
+    dailyBudget: 100.0,
     maxRetries: 3,
-    timeoutSeconds: 3600,
   };
 
   return { ...defaults, ...overrides };
@@ -127,10 +116,9 @@ export function createLimitsConfig(overrides: LimitsConfigOverrides = {}): Limit
 // ============================================================================
 
 export interface ModelsConfigOverrides {
-  defaultModel?: AgentModel;
-  planningModel?: AgentModel;
-  codingModel?: AgentModel;
-  reviewModel?: AgentModel;
+  planning?: AgentModel;
+  implementation?: AgentModel;
+  review?: AgentModel;
 }
 
 /**
@@ -138,10 +126,9 @@ export interface ModelsConfigOverrides {
  */
 export function createModelsConfig(overrides: ModelsConfigOverrides = {}): ModelsConfig {
   const defaults: ModelsConfig = {
-    defaultModel: 'sonnet',
-    planningModel: 'opus',
-    codingModel: 'sonnet',
-    reviewModel: 'opus',
+    planning: 'opus',
+    implementation: 'sonnet',
+    review: 'haiku',
   };
 
   return { ...defaults, ...overrides };
@@ -152,11 +139,11 @@ export function createModelsConfig(overrides: ModelsConfigOverrides = {}): Model
 // ============================================================================
 
 export interface UIConfigOverrides {
-  theme?: 'light' | 'dark' | 'auto';
-  showProgress?: boolean;
-  showThoughts?: boolean;
-  verboseLogging?: boolean;
-  autoScroll?: boolean;
+  previewMode?: boolean;
+  previewConfidence?: number;
+  autoExecuteHighConfidence?: boolean;
+  previewTimeout?: number;
+  diffPreview?: boolean;
 }
 
 /**
@@ -164,11 +151,11 @@ export interface UIConfigOverrides {
  */
 export function createUIConfig(overrides: UIConfigOverrides = {}): UIConfig {
   const defaults: UIConfig = {
-    theme: 'auto',
-    showProgress: true,
-    showThoughts: false,
-    verboseLogging: false,
-    autoScroll: true,
+    previewMode: true,
+    previewConfidence: 0.7,
+    autoExecuteHighConfidence: false,
+    previewTimeout: 5000,
+    diffPreview: true,
   };
 
   return { ...defaults, ...overrides };
@@ -179,12 +166,15 @@ export function createUIConfig(overrides: UIConfigOverrides = {}): UIConfig {
 // ============================================================================
 
 export interface GitConfigOverrides {
-  enabled?: boolean;
-  autoCommit?: boolean;
   branchPrefix?: string;
-  commitMessage?: string;
-  pushOnComplete?: boolean;
-  createPR?: boolean;
+  commitFormat?: 'conventional' | 'simple';
+  autoPush?: boolean;
+  defaultBranch?: string;
+  commitAfterSubtask?: boolean;
+  pushAfterTask?: boolean;
+  createPR?: 'always' | 'never' | 'ask';
+  prDraft?: boolean;
+  autoWorktree?: boolean;
   worktree?: WorktreeConfig;
 }
 
@@ -193,12 +183,15 @@ export interface GitConfigOverrides {
  */
 export function createGitConfig(overrides: GitConfigOverrides = {}): GitConfig {
   const defaults: GitConfig = {
-    enabled: true,
-    autoCommit: true,
-    branchPrefix: 'apex',
-    commitMessage: 'feat: implement {description}\\n\\n🤖 Generated with APEX',
-    pushOnComplete: false,
-    createPR: false,
+    branchPrefix: 'apex/',
+    commitFormat: 'conventional',
+    autoPush: true,
+    defaultBranch: 'main',
+    commitAfterSubtask: true,
+    pushAfterTask: true,
+    createPR: 'always',
+    prDraft: false,
+    autoWorktree: false,
     worktree: createWorktreeConfig(),
   };
 
@@ -210,11 +203,12 @@ export function createGitConfig(overrides: GitConfigOverrides = {}): GitConfig {
 // ============================================================================
 
 export interface WorktreeConfigOverrides {
-  enabled?: boolean;
-  basePath?: string;
-  cleanup?: boolean;
-  isolation?: boolean;
-  status?: WorktreeStatus;
+  baseDir?: string;
+  cleanupOnComplete?: boolean;
+  maxWorktrees?: number;
+  pruneStaleAfterDays?: number;
+  preserveOnFailure?: boolean;
+  cleanupDelayMs?: number;
 }
 
 /**
@@ -222,11 +216,11 @@ export interface WorktreeConfigOverrides {
  */
 export function createWorktreeConfig(overrides: WorktreeConfigOverrides = {}): WorktreeConfig {
   const defaults: WorktreeConfig = {
-    enabled: true,
-    basePath: '.apex/worktrees',
-    cleanup: true,
-    isolation: true,
-    status: 'available',
+    cleanupOnComplete: true,
+    maxWorktrees: 5,
+    pruneStaleAfterDays: 7,
+    preserveOnFailure: false,
+    cleanupDelayMs: 0,
   };
 
   return { ...defaults, ...overrides };
@@ -237,19 +231,12 @@ export function createWorktreeConfig(overrides: WorktreeConfigOverrides = {}): W
 // ============================================================================
 
 export interface ToolConfigOverrides {
-  Read?: {
+  [key: string]: {
     enabled?: boolean;
-    permissions?: string[];
-  };
-  Write?: {
-    enabled?: boolean;
-    permissions?: string[];
-    backupEnabled?: boolean;
-  };
-  Bash?: {
-    enabled?: boolean;
-    allowedCommands?: string[];
     timeout?: number;
+    requireConfirmation?: boolean;
+    rateLimitPerMinute?: number;
+    metadata?: Record<string, unknown>;
   };
 }
 
@@ -260,30 +247,24 @@ export function createToolConfig(overrides: ToolConfigOverrides = {}): ToolConfi
   const defaults: ToolConfig = {
     Read: {
       enabled: true,
-      permissions: ['allow-always'],
     },
     Write: {
       enabled: true,
-      permissions: ['allow-once'],
-      backupEnabled: true,
+      requireConfirmation: true,
     },
     Edit: {
       enabled: true,
-      permissions: ['allow-once'],
-      validateSyntax: true,
+      requireConfirmation: true,
     },
     Bash: {
       enabled: true,
-      allowedCommands: ['ls', 'cat', 'grep', 'find'],
       timeout: 30000,
     },
     WebSearch: {
       enabled: true,
-      permissions: ['allow-always'],
     },
     WebFetch: {
       enabled: false,
-      permissions: ['deny'],
     },
   };
 
@@ -296,21 +277,14 @@ export function createToolConfig(overrides: ToolConfigOverrides = {}): ToolConfi
 
 export interface LoggingConfigOverrides {
   level?: LogLevelType;
+  format?: 'json' | 'pretty' | 'auto';
+  packageLevels?: Record<string, LogLevelType>;
   file?: {
     enabled?: boolean;
     path?: string;
-    maxSize?: string;
-    maxFiles?: number;
   };
-  console?: {
-    enabled?: boolean;
-    colorize?: boolean;
-    timestamp?: boolean;
-  };
-  structured?: {
-    enabled?: boolean;
-    format?: 'json' | 'logfmt';
-  };
+  timestamps?: boolean;
+  stackTraces?: boolean;
 }
 
 /**
@@ -319,21 +293,13 @@ export interface LoggingConfigOverrides {
 export function createLoggingConfig(overrides: LoggingConfigOverrides = {}): LoggingConfig {
   const defaults: LoggingConfig = {
     level: 'info',
+    format: 'auto',
     file: {
       enabled: true,
-      path: '.apex/logs/apex.log',
-      maxSize: '10MB',
-      maxFiles: 5,
+      path: '.apex/apex.log',
     },
-    console: {
-      enabled: true,
-      colorize: true,
-      timestamp: true,
-    },
-    structured: {
-      enabled: false,
-      format: 'json',
-    },
+    timestamps: true,
+    stackTraces: true,
   };
 
   return { ...defaults, ...overrides };
@@ -344,9 +310,7 @@ export function createLoggingConfig(overrides: LoggingConfigOverrides = {}): Log
 // ============================================================================
 
 export interface ServiceConfigOverrides {
-  port?: number;
-  host?: string;
-  cors?: boolean;
+  enableOnBoot?: boolean;
 }
 
 /**
@@ -354,9 +318,7 @@ export interface ServiceConfigOverrides {
  */
 export function createServiceConfig(overrides: ServiceConfigOverrides = {}): ServiceConfig {
   const defaults: ServiceConfig = {
-    port: 3000,
-    host: 'localhost',
-    cors: true,
+    enableOnBoot: false,
   };
 
   return { ...defaults, ...overrides };
@@ -367,13 +329,16 @@ export function createServiceConfig(overrides: ServiceConfigOverrides = {}): Ser
 // ============================================================================
 
 export interface DaemonConfigOverrides {
-  enabled?: boolean;
-  port?: number;
-  maxTasks?: number;
-  idleTimeout?: number;
+  pollInterval?: number;
+  autoStart?: boolean;
+  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  installAsService?: boolean;
+  serviceName?: string;
   healthCheck?: {
     enabled?: boolean;
     interval?: number;
+    timeout?: number;
+    retries?: number;
   };
 }
 
@@ -382,13 +347,16 @@ export interface DaemonConfigOverrides {
  */
 export function createDaemonConfig(overrides: DaemonConfigOverrides = {}): DaemonConfig {
   const defaults: DaemonConfig = {
-    enabled: false,
-    port: 3001,
-    maxTasks: 10,
-    idleTimeout: 300000, // 5 minutes
+    pollInterval: 5000,
+    autoStart: false,
+    logLevel: 'info',
+    installAsService: false,
+    serviceName: 'apex-daemon',
     healthCheck: {
       enabled: true,
-      interval: 30000, // 30 seconds
+      interval: 30000,
+      timeout: 5000,
+      retries: 3,
     },
   };
 
@@ -409,7 +377,6 @@ export interface ApexConfigOverrides {
   git?: GitConfig;
   tools?: ToolConfig;
   logging?: LoggingConfig;
-  service?: ServiceConfig;
   daemon?: DaemonConfig;
 }
 
@@ -434,7 +401,7 @@ export interface ApexConfigOverrides {
  */
 export function createApexConfig(overrides: ApexConfigOverrides = {}): ApexConfig {
   const defaults: ApexConfig = {
-    version: '0.5.0',
+    version: '1.0',
     project: createProjectConfig(),
     autonomy: createAutonomyConfig(),
     limits: createLimitsConfig(),
@@ -443,7 +410,6 @@ export function createApexConfig(overrides: ApexConfigOverrides = {}): ApexConfi
     git: createGitConfig(),
     tools: createToolConfig(),
     logging: createLoggingConfig(),
-    service: createServiceConfig(),
     daemon: createDaemonConfig(),
   };
 
@@ -460,33 +426,23 @@ export function createApexConfig(overrides: ApexConfigOverrides = {}): ApexConfi
 export function createDevelopmentConfig(overrides: ApexConfigOverrides = {}): ApexConfig {
   return createApexConfig({
     autonomy: createAutonomyConfig({
-      defaultLevel: 'full',
-      requireApproval: false,
-      allowUpgrade: true,
+      level: 'full-auto',
     }),
     limits: createLimitsConfig({
       maxConcurrentTasks: 10,
-      maxCostPerHour: 50.0,
+      dailyBudget: 50.0,
     }),
     tools: createToolConfig({
       Bash: {
         enabled: true,
-        allowedCommands: ['ls', 'cat', 'grep', 'find', 'npm', 'git'],
         timeout: 60000,
       },
       Write: {
         enabled: true,
-        permissions: ['allow-always'],
-        backupEnabled: false,
       },
     }),
     logging: createLoggingConfig({
       level: 'debug',
-      console: {
-        enabled: true,
-        colorize: true,
-        timestamp: true,
-      },
     }),
     ...overrides,
   });
@@ -498,26 +454,21 @@ export function createDevelopmentConfig(overrides: ApexConfigOverrides = {}): Ap
 export function createProductionConfig(overrides: ApexConfigOverrides = {}): ApexConfig {
   return createApexConfig({
     autonomy: createAutonomyConfig({
-      defaultLevel: 'ask-first',
-      requireApproval: true,
-      allowUpgrade: false,
-      maxCostPerTask: 0.1,
+      level: 'review-all',
     }),
     limits: createLimitsConfig({
       maxConcurrentTasks: 2,
-      maxCostPerHour: 5.0,
-      maxTokensPerHour: 50000,
+      maxCostPerTask: 5.0,
+      maxTokensPerTask: 50000,
     }),
     tools: createToolConfig({
       Bash: {
         enabled: true,
-        allowedCommands: ['ls', 'cat', 'grep'],
         timeout: 10000,
       },
       Write: {
         enabled: true,
-        permissions: ['allow-once'],
-        backupEnabled: true,
+        requireConfirmation: true,
       },
     }),
     logging: createLoggingConfig({
@@ -525,8 +476,6 @@ export function createProductionConfig(overrides: ApexConfigOverrides = {}): Ape
       file: {
         enabled: true,
         path: '/var/log/apex/apex.log',
-        maxSize: '100MB',
-        maxFiles: 10,
       },
     }),
     ...overrides,
@@ -539,25 +488,20 @@ export function createProductionConfig(overrides: ApexConfigOverrides = {}): Ape
 export function createTestingConfig(overrides: ApexConfigOverrides = {}): ApexConfig {
   return createApexConfig({
     autonomy: createAutonomyConfig({
-      defaultLevel: 'full',
-      requireApproval: false,
-      timeoutMinutes: 10,
+      level: 'full-auto',
+      approvalTimeout: 10,
     }),
     limits: createLimitsConfig({
       maxConcurrentTasks: 3,
       maxRetries: 1,
-      timeoutSeconds: 600, // 10 minutes
+      maxExecutionTime: 600000, // 10 minutes in ms
     }),
     git: createGitConfig({
-      enabled: false,
-      autoCommit: false,
+      autoPush: false,
+      commitAfterSubtask: false,
     }),
     logging: createLoggingConfig({
       level: 'error',
-      console: {
-        enabled: false,
-        colorize: false,
-      },
       file: {
         enabled: false,
       },
@@ -582,8 +526,8 @@ export function createEnvironmentConfigs(): {
   return {
     development: createDevelopmentConfig(),
     staging: createApexConfig({
-      autonomy: createAutonomyConfig({ defaultLevel: 'supervised' }),
-      limits: createLimitsConfig({ maxCostPerHour: 20.0 }),
+      autonomy: createAutonomyConfig({ level: 'review-before-commit' }),
+      limits: createLimitsConfig({ dailyBudget: 20.0 }),
     }),
     production: createProductionConfig(),
     testing: createTestingConfig(),
@@ -594,24 +538,24 @@ export function createEnvironmentConfigs(): {
  * Creates configs with different autonomy levels for testing
  */
 export function createAutonomyLevelConfigs(): {
-  full: ApexConfig;
-  supervised: ApexConfig;
-  askFirst: ApexConfig;
+  fullAuto: ApexConfig;
+  reviewBeforeCommit: ApexConfig;
+  reviewAll: ApexConfig;
 } {
   const base = createApexConfig();
 
   return {
-    full: {
+    fullAuto: {
       ...base,
-      autonomy: createAutonomyConfig({ defaultLevel: 'full' }),
+      autonomy: createAutonomyConfig({ level: 'full-auto' }),
     },
-    supervised: {
+    reviewBeforeCommit: {
       ...base,
-      autonomy: createAutonomyConfig({ defaultLevel: 'supervised' }),
+      autonomy: createAutonomyConfig({ level: 'review-before-commit' }),
     },
-    askFirst: {
+    reviewAll: {
       ...base,
-      autonomy: createAutonomyConfig({ defaultLevel: 'ask-first' }),
+      autonomy: createAutonomyConfig({ level: 'review-all' }),
     },
   };
 }
@@ -633,18 +577,17 @@ export function createConfigValidationScenarios(): {
       ...baseConfig,
       limits: createLimitsConfig({
         maxConcurrentTasks: -1, // Invalid negative value
-        maxCostPerHour: -10.0,
+        maxCostPerTask: -10.0,
       }),
     },
     missingRequired: {
       // Missing required fields for testing validation
-      version: '0.5.0',
+      version: '1.0',
     },
     conflictingSettings: {
       ...baseConfig,
       autonomy: createAutonomyConfig({
-        defaultLevel: 'ask-first',
-        requireApproval: false, // Conflicting: ask-first should require approval
+        level: 'review-all',
       }),
     },
   };

@@ -26,7 +26,7 @@ import type {
   CodeSymbol,
   SymbolReference,
   SymbolType,
-} from '@apexcli/core/types';
+} from '@apexcli/core';
 
 /**
  * Options for finding symbols
@@ -616,7 +616,7 @@ export class SymbolResolver {
    * Find a file by its path
    */
   private findFileByPath(filePath: string): CodeFile | undefined {
-    return this.repoMap.files?.find(file => file.path === filePath);
+    return this.repoMap.files?.find((file: CodeFile) => file.path === filePath);
   }
 
   /**
@@ -628,7 +628,7 @@ export class SymbolResolver {
       return undefined;
     }
 
-    return file.symbols?.find(symbol => symbol.name === symbolName);
+    return file.symbols?.find((symbol: CodeSymbol) => symbol.name === symbolName);
   }
 
   /**

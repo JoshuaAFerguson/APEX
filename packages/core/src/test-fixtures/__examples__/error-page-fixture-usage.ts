@@ -5,6 +5,16 @@
  * These examples show the different ways to integrate the fixture into your test suites.
  */
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+// Declare test runner globals for this example file (not an actual test file)
+declare const describe: ((name: string, fn: () => void) => void) & {
+  each: <T>(cases: T[]) => (name: string, fn: (item: T) => void) => void;
+};
+declare const it: (name: string, fn: () => void | Promise<void>) => void;
+declare const expect: (value: unknown) => { toBeDefined: () => void; toBe: (expected: unknown) => void; toContain: (expected: unknown) => void; toBeGreaterThan: (expected: number) => void; toEqual: (expected: unknown) => void; };
+declare const beforeEach: (fn: () => void | Promise<void>) => void;
+declare const afterEach: (fn: () => void | Promise<void>) => void;
+
 import {
   ErrorPageFixture,
   createErrorFixtureHooks,

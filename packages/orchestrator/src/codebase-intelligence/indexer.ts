@@ -31,7 +31,7 @@ import type {
   CodeFile,
   CodeSymbol,
   SymbolType
-} from '@apexcli/core/types';
+} from '@apexcli/core';
 
 import { TreeSitterWrapper } from './parsers/tree-sitter-wrapper.js';
 import { getExtractorForLanguage } from './extractors/index.js';
@@ -250,8 +250,8 @@ export class CodebaseIndexer {
 
     try {
       // Ensure directory exists
-      const stats = await fs.stat(rootPath);
-      if (!stats.isDirectory()) {
+      const rootStats = await fs.stat(rootPath);
+      if (!rootStats.isDirectory()) {
         throw new Error(`Path is not a directory: ${rootPath}`);
       }
 
@@ -479,7 +479,7 @@ export class CodebaseIndexer {
       size: fileStats.size,
       lastModified: fileStats.mtime,
       contentHash,
-      hasParseErrors: false,
+      hasErrors: false,
       errors: []
     };
 
@@ -503,7 +503,7 @@ export class CodebaseIndexer {
 
       // Convert extracted symbols to CodeSymbol format
       codeFile.symbols = this.convertSymbols(extractionResult.symbols, relativePath);
-      codeFile.hasParseErrors = extractionResult.hasErrors;
+      codeFile.hasErrors = extractionResult.hasErrors;
 
       // Convert parse errors
       if (extractionResult.errors.length > 0) {
@@ -542,7 +542,7 @@ export class CodebaseIndexer {
 
     } catch (error) {
       // Mark file as having errors but continue
-      codeFile.hasParseErrors = true;
+      codeFile.hasErrors = true;
       codeFile.errors = [{
         message: error instanceof Error ? error.message : String(error)
       }];

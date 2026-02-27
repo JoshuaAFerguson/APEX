@@ -6,6 +6,7 @@ import { ComplexityHotspot, CodeSmell, DuplicatePattern } from './types';
 // Validate ComplexityHotspot interface
 const testHotspot: ComplexityHotspot = {
   file: 'src/test.ts',
+  functionName: 'testFunction',
   cyclomaticComplexity: 15,
   cognitiveComplexity: 20,
   lineCount: 150,

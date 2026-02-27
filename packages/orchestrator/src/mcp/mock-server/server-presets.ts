@@ -21,7 +21,7 @@ import type {
   MockToolHandler,
   MockDynamicHandler,
   MockErrorSimulationConfig,
-} from '@apexcli/core';
+} from './types.js';
 
 // ============================================================================
 // Server Preset Types
@@ -313,7 +313,7 @@ export const MINIMAL_PRESET: ServerPresetConfig = {
 /**
  * Error-prone behavior modifier - applies high error injection rate
  */
-export const ERROR_PRONE_MODIFIER: Partial<ServerPresetConfig> = {
+export const ERROR_PRONE_MODIFIER: ServerPresetConfig = {
   name: 'error-prone-modifier',
   description: 'Behavior modifier that injects frequent errors',
   serverConfig: {},
@@ -336,7 +336,7 @@ export const ERROR_PRONE_MODIFIER: Partial<ServerPresetConfig> = {
 /**
  * Slow behavior modifier - applies high latency
  */
-export const SLOW_MODIFIER: Partial<ServerPresetConfig> = {
+export const SLOW_MODIFIER: ServerPresetConfig = {
   name: 'slow-modifier',
   description: 'Behavior modifier that adds high latency',
   serverConfig: {},

@@ -48,8 +48,8 @@
  */
 
 import { vi } from 'vitest';
-import { createTestContext, type TestContext } from './test-context.js';
-import type { TestContextOptions } from './types.js';
+import { createTestContext } from './test-context.js';
+import type { TestContext, TestContextOptions } from './types.js';
 
 // ============================================================================
 // Isolated Execution

@@ -25,8 +25,10 @@ import type {
   RepositoryMap,
   CodeSymbol,
   SymbolType,
-  SupportedLanguage,
-} from '@apexcli/core/types';
+} from '@apexcli/core';
+import { SupportedLanguage } from './parsers/types.js';
+import { promises as fs } from 'fs';
+import * as path from 'path';
 import { TreeSitterWrapper } from './parsers/tree-sitter-wrapper.js';
 import { SymbolResolver, type SymbolDefinition } from './symbol-resolver.js';
 import type { SyntaxNode } from './parsers/types.js';
@@ -119,12 +121,20 @@ export class TypeRelationshipMap {
 
     // Process each file to extract type relationships
     for (const file of this.repoMap.files) {
-      if (file.content && this.isAnalyzableLanguage(file.language)) {
-        await this.analyzeFileForTypeRelationships(
-          file.filePath,
-          file.content,
-          file.language as SupportedLanguage
-        );
+      if (file.language && this.isAnalyzableLanguage(file.language)) {
+        try {
+          const filePath = path.isAbsolute(file.path)
+            ? file.path
+            : path.join(this.repoMap.rootPath, file.path);
+          const content = await fs.readFile(filePath, 'utf-8');
+          await this.analyzeFileForTypeRelationships(
+            file.path,
+            content,
+            file.language as SupportedLanguage
+          );
+        } catch {
+          // Skip files that can't be read
+        }
       }
     }
 
@@ -149,12 +159,16 @@ export class TypeRelationshipMap {
 
         const symbol = this.findTypeSymbol(relationship.sourceType, relationship.sourceFile);
         if (symbol) {
-          implementations.push({
-            filePath: symbol.filePath,
-            startLine: symbol.startLine,
-            endLine: symbol.endLine,
-            symbol,
-          });
+          const file = this.repoMap.files.find((f) => f.path === symbol.filePath);
+          if (file) {
+            implementations.push({
+              symbol,
+              file,
+              filePath: symbol.filePath,
+              confidence: 1.0,
+              isReExport: false,
+            });
+          }
         }
       }
     }
@@ -175,24 +189,32 @@ export class TypeRelationshipMap {
     // Start with the type itself
     const baseSymbol = this.findTypeSymbol(typeName);
     if (baseSymbol) {
-      chain.push({
-        filePath: baseSymbol.filePath,
-        startLine: baseSymbol.startLine,
-        endLine: baseSymbol.endLine,
-        symbol: baseSymbol,
-      });
+      const baseFile = this.repoMap.files.find((f) => f.path === baseSymbol.filePath);
+      if (baseFile) {
+        chain.push({
+          symbol: baseSymbol,
+          file: baseFile,
+          filePath: baseSymbol.filePath,
+          confidence: 1.0,
+          isReExport: false,
+        });
+      }
     }
 
     // Add ancestors in order
     for (const ancestor of hierarchy.ancestors) {
       const symbol = this.findTypeSymbol(ancestor);
       if (symbol) {
-        chain.push({
-          filePath: symbol.filePath,
-          startLine: symbol.startLine,
-          endLine: symbol.endLine,
-          symbol,
-        });
+        const ancestorFile = this.repoMap.files.find((f) => f.path === symbol.filePath);
+        if (ancestorFile) {
+          chain.push({
+            symbol,
+            file: ancestorFile,
+            filePath: symbol.filePath,
+            confidence: 1.0,
+            isReExport: false,
+          });
+        }
       }
     }
 
@@ -208,15 +230,19 @@ export class TypeRelationshipMap {
   getUsages(typeName: string): Array<{ symbol: SymbolDefinition; usage: TypeUsage }> {
     const usages = this.typeUsages.get(typeName) || [];
 
-    return usages.map(usage => ({
-      symbol: {
-        filePath: usage.symbol.filePath,
-        startLine: usage.symbol.startLine,
-        endLine: usage.symbol.endLine,
-        symbol: usage.symbol,
-      },
-      usage,
-    }));
+    return usages.map(usage => {
+      const usageFile = this.repoMap.files.find((f) => f.path === usage.symbol.filePath);
+      return {
+        symbol: {
+          symbol: usage.symbol,
+          file: usageFile!,
+          filePath: usage.symbol.filePath,
+          confidence: usage.confidence,
+          isReExport: false,
+        },
+        usage,
+      };
+    });
   }
 
   /**
@@ -286,7 +312,7 @@ export class TypeRelationshipMap {
   ): Promise<void> {
     try {
       const parseResult = await this.treeWrapper.parse(sourceCode, language);
-      if (!parseResult.success || !parseResult.tree) {
+      if (parseResult.hasErrors || !parseResult.tree) {
         console.warn(`Failed to parse ${filePath} for type relationship analysis`);
         return;
       }
@@ -794,15 +820,15 @@ export class TypeRelationshipMap {
    */
   private findTypeSymbol(typeName: string, filePath?: string): CodeSymbol | null {
     const typeSymbols = this.repoMap.files
-      .flatMap(file => file.symbols)
-      .filter(symbol =>
+      .flatMap((file) => file.symbols)
+      .filter((symbol: CodeSymbol) =>
         symbol.name === typeName &&
         ['class', 'interface', 'type', 'enum'].includes(symbol.type)
       );
 
     if (filePath) {
       // Prefer symbol from specified file
-      const localSymbol = typeSymbols.find(s => s.filePath === filePath);
+      const localSymbol = typeSymbols.find((s: CodeSymbol) => s.filePath === filePath);
       if (localSymbol) return localSymbol;
     }
 
@@ -963,8 +989,8 @@ export class TypeRelationshipMap {
   ): CodeSymbol {
     // Try to find existing symbol
     const existingSymbol = this.repoMap.files
-      .find(f => f.filePath === context.filePath)
-      ?.symbols.find(s => s.name === varName);
+      .find((f) => f.path === context.filePath)
+      ?.symbols.find((s: CodeSymbol) => s.name === varName);
 
     if (existingSymbol) {
       return existingSymbol;

@@ -114,9 +114,9 @@ class Calculator:
     }
 
     // Verify file details
-    const tsFile = result.files.find(f => f.path === 'test.ts');
-    const jsFile = result.files.find(f => f.path === 'test.js');
-    const pyFile = result.files.find(f => f.path === 'test.py');
+    const tsFile = result.files.find((f) => f.path === 'test.ts');
+    const jsFile = result.files.find((f) => f.path === 'test.js');
+    const pyFile = result.files.find((f) => f.path === 'test.py');
 
     if (!tsFile || !jsFile || !pyFile) {
       throw new Error('Not all test files were found in results');
@@ -172,7 +172,7 @@ class Calculator:
 }
 
 // Run verification if this file is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
   verifyCodebaseIndexer()
     .then(() => {
       console.log('🎯 Verification completed successfully');

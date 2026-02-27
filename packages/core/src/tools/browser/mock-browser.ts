@@ -941,14 +941,4 @@ export function createMockBrowserErrors(): BrowserError[] {
   ];
 }
 
-// Export all types and implementations
-export type {
-  MockBrowserMode,
-  MockBrowserErrorType,
-  MockNetworkCondition,
-  MockOperationOutcome,
-  MockBrowserConfig,
-  MockElement,
-  MockPage,
-  MockBrowser,
-};
+// Types are already exported inline above - no need to re-export

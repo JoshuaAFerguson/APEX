@@ -6,13 +6,13 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
-import type {
-  CodebaseAnalysisOrchestrator,
-  AnalysisOptions,
-  AnalysisProgress,
-  AnalysisError,
-  DomainAnalysisResult,
-  AnalysisPhase
+import {
+  AnalysisPhase,
+  type CodebaseAnalysisOrchestrator,
+  type AnalysisOptions,
+  type AnalysisProgress,
+  type AnalysisError,
+  type DomainAnalysisResult,
 } from './types.js';
 import { ConventionAnalyzer } from './analyzers/convention-analyzer.js';
 

@@ -16,7 +16,7 @@
  * @module orchestrator/mcp/mock-server/with-mock-mcp
  */
 
-import type { MockMCPServerDefinition } from '@apexcli/core';
+import type { MockMCPServerDefinition } from './types.js';
 import { MockMCPServer } from './mock-mcp-server.js';
 import { MockMCPServerBuilder } from './mock-mcp-server-builder.js';
 import { MockMCPServerFacade } from './mock-server-facade.js';

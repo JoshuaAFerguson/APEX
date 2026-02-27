@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * User service for managing user operations
  *

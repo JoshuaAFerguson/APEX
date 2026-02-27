@@ -26,11 +26,11 @@ import type {
   CodeSymbol,
   SymbolReference,
   SupportedLanguage,
-} from '@apexcli/core/types';
+} from '@apexcli/core';
 
 import { CodebaseIndexer, type IndexingOptions, type IndexingProgress } from './indexer.js';
 import { SymbolResolver, type FindOptions, type SymbolDefinition } from './symbol-resolver.js';
-import { ImportGraphBuilder } from './import-graph/index.js';
+import { ImportGraphBuilder, type ImportGraph } from './import-graph/index.js';
 import { SemanticSearch, type SemanticSearchOptions, type SearchResult } from './semantic-search.js';
 import { ReferenceExtractor, type ReferenceResolution } from './reference-extractor.js';
 import { TypeRelationshipMap, type TypeRelationship, type TypeHierarchy } from './type-relationship-map.js';
@@ -132,6 +132,7 @@ export class CodebaseIntelligenceService {
   private semanticSearch?: SemanticSearch;
   private referenceExtractor?: ReferenceExtractor;
   private typeRelationshipMap?: TypeRelationshipMap;
+  private importGraph?: ImportGraph;
 
   // Service state
   private initialized = false;
@@ -282,7 +283,8 @@ export class CodebaseIntelligenceService {
   ): Promise<SymbolDefinition | null> {
     this.ensureInitialized();
 
-    return this.resolver.findDefinition(symbolName, options);
+    const results = this.resolver.findDefinition(symbolName, options);
+    return results.length > 0 ? results[0] : null;
   }
 
   /**
@@ -297,7 +299,7 @@ export class CodebaseIntelligenceService {
 
     if (!this.repositoryMap) return [];
 
-    return this.repositoryMap.references.filter(ref =>
+    return this.repositoryMap.references.filter((ref: SymbolReference) =>
       ref.symbolName === symbolName &&
       (!options.filePath || ref.sourceFile === options.filePath)
     );
@@ -362,7 +364,7 @@ export class CodebaseIntelligenceService {
   } {
     this.ensureInitialized();
 
-    const importCycles = this.importGraphBuilder.findCircularDependencies();
+    const importCycles = this.importGraph ? this.importGraphBuilder.findCircularDependencies(this.importGraph).map((c: { cycle: string[] }) => c.cycle) : [];
     const typeCycles = this.typeRelationshipMap?.findCircularDependencies() || [];
 
     return {
@@ -405,7 +407,7 @@ export class CodebaseIntelligenceService {
       symbolsExtracted: this.getTotalSymbolCount(),
       referencesFound: this.repositoryMap?.references.length || 0,
       typeRelationships: this.typeRelationshipMap ? this.getTypeRelationshipCount() : 0,
-      lastIndexed: this.repositoryMap?.stats?.indexedAt,
+      lastIndexed: this.repositoryMap?.createdAt,
       cacheStats: {
         size: this.cache.size,
         hits: this.cacheStats.hits,
@@ -424,6 +426,7 @@ export class CodebaseIntelligenceService {
     this.semanticSearch = undefined;
     this.referenceExtractor = undefined;
     this.typeRelationshipMap = undefined;
+    this.importGraph = undefined;
     this.cache.clear();
     this.cacheStats = { hits: 0, misses: 0 };
   }
@@ -468,7 +471,7 @@ export class CodebaseIntelligenceService {
       await this.typeRelationshipMap.buildTypeGraph();
 
       // Build import graph
-      await this.importGraphBuilder.buildGraph(this.repositoryMap);
+      this.importGraph = await this.importGraphBuilder.buildGraph(this.repositoryMap.rootPath);
 
     } catch (error) {
       console.warn('Some additional analysis failed:', error);
@@ -482,11 +485,11 @@ export class CodebaseIntelligenceService {
     if (!this.repositoryMap || !this.referenceExtractor) return;
 
     for (const file of this.repositoryMap.files) {
-      if (file.content && this.isAnalyzableFile(file.filePath, file.language)) {
+      if (file.path && this.isAnalyzableFile(file.path, file.language)) {
         try {
-          await this.referenceExtractor.updateRepositoryMapReferences(file.filePath);
+          await this.referenceExtractor.updateRepositoryMapReferences(file.path);
         } catch (error) {
-          console.warn(`Failed to extract references from ${file.filePath}:`, error);
+          console.warn(`Failed to extract references from ${file.path}:`, error);
         }
       }
     }
@@ -532,7 +535,7 @@ export class CodebaseIntelligenceService {
       return { totalSymbols: 0, byType: {}, exportedSymbols: 0 };
     }
 
-    const allSymbols = this.repositoryMap.files.flatMap(f => f.symbols);
+    const allSymbols = this.repositoryMap.files.flatMap((f) => f.symbols);
     const byType: Record<string, number> = {};
     let exportedSymbols = 0;
 
@@ -597,7 +600,7 @@ export class CodebaseIntelligenceService {
 
     return {
       totalFiles: this.repositoryMap.files.length,
-      totalImports: this.repositoryMap.imports.length,
+      totalImports: this.repositoryMap.files.reduce((count, f) => count + (f.imports?.length || 0), 0),
       circularImports: circularDeps.imports,
       unresolvedImports: this.getUnresolvedImports(),
     };
@@ -670,19 +673,17 @@ export class CodebaseIntelligenceService {
     return {
       rootPath: '',
       files: [],
-      imports: [],
       references: [],
       stats: {
         totalFiles: 0,
         totalSymbols: 0,
-        indexedAt: new Date(),
-        processingTimeMs: 0,
+        totalReferences: 0,
       },
     };
   }
 
   private getTotalSymbolCount(): number {
-    return this.repositoryMap?.files.reduce((count, file) => count + file.symbols.length, 0) || 0;
+    return this.repositoryMap?.files.reduce((count: number, file) => count + (file.symbols?.length || 0), 0) || 0;
   }
 
   private getTypeRelationshipCount(): number {
@@ -693,8 +694,8 @@ export class CodebaseIntelligenceService {
   private getTypeCount(): number {
     if (!this.repositoryMap) return 0;
     return this.repositoryMap.files
-      .flatMap(f => f.symbols)
-      .filter(s => ['class', 'interface', 'type', 'enum'].includes(s.type))
+      .flatMap((f) => f.symbols)
+      .filter((s: CodeSymbol) => ['class', 'interface', 'type', 'enum'].includes(s.type))
       .length;
   }
 
@@ -710,9 +711,10 @@ export class CodebaseIntelligenceService {
 
   private getUnresolvedImports(): string[] {
     if (!this.repositoryMap) return [];
-    return this.repositoryMap.imports
-      .filter(imp => !imp.targetFile || imp.targetFile === 'unknown')
-      .map(imp => imp.importSpecifier || 'unknown');
+    return this.repositoryMap.files
+      .flatMap((f) => f.imports || [])
+      .filter((imp) => !imp.resolvedPath)
+      .map((imp) => imp.sourceFile || 'unknown');
   }
 }
 

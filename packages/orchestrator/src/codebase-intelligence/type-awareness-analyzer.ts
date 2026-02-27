@@ -47,7 +47,7 @@ import type {
   RepositoryMap,
   CodeFile,
   CodeSymbol
-} from '@apexcli/core/types';
+} from '@apexcli/core';
 
 /**
  * Represents a TypeScript interface definition
@@ -421,7 +421,7 @@ export class TypeAwarenessAnalyzer {
       // Parse the TypeScript code
       const parseResult = await this.wrapper.parse(content, SupportedLanguage.TypeScript);
 
-      if (!parseResult.success || !parseResult.tree) {
+      if (parseResult.hasErrors || !parseResult.tree) {
         errors.push('Failed to parse TypeScript content');
         return typeInfo;
       }
@@ -1274,7 +1274,7 @@ export class TypeAwarenessAnalyzer {
     };
 
     // Enhance existing symbols with type information
-    const enhancedSymbols: CodeSymbol[] = file.symbols.map(symbol => {
+    const enhancedSymbols: CodeSymbol[] = file.symbols.map((symbol: CodeSymbol) => {
       const typeAnnotation = typeInfo.typeAnnotations.get(symbol.name);
       return {
         ...symbol,

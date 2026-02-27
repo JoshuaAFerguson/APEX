@@ -47,7 +47,8 @@
  */
 
 import { vi } from 'vitest';
-import { createTestContext, type TestContext } from './test-context.js';
+import { createTestContext } from './test-context.js';
+import type { TestContext } from './types.js';
 import { EventEmitter } from 'events';
 
 // ============================================================================
@@ -156,9 +157,12 @@ export function createResourcePool<T>(
         available.splice(index, 1);
         resourceMetadata.delete(resource);
         if (options.destroyFn) {
-          options.destroyFn(resource).catch(() => {
-            // Ignore cleanup errors
-          });
+          const result = options.destroyFn(resource);
+          if (result && typeof (result as Promise<void>).catch === 'function') {
+            (result as Promise<void>).catch(() => {
+              // Ignore cleanup errors
+            });
+          }
         }
       }
     }
@@ -246,9 +250,12 @@ export function createResourcePool<T>(
           console.warn('ResourcePool: Reset failed, destroying resource:', error);
           resourceMetadata.delete(resource);
           if (options.destroyFn) {
-            options.destroyFn(resource).catch(() => {
-              // Ignore destruction errors
-            });
+            const result = options.destroyFn(resource);
+            if (result && typeof (result as Promise<void>).catch === 'function') {
+              (result as Promise<void>).catch(() => {
+                // Ignore destruction errors
+              });
+            }
           }
         });
     },

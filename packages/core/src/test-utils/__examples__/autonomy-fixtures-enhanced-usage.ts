@@ -35,7 +35,7 @@ export function exampleBasicUsage() {
   console.log('Semi-Auto Config:', {
     level: semiAutoConfig.level,
     gateCount: semiAutoConfig.gates?.length || 0,
-    hasCommitGate: semiAutoConfig.gates?.some(g => g.type === 'commit')
+    hasCommitGate: semiAutoConfig.gates?.some(g => g.type === 'before-commit')
   });
 
   const manualConfig = AutonomyFixturesEnhanced.manual();
@@ -57,14 +57,14 @@ export function exampleFactoryFunctions() {
   const customSemiAuto = createSemiAutoConfig({
     approvalTimeout: 60, // 1 hour timeout
     limits: {
-      maxTokensPerTask: 750000,
-      maxCostPerTask: 7.5,
-      timeoutMinutes: 45,
+      maxTokens: 750000,
+      maxCost: 7.5,
+      maxTimeMs: 2700000, // 45 minutes
     },
   });
   console.log('Custom Semi-Auto:', {
     timeout: customSemiAuto.approvalTimeout,
-    maxCost: customSemiAuto.limits?.maxCostPerTask
+    maxCost: customSemiAuto.limits?.maxCost
   });
 
   // Create manual config with stage overrides
@@ -94,8 +94,8 @@ export function exampleTestingScenarios() {
   const fastTestConfig = createTestingAutonomyConfig('fast');
   console.log('Fast Test Config:', {
     level: fastTestConfig.level,
-    maxTokens: fastTestConfig.limits?.maxTokensPerTask,
-    timeoutMinutes: fastTestConfig.limits?.timeoutMinutes
+    maxTokens: fastTestConfig.limits?.maxTokens,
+    maxTimeMs: fastTestConfig.limits?.maxTimeMs
   });
 
   // Comprehensive test configuration for integration tests
@@ -109,9 +109,9 @@ export function exampleTestingScenarios() {
   // Minimal test configuration for quick validation
   const minimalTestConfig = createTestingAutonomyConfig('minimal');
   console.log('Minimal Test Config:', {
-    maxTokens: minimalTestConfig.limits?.maxTokensPerTask,
-    maxCost: minimalTestConfig.limits?.maxCostPerTask,
-    timeoutMinutes: minimalTestConfig.limits?.timeoutMinutes
+    maxTokens: minimalTestConfig.limits?.maxTokens,
+    maxCost: minimalTestConfig.limits?.maxCost,
+    maxTimeMs: minimalTestConfig.limits?.maxTimeMs
   });
 
   // Isolated test configuration for parallel execution
@@ -119,7 +119,7 @@ export function exampleTestingScenarios() {
   console.log('Isolated Test Config:', {
     level: isolatedTestConfig.level,
     gateCount: isolatedTestConfig.gates?.length,
-    maxCost: isolatedTestConfig.limits?.maxCostPerTask
+    maxCost: isolatedTestConfig.limits?.maxCost
   });
 }
 
@@ -143,7 +143,6 @@ export function exampleFullApexConfig() {
     },
     api: {
       port: 3001,
-      host: '0.0.0.0',
     },
   });
   console.log('Development Config:', {
@@ -192,7 +191,7 @@ export function exampleComprehensiveTesting() {
 
     // Example test assertion
     if (!isValid) {
-      console.error(`❌ Invalid config for ${name}`);
+      console.error(`Invalid config for ${name}`);
     }
   });
 }
@@ -244,9 +243,9 @@ export function exampleScenarioConfigs() {
   // Emergency hotfix scenario - needs quick deployment with minimal oversight
   const hotfixConfig = createSemiAutoConfig({
     limits: {
-      maxTokensPerTask: 100000,
-      maxCostPerTask: 2.0,
-      timeoutMinutes: 15, // Quick timeout for urgency
+      maxTokens: 100000,
+      maxCost: 2.0,
+      maxTimeMs: 900000, // 15 minutes - Quick timeout for urgency
     },
     approvalTimeout: 5, // Very quick approvals needed
     stageOverrides: {
@@ -260,9 +259,9 @@ export function exampleScenarioConfigs() {
   // Feature development scenario - balanced oversight
   const featureConfig = createSemiAutoConfig({
     limits: {
-      maxTokensPerTask: 1000000,
-      maxCostPerTask: 15.0,
-      timeoutMinutes: 120,
+      maxTokens: 1000000,
+      maxCost: 15.0,
+      maxTimeMs: 7200000, // 120 minutes
     },
     approvalTimeout: 30,
     stageOverrides: {
@@ -276,9 +275,9 @@ export function exampleScenarioConfigs() {
   // Security audit scenario - maximum oversight
   const auditConfig = createManualConfig({
     limits: {
-      maxTokensPerTask: 50000,
-      maxCostPerTask: 1.0,
-      timeoutMinutes: 60,
+      maxTokens: 50000,
+      maxCost: 1.0,
+      maxTimeMs: 3600000, // 60 minutes
     },
     approvalTimeout: 120, // Longer time for security review
     rejectionBehavior: 'abort', // Strict - abort on any rejection
@@ -291,7 +290,7 @@ export function exampleScenarioConfigs() {
   });
   console.log('Feature:', {
     planningLevel: featureConfig.stageOverrides?.planning,
-    maxCost: featureConfig.limits?.maxCostPerTask
+    maxCost: featureConfig.limits?.maxCost
   });
   console.log('Audit:', {
     rejectionBehavior: auditConfig.rejectionBehavior,
@@ -340,7 +339,7 @@ function simulatePerformanceMetrics(config: any) {
 // =============================================================================
 
 export function runAllExamples() {
-  console.log('🚀 Enhanced Autonomy Fixtures Examples\n');
+  console.log('Enhanced Autonomy Fixtures Examples\n');
 
   try {
     exampleBasicUsage();
@@ -364,9 +363,9 @@ export function runAllExamples() {
     exampleScenarioConfigs();
     console.log('');
 
-    console.log('✅ All examples completed successfully!');
+    console.log('All examples completed successfully!');
   } catch (error) {
-    console.error('❌ Error running examples:', error);
+    console.error('Error running examples:', error);
   }
 }
 

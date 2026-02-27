@@ -760,7 +760,7 @@ export function createWorkflowWithApprovals(config: {
       agent: 'developer',
       description: 'Implement the feature',
       parallel: false,
-      gates: gates.length > 0 ? gates : undefined,
+      gate: gates.length > 0 ? gates[0]?.type : undefined,
     },
   ];
 

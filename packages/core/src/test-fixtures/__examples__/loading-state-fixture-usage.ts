@@ -200,7 +200,7 @@ export const exampleWithWrapper = withLoadingFixture(
  */
 export async function exampleMultiScenario() {
   const scenarios = ['api-request', 'file-upload', 'auth-check'] as const;
-  const createFixture = createMultiLoadingFixture(scenarios);
+  const createFixture = createMultiLoadingFixture([...scenarios]);
 
   const results = [];
 

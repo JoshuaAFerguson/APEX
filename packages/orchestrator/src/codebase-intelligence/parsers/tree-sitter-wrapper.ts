@@ -62,7 +62,7 @@ export class TreeSitterWrapper {
   private languageCache: Map<SupportedLanguage, Language> = new Map();
 
   /** The tree-sitter Parser instance */
-  private parser: import('tree-sitter').default | null = null;
+  private parser: any | null = null;
 
   /** Whether the parser module has been loaded */
   private parserLoaded = false;
@@ -99,7 +99,7 @@ export class TreeSitterWrapper {
   /**
    * Ensure the parser module is loaded
    */
-  private async ensureParser(): Promise<import('tree-sitter').default> {
+  private async ensureParser(): Promise<any> {
     if (!this.parserLoaded || !this.parser) {
       const TreeSitter = (await import('tree-sitter')).default;
       this.parser = new TreeSitter();
@@ -123,7 +123,7 @@ export class TreeSitterWrapper {
     }
 
     try {
-      let languageGrammar: Language;
+      let languageGrammar: any;
 
       switch (language) {
         case SupportedLanguage.TypeScript: {
@@ -165,8 +165,8 @@ export class TreeSitterWrapper {
           throw new UnsupportedLanguageError(language);
       }
 
-      this.languageCache.set(language, languageGrammar);
-      return languageGrammar;
+      this.languageCache.set(language, languageGrammar as Language);
+      return languageGrammar as Language;
     } catch (error) {
       if (error instanceof UnsupportedLanguageError) {
         throw error;

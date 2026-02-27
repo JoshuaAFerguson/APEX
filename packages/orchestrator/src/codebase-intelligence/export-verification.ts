@@ -20,6 +20,6 @@ const instance2 = getCodebaseIndexer();
 
 console.log('- Singleton pattern verification:', instance1 === instance2 ? '✅ PASS' : '❌ FAIL');
 console.log('- Instance has indexDirectory method:', typeof instance1.indexDirectory === 'function' ? '✅ PASS' : '❌ FAIL');
-console.log('- Instance has indexFile method:', typeof instance1.indexFile === 'function' ? '✅ PASS' : '❌ FAIL');
+console.log('- Instance has indexDirectoryWithProgress method:', typeof instance1.indexDirectoryWithProgress === 'function' ? '✅ PASS' : '❌ FAIL');
 
 export { CodebaseIndexerFromSubmodule as CodebaseIndexer, getCodebaseIndexer };

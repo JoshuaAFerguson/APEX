@@ -113,7 +113,7 @@ try {
     createTestTasks(0);
     console.log('   ❌ Expected error for zero count not thrown');
   } catch (error) {
-    console.log(`   ✓ Zero count correctly throws error: ${error.message}`);
+    console.log(`   ✓ Zero count correctly throws error: ${(error as Error).message}`);
   }
 
   // Integration test - create related fixtures

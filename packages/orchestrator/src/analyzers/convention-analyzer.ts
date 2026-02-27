@@ -125,7 +125,7 @@ export class ConventionAnalyzer extends BaseAnalyzer {
         severity: 'medium',
         description: 'Code duplication may indicate inconsistent import/export patterns',
         files: analysis.codeQuality.duplicatedCode.flatMap(d =>
-          Array.isArray(d) ? [] : (d.locations || []).map(l => l.file)
+          Array.isArray(d.locations) ? d.locations : []
         ),
         inconsistencyPercentage: Math.min(70, analysis.codeQuality.duplicatedCode.length * 10),
         suggestedFix: 'Standardize module structure and import/export conventions',
@@ -180,9 +180,9 @@ export class ConventionAnalyzer extends BaseAnalyzer {
   /**
    * Map issue severity to task priority
    */
-  private mapSeverityToPriority(severity: ConventionIssue['severity']): 'low' | 'normal' | 'high' | 'critical' {
+  private mapSeverityToPriority(severity: ConventionIssue['severity']): 'low' | 'normal' | 'high' | 'urgent' {
     switch (severity) {
-      case 'critical': return 'critical';
+      case 'critical': return 'urgent';
       case 'high': return 'high';
       case 'medium': return 'normal';
       case 'low': return 'low';

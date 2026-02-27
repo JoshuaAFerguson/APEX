@@ -107,14 +107,20 @@ async function claudeSdkIntegration() {
       role: claudeMessage.role,
       content: [
         claudeMessage.content[0],
-        {
-          type: claudeMessage.content[1].type,
-          source: {
-            type: claudeMessage.content[1].source.type,
-            media_type: claudeMessage.content[1].source.media_type,
-            data: `${claudeMessage.content[1].source.data.slice(0, 30)}...`
+        (() => {
+          const block = claudeMessage.content[1];
+          if (block.type === 'image') {
+            return {
+              type: block.type,
+              source: {
+                type: block.source.type,
+                media_type: block.source.media_type,
+                data: `${block.source.data.slice(0, 30)}...`
+              }
+            };
           }
-        }
+          return block;
+        })()
       ]
     });
 

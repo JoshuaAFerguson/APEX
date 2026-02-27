@@ -418,7 +418,7 @@ export class MockTransport extends MCPTransport {
       default:
         throw new MCPTransportError(
           `Unknown malformed data type: ${(config as any).type}`,
-          'INVALID_PARAMS'
+          'SEND_FAILED'
         );
     }
 
