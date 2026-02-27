@@ -184,7 +184,6 @@ export class MCPToolManager extends EventEmitter<MCPToolManagerEvents> {
           args: config.args || [],
           env: config.env || {},
         });
-
         client = new MCPClient({
           transport,
           timeoutMs: this.operationTimeoutMs,

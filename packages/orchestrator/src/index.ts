@@ -1342,6 +1342,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private mcpToolRegistry?: MCPToolRegistry;
   private browserToolsServer?: BrowserToolsServer;
   private tddExecutor?: TDDExecutor;
+  private driver!: import('./drivers/index.js').AiDriver;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -1436,6 +1437,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       } as unknown as ApexConfig;
     }
     this.effectiveConfig = getEffectiveConfig(this.config);
+
+    // Initialize the AI platform driver (v0.6.0)
+    await this.initializeDriver();
 
     // Initialize alias resolver with config aliases
     this.aliasResolver = new AliasResolver(this.config.aliases || []);
@@ -1637,6 +1641,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.repairLoop = new RepairLoop(this.createRepairLoopHost(), repairConfig);
 
     this.initialized = true;
+  }
+
+  /**
+   * Initialize the AI platform driver based on configuration
+   */
+  private async initializeDriver(): Promise<void> {
+    const { DriverFactory } = await import('./drivers/index.js');
+    const primaryProvider = this.config.providers?.primary || 'anthropic';
+    this.driver = DriverFactory.getDriver(primaryProvider);
+    await this.driver.initialize();
   }
 
   // --------------------------------------------------------------------------
@@ -3614,7 +3628,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               role: 'user' as const,
               content: updatedContentBlocks,
             },
-            parent_tool_use_id: null,
+            parent_tool_use_id: null as string | null,
             session_id: `stage-${stage.name}-${task.id}`,
           };
         })();
@@ -3633,7 +3647,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               role: 'user' as const,
               content: stagePromptResult.contentBlocks,
             },
-            parent_tool_use_id: null,
+            parent_tool_use_id: null as string | null,
             session_id: `stage-${stage.name}-${task.id}`,
           };
         })();
@@ -3687,10 +3701,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Collect all messages to extract summary
     const messages: string[] = [];
 
-    // Convert agent model to SDK model format
-    const sdkModel = agent.model === 'opus' ? 'claude-opus-4-5-20251101' :
-                     agent.model === 'haiku' ? 'claude-haiku-4-5-20251001' :
-                     'claude-sonnet-4-20250514';
+    // Convert agent model to SDK model format (v0.6.0)
+    const sdkModel = this.driver.resolveModel(agent.model);
 
     // Check session limits before starting agent query
     const sessionLimitStatus = await this.detectSessionLimit(task.id);
@@ -3789,293 +3801,126 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
     }
 
-    for await (const message of query({
-      prompt: stagePrompt,
-      options: {
-        model: sdkModel,
-        permissionMode: 'acceptEdits',
-        maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50), // Limit per-stage turns
-        settingSources: ['project'],
-        mcpServers: mcpServers,
-        tools: this.currentTaskTools, // Combined built-in and MCP tools
-        cwd: workingDirectory,
-        env: {
-          ...process.env,
-          APEX_API: this.apiUrl,
-          APEX_TASK_ID: task.id,
-          APEX_PROJECT: this.projectPath,
-          APEX_BRANCH: task.branchName || '',
-          APEX_STAGE: stage.name,
-          APEX_AGENT: agent.name,
-          // Container execution context environment variables
-          // Only set if containerId exists and is not empty
-          ...(containerId && containerId.trim() !== '' && { APEX_CONTAINER_ID: containerId }),
-          // Only set if workspaceInfo exists and has non-empty workspacePath
-          ...(workspaceInfo && workspaceInfo.workspacePath && workspaceInfo.workspacePath.trim() !== '' && { APEX_WORKSPACE_PATH: workspaceInfo.workspacePath }),
-        },
-        hooks,
-      },
+    for await (const message of this.driver.stream({
+      prompt: typeof stagePrompt === 'string' ? stagePrompt : stagePromptResult.textPrompt,
+      systemPrompt: agent.prompt,
+      model: sdkModel,
+      maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50),
+      cwd: workingDirectory,
     })) {
-      // Emit message for streaming
-      this.emit('agent:message', task.id, message);
-
       // Collect text content for summary extraction and log AI responses
-      if (message && typeof message === 'object') {
-        // Extract text content and thinking from SDK message format
-        // SDK messages have type: 'assistant' with nested message.content array
-        // or type: 'result' with result string
-        let textContent = '';
-        let thinkingContent = '';
+      let textContent = '';
+      let thinkingContent = '';
 
-        const msg = message as Record<string, unknown>;
+      switch (message.type) {
+        case 'text':
+          textContent = message.content;
+          this.emit('agent:message', task.id, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: message.content }] } });
+          break;
+        case 'thinking':
+          thinkingContent = message.content;
+          this.emit('agent:message', task.id, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'thinking', thinking: message.content }] } });
+          break;
+        case 'tool_call': {
+          const callId = message.id;
+          const toolName = message.name;
+          const input = message.input || {};
+          const timestamp = new Date();
 
-        if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
-          // Assistant messages have content as array of blocks
-          const apiMessage = msg.message as {
-            content?: Array<{
-              type: string;
-              text?: string;
-              thinking?: string;
-              // Tool call fields
-              id?: string;
-              name?: string;
-              input?: Record<string, unknown>;
-              tool_use_id?: string;
-              content?: unknown;
-              is_error?: boolean;
-            }>;
-            thinking?: string;
+          // Create a new ToolExecution record
+          const toolExecution: ToolExecution = {
+            callId,
+            toolName,
+            input,
+            taskId: task.id,
+            agentName: stage.agent,
+            stageName: stage.name,
+            startTime: timestamp,
+            status: 'running',
           };
 
-          if (Array.isArray(apiMessage.content)) {
-            for (const block of apiMessage.content) {
-              if (block.type === 'text' && block.text) {
-                textContent += block.text + '\n';
-              } else if (block.type === 'thinking' && 'thinking' in block && typeof block.thinking === 'string') {
-                // Extract thinking content from content blocks
-                thinkingContent += block.thinking;
-              } else if (block.type === 'tool_use' && block.name && block.id) {
-                // Tool call started
-                const callId = block.id;
-                const toolName = block.name;
-                const input = block.input || {};
-                const timestamp = new Date();
+          // Store the active tool execution
+          this.activeToolExecutions.set(callId, toolExecution);
 
-                // Create a new ToolExecution record
-                const toolExecution: ToolExecution = {
-                  callId,
-                  toolName,
-                  input,
-                  taskId: task.id,
-                  agentName: stage.agent,
-                  stageName: stage.name,
-                  startTime: timestamp,
-                  status: 'running',
-                };
-
-                // Store the active tool execution
-                this.activeToolExecutions.set(callId, toolExecution);
-
-                this.emit('tool:start', {
-                  taskId: task.id,
-                  toolName,
-                  input,
-                  timestamp,
-                  callId,
-                });
-              } else if (block.type === 'tool_result' && block.tool_use_id) {
-                // Tool call completed
-                const callId = block.tool_use_id;
-                const endTime = new Date();
-                const toolExecution = this.activeToolExecutions.get(callId);
-
-                if (toolExecution) {
-                  const duration = endTime.getTime() - toolExecution.startTime.getTime();
-                  let success = !block.is_error;
-                  let outputForEvents: unknown = block.content;
-                  let toolError = block.is_error ? String(block.content) : undefined;
-
-                  // Scan tool output for secrets if scanner is configured
-                  if (this.secretScanner && success && block.content) {
-                    try {
-                      // Convert output to string for scanning
-                      const outputContent = this.normalizeSecretScanContent(block.content);
-
-                      // Scan for secrets in the tool output
-                      const detections = this.secretScanner.scan(
-                        outputContent,
-                        `tool:${toolExecution.toolName}:${callId}`
-                      );
-                      const findings = this.mapSecretDetectionsToFindings(detections);
-
-                      // If secrets detected, emit secret:detected event
-                      if (findings.length > 0) {
-                        const behavior = this.resolveSecretDetectionBehavior();
-                        const processed = this.secretOutputProcessor.processOutput(
-                          outputForEvents as string | Record<string, unknown>,
-                          findings,
-                          behavior
-                        );
-
-                        outputForEvents = processed.output;
-                        if (processed.shouldBlock) {
-                          success = false;
-                          toolError = processed.blockError || 'Tool output blocked due to secret detection';
-                        }
-
-                        const severityCounts = {
-                          critical: findings.filter(f => f.severity === 'critical').length,
-                          high: findings.filter(f => f.severity === 'high').length,
-                          medium: findings.filter(f => f.severity === 'medium').length,
-                          low: findings.filter(f => f.severity === 'low').length,
-                        };
-
-                        this.emit('secret:detected', {
-                          taskId: task.id,
-                          toolName: toolExecution.toolName,
-                          callId,
-                          findings,
-                          count: findings.length,
-                          severityCounts,
-                          behavior,
-                          timestamp: new Date(),
-                        });
-
-                        // Log the detection
-                        await this.store.addLog(task.id, {
-                          level: processed.logLevel,
-                          message: `Secrets detected in tool output: ${toolExecution.toolName} (${findings.length} findings)`,
-                          metadata: {
-                            toolName: toolExecution.toolName,
-                            callId,
-                            secretCount: findings.length,
-                            severityCounts,
-                            behavior,
-                          },
-                        });
-                      }
-                    } catch (scanError) {
-                      // Log scanner errors but don't fail the tool execution
-                      await this.store.addLog(task.id, {
-                        level: 'error',
-                        message: `Secret scanner error for tool ${toolExecution.toolName}: ${String(scanError)}`,
-                        metadata: {
-                          toolName: toolExecution.toolName,
-                          callId,
-                          scanError: String(scanError),
-                        },
-                      });
-                    }
-                  }
-
-                  // Update the tool execution record
-                  const completedExecution: ToolExecution = {
-                    ...toolExecution,
-                    endTime,
-                    duration,
-                    status: success ? 'completed' : 'failed',
-                    result: {
-                      success,
-                      output: outputForEvents,
-                      error: success ? undefined : toolError,
-                    },
-                  };
-
-                  this.emit('tool:complete', {
-                    taskId: task.id,
-                    toolName: toolExecution.toolName,
-                    callId,
-                    result: {
-                      success,
-                      output: outputForEvents,
-                      error: success ? undefined : toolError,
-                    },
-                    timing: {
-                      startTime: toolExecution.startTime,
-                      endTime,
-                      duration,
-                    },
-                    timestamp: endTime,
-                  });
-
-                  // Record tool action for file-modifying tools
-                  try {
-                    await this.recordFileModifyingToolAction(task.id, completedExecution);
-                  } catch (error) {
-                    await this.store.addLog(task.id, {
-                      level: 'error',
-                      message: `Failed to record tool action for ${toolExecution.toolName}: ${String(error)}`,
-                      metadata: {
-                        toolName: toolExecution.toolName,
-                        callId,
-                        error: String(error),
-                      },
-                    });
-                  }
-
-                  // Clean up active execution tracking
-                  this.activeToolExecutions.delete(callId);
-                }
-              }
-            }
-          }
-
-          // Fallback: Extract thinking content if available as direct property (legacy support)
-          if (typeof apiMessage.thinking === 'string' && !thinkingContent) {
-            thinkingContent = apiMessage.thinking;
-          }
-        } else if (msg.type === 'result' && typeof msg.result === 'string') {
-          textContent = msg.result;
-        } else if ('content' in msg && typeof msg.content === 'string') {
-          // Fallback for simple content string
-          textContent = msg.content;
-        }
-
-        if (textContent.trim().length > 0) {
-          messages.push(textContent);
-
-          // Log AI text responses (truncate long messages)
-          const truncated = textContent.length > 500
-            ? textContent.substring(0, 500) + '...'
-            : textContent;
-          await this.store.addLog(task.id, {
-            level: 'info',
-            message: truncated,
-            stage: stage.name,
-            agent: agent.name,
+          this.emit('tool:start', {
+            taskId: task.id,
+            toolName,
+            input,
+            timestamp,
+            callId,
           });
-        }
-
-        // Emit thinking content if available
-        if (thinkingContent.trim().length > 0) {
-          this.emit('agent:thinking', task.id, agent.name, thinkingContent);
-
-          // Log thinking content for debugging (verbose only)
-          await this.store.addLog(task.id, {
-            level: 'debug',
-            message: `[THINKING] ${thinkingContent.length > 200 ? thinkingContent.substring(0, 200) + '...' : thinkingContent}`,
-            stage: stage.name,
-            agent: agent.name,
+          
+          this.emit('agent:message', task.id, { 
+            type: 'assistant', 
+            message: { 
+              role: 'assistant', 
+              content: [{ type: 'tool_use', id: callId, name: toolName, input }] 
+            } 
           });
+          break;
         }
+        case 'tool_result': {
+          const callId = message.id;
+          const result = message.content;
+          const isError = message.isError;
+          const timestamp = new Date();
+
+          const toolExecution = this.activeToolExecutions.get(callId);
+          if (toolExecution) {
+            toolExecution.status = isError ? 'failed' : 'completed';
+            toolExecution.endTime = timestamp;
+            toolExecution.duration = timestamp.getTime() - toolExecution.startTime.getTime();
+            toolExecution.result = {
+              success: !isError,
+              output: result,
+              error: isError ? String(result) : undefined,
+            };
+
+            this.emit('tool:complete', {
+              taskId: task.id,
+              toolName: toolExecution.toolName,
+              callId,
+              result: {
+                success: !isError,
+                output: result,
+                error: isError ? String(result) : undefined,
+              },
+              timing: {
+                startTime: toolExecution.startTime,
+                endTime: timestamp,
+                duration: toolExecution.duration,
+              },
+              timestamp,
+            });
+          }
+          
+          this.emit('agent:message', task.id, { 
+            type: 'assistant', 
+            message: { 
+              role: 'assistant', 
+              content: [{ type: 'tool_result', tool_use_id: callId, content: result, is_error: isError }] 
+            } 
+          });
+          break;
+        }
+        case 'usage':
+          this.emit('agent:message', task.id, { type: 'usage', input_tokens: message.inputTokens, output_tokens: message.outputTokens });
+          
+          stageUsage.inputTokens += message.inputTokens;
+          stageUsage.outputTokens += message.outputTokens;
+          stageUsage.totalTokens = stageUsage.inputTokens + stageUsage.outputTokens;
+          stageUsage.estimatedCost = calculateCost(stageUsage.inputTokens, stageUsage.outputTokens);
+
+          // Update task-level usage
+          await this.updateUsage(task.id, {
+            inputTokens: message.inputTokens,
+            outputTokens: message.outputTokens,
+          });
+          break;
       }
 
-      // Track usage
-      if (message && typeof message === 'object' && 'usage' in message) {
-        const usage = message.usage as { input_tokens?: number; output_tokens?: number };
-        const inputDelta = usage.input_tokens || 0;
-        const outputDelta = usage.output_tokens || 0;
-
-        stageUsage.inputTokens += inputDelta;
-        stageUsage.outputTokens += outputDelta;
-        stageUsage.totalTokens = stageUsage.inputTokens + stageUsage.outputTokens;
-        stageUsage.estimatedCost = calculateCost(stageUsage.inputTokens, stageUsage.outputTokens);
-
-        // Update task-level usage
-        await this.updateUsage(task.id, {
-          inputTokens: inputDelta,
-          outputTokens: outputDelta,
-        });
+      if (textContent.trim().length > 0) {
+        messages.push(textContent);
       }
 
       // Check budget
@@ -12067,7 +11912,6 @@ export {
   type CleanupOptions,
   type BrowserManagerEvents,
 } from './browser-manager';
-export { BrowserTool, type BrowserToolOptions, type BrowserToolConfig } from './tools/browser-tool';
 export {
   MultimodalInputHandler,
   MultimodalInputError,
@@ -12596,6 +12440,15 @@ export type {
 export {
   ConventionAnalyzer,
 } from './codebase-analyzer/analyzers/convention-analyzer.js';
+
+// =============================================================================
+// Auth & Credentials
+// =============================================================================
+
+export {
+  CredentialManager,
+  type Credentials,
+} from './auth/credential-manager.js';
 
 // =============================================================================
 // Codebase Intelligence

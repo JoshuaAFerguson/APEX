@@ -170,7 +170,7 @@ export interface FigmaUrlInfo {
   /** Version ID if specified in the URL */
   versionId?: string;
   /** Export format for image URLs */
-  exportFormat?: 'png' | 'jpg' | 'jpeg' | 'svg' | 'pdf';
+  exportFormat?: DesignExportFormat;
   /** Export scale for image URLs */
   exportScale?: number;
 }

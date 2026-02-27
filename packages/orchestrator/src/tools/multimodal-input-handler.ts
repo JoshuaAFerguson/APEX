@@ -11,6 +11,18 @@ import type {
   DesignMockupProcessResult,
 } from './design-mockup-types';
 import { DesignMockupError } from './design-mockup-types';
+import type {
+  MultimodalInput,
+  ProcessedMultimodalInput,
+  MultimodalContext,
+  MultimodalInputCounts,
+  MultimodalProcessingStatus,
+  ImageInput,
+  WebPageInput,
+  DesignMockupInput,
+  ExtractedContent,
+} from '@apexcli/core';
+
 
 /**
  * Claude SDK compatible ImageBlockParam structure
@@ -719,18 +731,7 @@ export class MultimodalInputHandler {
       }
 
       // Convert the response data to buffer
-      let imageBuffer: Buffer;
-      if (typeof webFetchResult.data === 'string') {
-        // WebFetch typically returns binary data as a string for images
-        imageBuffer = Buffer.from(webFetchResult.data, 'binary');
-      } else if (webFetchResult.data instanceof Buffer) {
-        imageBuffer = webFetchResult.data;
-      } else if (webFetchResult.data instanceof ArrayBuffer) {
-        imageBuffer = Buffer.from(webFetchResult.data);
-      } else {
-        // Last resort: try to convert to string then to buffer
-        imageBuffer = Buffer.from(String(webFetchResult.data), 'binary');
-      }
+      const imageBuffer = Buffer.from(webFetchResult.data, 'binary');
 
       // Validate file size
       this.validateFileSize(imageBuffer.length);
@@ -855,9 +856,11 @@ export class MultimodalInputHandler {
    * Extract export format parameter from Figma URL
    * @private
    */
-  private _extractExportFormatFromUrl(url: string): 'png' | 'jpg' | 'jpeg' | 'svg' | 'pdf' | undefined {
+  private _extractExportFormatFromUrl(url: string): DesignExportFormat | undefined {
     const formatMatch = url.match(MultimodalInputHandler.FIGMA_URL_PATTERNS.EXPORT_FORMAT);
-    return formatMatch ? (formatMatch[1] as 'png' | 'jpg' | 'jpeg' | 'svg' | 'pdf') : undefined;
+    if (!formatMatch) return undefined;
+    const fmt = formatMatch[1];
+    return (fmt === 'jpg' ? 'jpeg' : fmt) as DesignExportFormat;
   }
 
   /**
@@ -1147,22 +1150,16 @@ export class MultimodalInputHandler {
         imageBlock,
         designTool: designTool as DesignTool,
         metadata: {
-          fileName: metadata.fileName,
-          filePath: filePath,
-          frameName: metadata.frameName,
-          artboardName: metadata.artboardName,
-          componentName: metadata.componentName,
-          pageNumber: metadata.pageNumber,
-          scaleFactor: metadata.scaleFactor,
-          platformName: metadata.platformName,
-          stateName: metadata.stateName,
-          version: metadata.version,
-          lastModified: fileStats.mtime.toISOString(),
+          fileUrl: filePath,
+          frameName: metadata.frameName || metadata.artboardName || metadata.componentName,
+          pageName: metadata.platformName,
+          fileVersion: metadata.version,
+          lastModified: fileStats.mtime,
         },
         exportFormat: exportFormat as DesignExportFormat,
         exportScale: options?.exportScale || metadata.scaleFactor || 1,
         fileSizeBytes: fileStats.size,
-        mediaType: `image/${exportFormat}`,
+        mediaType: mediaType,
         processingTime,
         fromCache: false,
       };
@@ -1233,18 +1230,7 @@ export class MultimodalInputHandler {
       }
 
       // Convert the response data to buffer
-      let imageBuffer: Buffer;
-      if (typeof webFetchResult.data === 'string') {
-        // WebFetch typically returns binary data as a string for images
-        imageBuffer = Buffer.from(webFetchResult.data, 'binary');
-      } else if (webFetchResult.data instanceof Buffer) {
-        imageBuffer = webFetchResult.data;
-      } else if (webFetchResult.data instanceof ArrayBuffer) {
-        imageBuffer = Buffer.from(webFetchResult.data);
-      } else {
-        // Last resort: try to convert to string then to buffer
-        imageBuffer = Buffer.from(String(webFetchResult.data), 'binary');
-      }
+      const imageBuffer = Buffer.from(webFetchResult.data, 'binary');
 
       // Validate file size
       this.validateFileSize(imageBuffer.length);
@@ -1264,9 +1250,6 @@ export class MultimodalInputHandler {
           break;
         case 'webp':
           mediaType = 'image/webp';
-          break;
-        case 'gif':
-          mediaType = 'image/gif';
           break;
         case 'svg':
           mediaType = 'image/png'; // SVG not directly supported by Claude SDK, may need conversion
@@ -1305,7 +1288,7 @@ export class MultimodalInputHandler {
         exportFormat,
         exportScale: options?.exportScale || 1,
         fileSizeBytes: imageBuffer.length,
-        mediaType: `image/${exportFormat}`,
+        mediaType: mediaType,
         processingTime: Date.now() - startTime,
         fromCache: webFetchResult.fromCache || false,
         cacheKey: webFetchResult.metadata?.cacheKey,
@@ -1426,16 +1409,7 @@ export class MultimodalInputHandler {
       }
 
       // Convert the response data to buffer
-      let imageBuffer: Buffer;
-      if (typeof webFetchResult.data === 'string') {
-        imageBuffer = Buffer.from(webFetchResult.data, 'binary');
-      } else if (webFetchResult.data instanceof Buffer) {
-        imageBuffer = webFetchResult.data;
-      } else if (webFetchResult.data instanceof ArrayBuffer) {
-        imageBuffer = Buffer.from(webFetchResult.data);
-      } else {
-        imageBuffer = Buffer.from(String(webFetchResult.data), 'binary');
-      }
+      const imageBuffer = Buffer.from(webFetchResult.data, 'binary');
 
       // Validate file size
       this.validateFileSize(imageBuffer.length);
@@ -1455,9 +1429,6 @@ export class MultimodalInputHandler {
           break;
         case 'webp':
           mediaType = 'image/webp';
-          break;
-        case 'gif':
-          mediaType = 'image/gif';
           break;
         case 'svg':
           mediaType = 'image/png'; // SVG not directly supported by Claude SDK, may need conversion
@@ -1510,7 +1481,7 @@ export class MultimodalInputHandler {
         exportFormat,
         exportScale: options?.exportScale || figmaInfo.exportScale || figmaInfo.scaleFactor || 1,
         fileSizeBytes: imageBuffer.length,
-        mediaType: `image/${exportFormat}`,
+        mediaType: mediaType,
         processingTime: Date.now() - startTime,
         fromCache: webFetchResult.fromCache || false,
         cacheKey: webFetchResult.metadata?.cacheKey,
@@ -1690,10 +1661,10 @@ export class MultimodalInputHandler {
    * console.log(context.inputCounts); // { images: 1, webPages: 1, designMockups: 0 }
    * ```
    */
-  async processInputs(inputs: any[]): Promise<any> {
+  async processInputs(inputs: MultimodalInput[]): Promise<MultimodalContext> {
     const startTime = Date.now();
-    const processedInputs: any[] = [];
-    const inputCounts = {
+    const processedInputs: ProcessedMultimodalInput[] = [];
+    const inputCounts: MultimodalInputCounts = {
       images: 0,
       webPages: 0,
       designMockups: 0,
@@ -1716,11 +1687,11 @@ export class MultimodalInputHandler {
       try {
         // Validate input has required fields based on type
         if (!input || typeof input !== 'object') {
-          throw new Error('Input must be an object');
+          throw new MultimodalInputError('Input must be an object', 'INVALID_DATA');
         }
 
         if (!input.type) {
-          throw new Error('Missing required field: type');
+          throw new MultimodalInputError('Missing required field: type', 'MISSING_FIELD');
         }
 
         const validatedInput = input;
@@ -1728,36 +1699,47 @@ export class MultimodalInputHandler {
         // Validate based on type
         const inputType = validatedInput.type;
         if (!['image', 'web_page', 'design_mockup'].includes(inputType)) {
-          throw new Error(`Invalid multimodal input type: ${inputType}`);
+          throw new MultimodalInputError(`Invalid multimodal input type: ${inputType}`, 'INVALID_TYPE');
         }
 
         // Type-specific validation
         if (inputType === 'image') {
-          if (!validatedInput.mediaType) {
-            throw new Error('Missing required field: mediaType');
+          const imageInput = validatedInput as ImageInput;
+          if (!imageInput.mediaType) {
+            throw new MultimodalInputError('Missing required field: mediaType', 'MISSING_FIELD');
           }
-          if (!validatedInput.data) {
-            throw new Error('Missing required field: data');
+          if (!imageInput.data) {
+            throw new MultimodalInputError('Missing required field: data', 'MISSING_FIELD');
           }
           // Validate base64 data
           try {
-            Buffer.from(validatedInput.data, 'base64');
+            const buffer = Buffer.from(imageInput.data, 'base64');
+            if (buffer.length === 0) {
+              throw new MultimodalInputError('Image data is empty', 'INVALID_DATA');
+            }
           } catch {
-            throw new Error('Invalid image data: malformed base64');
+            throw new MultimodalInputError('Invalid image data: malformed base64', 'INVALID_DATA');
           }
         } else if (inputType === 'web_page') {
-          if (!validatedInput.url && !validatedInput.capturedText && !validatedInput.capturedMarkdown) {
-            throw new Error('Missing required field: url or capturedText or capturedMarkdown');
+          const webPageInput = validatedInput as WebPageInput;
+          if (!webPageInput.url && !webPageInput.capturedText && !webPageInput.capturedMarkdown) {
+            throw new MultimodalInputError('Missing required field: url or capturedText or capturedMarkdown', 'MISSING_FIELD');
           }
         } else if (inputType === 'design_mockup') {
-          if (!validatedInput.designTool) {
-            throw new Error('Missing required field: designTool');
+          const designInput = validatedInput as DesignMockupInput;
+          if (!designInput.designTool) {
+            throw new MultimodalInputError('Missing required field: designTool', 'MISSING_FIELD');
+          }
+          // Validate design tool is a known tool
+          const knownDesignTools = ['figma', 'sketch', 'adobe_xd', 'invision', 'framer', 'other'];
+          if (!knownDesignTools.includes(designInput.designTool)) {
+            throw new MultimodalInputError(`Unknown design tool: ${designInput.designTool}`, 'INVALID_DATA');
           }
         }
 
-        let processedInput: any = {
+        let processedInput: ProcessedMultimodalInput = {
           input: validatedInput,
-          status: 'completed' as const,
+          status: 'completed' as MultimodalProcessingStatus,
           processedAt: new Date(),
           processingDurationMs: Date.now() - inputStartTime,
         };
@@ -1765,42 +1747,66 @@ export class MultimodalInputHandler {
         // Extract content based on input type
         if (inputType === 'image') {
           inputCounts.images++;
-          processedInput.extractedContent = {
-            text: validatedInput.description || validatedInput.name || 'Image',
-          };
+          const imageInput = validatedInput as ImageInput;
+
+          // Ensure description/name is meaningful
+          const description = imageInput.description || imageInput.name;
+          if (description && description.trim().length === 0) {
+            // Don't use empty strings
+            processedInput.extractedContent = {
+              text: 'Image',
+              structuredData: { mediaType: imageInput.mediaType },
+            };
+          } else {
+            processedInput.extractedContent = {
+              text: description || 'Image',
+              structuredData: { mediaType: imageInput.mediaType },
+            };
+          }
         } else if (inputType === 'web_page') {
           inputCounts.webPages++;
+          const webPageInput = validatedInput as WebPageInput;
+
+          // Validate URL if provided
+          if (webPageInput.url) {
+            try {
+              new URL(webPageInput.url);
+            } catch {
+              throw new MultimodalInputError(`Invalid URL: ${webPageInput.url}`, 'INVALID_DATA');
+            }
+          }
+
           processedInput.extractedContent = {
-            text: validatedInput.capturedText || validatedInput.capturedMarkdown || validatedInput.url,
+            text: webPageInput.capturedText || webPageInput.capturedMarkdown || webPageInput.url,
           };
         } else if (inputType === 'design_mockup') {
           inputCounts.designMockups++;
+          const designInput = validatedInput as DesignMockupInput;
+
+          // Ensure description/name is meaningful
+          const description = designInput.description || designInput.name;
           processedInput.extractedContent = {
-            text: validatedInput.description || validatedInput.name || 'Design mockup',
+            text: (description && description.trim().length > 0) ? description : 'Design mockup',
             structuredData: {
-              designTool: validatedInput.designTool,
-              ...(validatedInput.designTokens && { designTokens: validatedInput.designTokens }),
+              designTool: designInput.designTool,
+              ...(designInput.designTokens && { designTokens: designInput.designTokens }),
             },
           };
         }
 
         processedInputs.push(processedInput);
       } catch (error) {
+        // Re-throw MultimodalInputError without modification to preserve stack trace
+        if (error instanceof MultimodalInputError) {
+          throw error;
+        }
+
+        // For other errors, wrap appropriately with context
         const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // Re-throw with proper error messages that match test expectations
-        if (errorMessage.includes('Invalid multimodal input type')) {
-          throw new Error(errorMessage);
-        }
-        if (errorMessage.includes('Missing required field')) {
-          throw new Error(errorMessage);
-        }
-        if (errorMessage.includes('Invalid image data')) {
-          throw new Error(errorMessage);
-        }
-
-        // For unknown errors, wrap them appropriately
-        throw new Error('Multimodal input validation failed: ' + errorMessage);
+        throw new MultimodalInputError(
+          `Multimodal input validation failed: ${errorMessage}`,
+          'INVALID_DATA'
+        );
       }
     }
 

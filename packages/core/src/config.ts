@@ -1102,6 +1102,15 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       implementation: config.models?.implementation || 'sonnet',
       review: config.models?.review || 'haiku',
     },
+    providers: {
+      primary: config.providers?.primary || 'anthropic',
+      configs: config.providers?.configs || {
+        anthropic: { enabled: true, authMethod: 'oauth' },
+        openai: { enabled: true, authMethod: 'openauth' },
+        gemini: { enabled: true, authMethod: 'oauth' },
+        agnostic: { enabled: true, authMethod: 'api_key' },
+      },
+    },
     gates: config.gates || [],
     git: {
       branchPrefix: config.git?.branchPrefix || 'apex/',
