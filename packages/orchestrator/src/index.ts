@@ -4243,7 +4243,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         }
         case 'usage':
           this.emit('agent:message', task.id, { type: 'usage', input_tokens: message.inputTokens, output_tokens: message.outputTokens });
-          
+
           stageUsage.inputTokens += message.inputTokens;
           stageUsage.outputTokens += message.outputTokens;
           stageUsage.totalTokens = stageUsage.inputTokens + stageUsage.outputTokens;
@@ -4254,6 +4254,18 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             inputTokens: message.inputTokens,
             outputTokens: message.outputTokens,
           });
+          break;
+        case 'error':
+          // SDK errors (error_during_execution, error_max_turns, etc.)
+          // Push into messages so limit detection and output parsing can see them
+          messages.push(message.message);
+          this.emit('agent:message', task.id, {
+            type: 'assistant',
+            message: { role: 'assistant', content: [{ type: 'text', text: `[ERROR] ${message.message}` }] }
+          });
+          break;
+        case 'complete':
+          // SDK completed successfully — the summary is informational
           break;
       }
 
@@ -4295,6 +4307,22 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
       // Rethrow original error
       throw error;
+    }
+
+    // Check for usage limit messages in successful stream output.
+    // The SDK may complete normally even when Claude hits a limit — the limit
+    // message appears as regular text content, not as an exception.
+    const fullOutputForLimitCheck = messages.join('\n').toLowerCase();
+    const hitUsageLimit = fullOutputForLimitCheck.includes('limit reached') ||
+                          fullOutputForLimitCheck.includes('hit your limit') ||
+                          fullOutputForLimitCheck.includes("you've hit your limit") ||
+                          fullOutputForLimitCheck.includes('extra-usage') ||
+                          fullOutputForLimitCheck.includes('usage limit') ||
+                          (fullOutputForLimitCheck.includes('resets') && (fullOutputForLimitCheck.includes('limit') || fullOutputForLimitCheck.includes('upgrade')));
+
+    if (hitUsageLimit) {
+      const recentOutput = messages.slice(-3).join(' ').substring(0, 300);
+      throw new Error(`Usage limit reached during stage "${stage.name}". Recent output: ${recentOutput}`);
     }
 
     // Extract stage summary and outputs from the final messages
