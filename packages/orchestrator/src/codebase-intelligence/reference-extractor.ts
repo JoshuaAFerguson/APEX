@@ -139,8 +139,8 @@ export class ReferenceExtractor {
       await this.extractReferencesFromNode(parseResult.tree.rootNode, context);
 
       return context.references;
-    } catch (error) {
-      console.error(`Error extracting references from ${filePath}:`, error);
+    } catch {
+      // Silently skip files that fail to parse (grammar issues, unsupported syntax, etc.)
       return [];
     }
   }
