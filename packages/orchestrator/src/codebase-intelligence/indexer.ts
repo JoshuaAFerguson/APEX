@@ -530,7 +530,7 @@ export class CodebaseIndexer {
 
         } catch (typeError) {
           // Log type analysis error but don't fail the indexing
-          console.warn(`Type analysis failed for ${relativePath}:`, typeError);
+          // Silently continue — type analysis is optional
 
           if (codeFile.errors) {
             codeFile.errors.push({

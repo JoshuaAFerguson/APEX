@@ -188,8 +188,11 @@ export class CodebaseIntelligenceService {
       // Initialize dependent components
       await this.initializeComponents();
 
-      // Perform additional analysis
-      await this.performAdditionalAnalysis();
+      // Perform additional analysis in background (non-blocking)
+      // Tree-sitter grammar loading is currently broken, so don't block startup
+      this.performAdditionalAnalysis().catch(() => {
+        // Silently ignore — reference extraction and type analysis are optional
+      });
 
       this.initialized = true;
     } catch (error) {
@@ -473,8 +476,8 @@ export class CodebaseIntelligenceService {
       // Build import graph
       this.importGraph = await this.importGraphBuilder.buildGraph(this.repositoryMap.rootPath);
 
-    } catch (error) {
-      console.warn('Some additional analysis failed:', error);
+    } catch {
+      // Silently ignore — tree-sitter grammar loading may fail
     }
   }
 

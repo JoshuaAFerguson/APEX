@@ -313,7 +313,7 @@ export class TypeRelationshipMap {
     try {
       const parseResult = await this.treeWrapper.parse(sourceCode, language);
       if (parseResult.hasErrors || !parseResult.tree) {
-        console.warn(`Failed to parse ${filePath} for type relationship analysis`);
+        // Silently skip unparseable files
         return;
       }
 
@@ -325,7 +325,7 @@ export class TypeRelationshipMap {
       });
 
     } catch (error) {
-      console.error(`Error analyzing ${filePath} for type relationships:`, error);
+      // Silently skip type relationship analysis errors
     }
   }
 

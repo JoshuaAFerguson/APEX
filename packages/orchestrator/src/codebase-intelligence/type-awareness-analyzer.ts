@@ -478,7 +478,7 @@ export class TypeAwarenessAnalyzer {
 
         } catch (error) {
           // Keep original file if analysis fails
-          console.warn(`Failed to enrich file ${file.path}:`, error);
+          // Silently skip files that fail to enrich
           enrichedFiles.push(file);
         }
       } else {

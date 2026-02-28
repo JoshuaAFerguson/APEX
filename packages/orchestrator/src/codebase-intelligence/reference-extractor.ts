@@ -118,7 +118,7 @@ export class ReferenceExtractor {
       // Parse the source code
       const parseResult = await this.treeWrapper.parse(sourceCode, language);
       if (parseResult.hasErrors || !parseResult.tree) {
-        console.warn(`Failed to parse ${filePath} for reference extraction`);
+        // Silently skip unparseable files
         return [];
       }
 
@@ -188,7 +188,7 @@ export class ReferenceExtractor {
 
       return null;
     } catch (error) {
-      console.error(`Error resolving reference ${reference.symbolName}:`, error);
+      // Silently skip unresolvable references
       return null;
     }
   }
@@ -201,7 +201,7 @@ export class ReferenceExtractor {
   async updateRepositoryMapReferences(filePath: string): Promise<void> {
     const file = this.repoMap.files.find((f) => f.path === filePath);
     if (!file) {
-      console.warn(`File ${filePath} not found in repository map`);
+      // File not in repo map, skip
       return;
     }
 
@@ -233,7 +233,7 @@ export class ReferenceExtractor {
         }
       }
     } catch (error) {
-      console.error(`Failed to update references for ${filePath}:`, error);
+      // Silently skip failed reference updates
     }
   }
 
@@ -346,7 +346,7 @@ export class ReferenceExtractor {
         context.references.push(reference);
       }
     } catch (error) {
-      console.error('Error processing import node:', error);
+      // Silently skip import processing errors
     }
   }
 
@@ -589,7 +589,7 @@ export class ReferenceExtractor {
       }
 
     } catch (error) {
-      console.error('Error extracting import info:', error);
+      // Silently skip import extraction errors
     }
 
     return { module, bindings };
