@@ -1707,84 +1707,117 @@ export class DaemonRunner {
     }
 
     try {
-      // Get only paused tasks (lightweight to avoid OOM with large task counts)
       const pausedTasks = await this.store.listTasks({ status: 'paused', lightweight: true });
 
       if (pausedTasks.length === 0) {
         return;
       }
 
-      const pausedTaskIds = new Set(pausedTasks.map(t => t.id));
+      const pausedTaskMap = new Map(pausedTasks.map(t => [t.id, t]));
       const rateLimitResetMs = 3600000; // 1 hour
       const now = Date.now();
 
-      // Find root paused tasks - tasks whose parent is NOT paused (or have no parent)
-      // These are the tasks we should resume; orchestrator will handle their subtasks
-      const rootPausedTasks = pausedTasks.filter(task => {
-        // If task has no parent, it's a root
-        if (!task.parentTaskId) {
+      // Find LEAF paused tasks — tasks that are directly blocked by usage_limit
+      // (not blocked because a subtask is paused). These are what actually need resuming.
+      const leafPausedTasks = pausedTasks.filter(task => {
+        // Direct usage limit or rate limit — this is a leaf
+        if (task.pauseReason === 'usage_limit' || task.pauseReason === 'rate_limit') {
           return true;
         }
-        // If task's parent is not in the paused set, this task is a root of its paused hierarchy
-        return !pausedTaskIds.has(task.parentTaskId);
+        // Not a subtask_paused reason — also a leaf
+        if (!task.pauseReason?.startsWith('subtask_paused:')) {
+          return true;
+        }
+        // Has subtask_paused reason — NOT a leaf, skip it
+        return false;
       });
 
-      if (rootPausedTasks.length === 0) {
-        this.log('debug', `Found ${pausedTasks.length} paused task(s), but no root paused tasks to resume`);
+      if (leafPausedTasks.length === 0) {
+        this.log('debug', `Found ${pausedTasks.length} paused task(s), but no leaf tasks to resume`);
         return;
       }
 
-      this.log('debug', `Found ${rootPausedTasks.length} root paused task(s) out of ${pausedTasks.length} total`);
-
       let resumedCount = 0;
+      const maxToResume = this.options.maxConcurrentTasks || 3;
 
-      // Only resume root paused tasks that meet the criteria
-      for (const task of rootPausedTasks) {
-        // Check if this task can be resumed based on pause reason
-        let shouldResume = false;
-        let resumeReason = '';
-
-        if (task.pausedAt) {
-          const pausedDuration = now - new Date(task.pausedAt).getTime();
-          if (pausedDuration >= rateLimitResetMs) {
-            shouldResume = true;
-            const reason = task.pauseReason ?? 'unknown';
-            resumeReason = `${reason} expired (${Math.round(pausedDuration / 60000)} minutes)`;
-          }
+      for (const task of leafPausedTasks) {
+        if (this.runningTasks.size + resumedCount >= maxToResume) {
+          break;
         }
 
-        if (shouldResume) {
-          this.log('info', `Attempting to resume root task ${task.id}: ${resumeReason}`, { taskId: task.id });
+        // Check if enough time has passed since pausing
+        if (!task.pausedAt) continue;
+        const pausedDuration = now - new Date(task.pausedAt).getTime();
+        if (pausedDuration < rateLimitResetMs) continue;
 
-          try {
-            const resumed = await this.orchestrator.resumePausedTask(task.id);
-            if (resumed) {
-              resumedCount++;
-              this.log('info', `Auto-resumed root task ${task.id}`, { taskId: task.id });
-              // Stop if we've hit the max concurrent task limit
-              const currentRunning = this.runningTasks.size + resumedCount;
-              if (currentRunning >= (this.options.maxConcurrentTasks || 3)) {
-                break;
-              }
-            }
-          } catch (error) {
-            const errMsg = (error as Error).message ?? String(error);
-            this.log('warn', `Failed to resume task ${task.id}: ${errMsg}`, { taskId: task.id });
-            // If this is a usage limit error, stop trying other tasks —
-            // the limit is global so all subsequent attempts will also fail
-            if (errMsg.includes('usage limit') || errMsg.includes('Usage limit') || errMsg.includes("hit your limit")) {
-              this.log('info', `Usage limit active, skipping remaining ${rootPausedTasks.length - rootPausedTasks.indexOf(task) - 1} paused task(s) this cycle`);
-              break;
-            }
+        const resumeReason = `${task.pauseReason ?? 'unknown'} expired (${Math.round(pausedDuration / 60000)}m)`;
+        this.log('info', `Resuming leaf task ${task.id}: ${resumeReason}`, { taskId: task.id });
+
+        try {
+          // Resume the leaf task directly — this bypasses the subtask_paused check
+          // in resumePausedTask that was causing the infinite loop
+          const resumed = await this.orchestrator.resumePausedTask(task.id);
+          if (resumed) {
+            resumedCount++;
+            this.log('info', `Auto-resumed leaf task ${task.id}`, { taskId: task.id });
+
+            // Also resume ancestor chain: clear subtask_paused state from parents
+            // so they can pick up where they left off once this subtask finishes
+            await this.resumeAncestorChain(task);
+          }
+        } catch (error) {
+          const errMsg = (error as Error).message ?? String(error);
+          this.log('warn', `Failed to resume task ${task.id}: ${errMsg}`, { taskId: task.id });
+          if (errMsg.includes('usage limit') || errMsg.includes('Usage limit') || errMsg.includes("hit your limit")) {
+            this.log('info', 'Usage limit still active, stopping resume cycle');
+            break;
           }
         }
       }
 
       if (resumedCount > 0) {
-        this.log('info', `Auto-resumed ${resumedCount} root paused task(s)`);
+        this.log('info', `Auto-resumed ${resumedCount} leaf paused task(s)`);
       }
     } catch (error) {
       this.log('error', `Failed to check paused tasks: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Walk up the parent chain and clear subtask_paused state so parents can
+   * re-enter their subtask execution loop once the resumed child finishes.
+   */
+  private async resumeAncestorChain(task: Task): Promise<void> {
+    if (!this.store) return;
+
+    let currentId = task.parentTaskId;
+    const visited = new Set<string>();
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const parent = await this.store.getTask(currentId);
+      if (!parent) break;
+
+      // Only touch parents that are paused due to subtask_paused
+      if (parent.status !== 'paused' || !parent.pauseReason?.startsWith('subtask_paused:')) {
+        break;
+      }
+
+      // Clear the pause state so the parent can re-enter subtask execution
+      await this.store.updateTask(currentId, {
+        status: 'in-progress',
+        pausedAt: undefined,
+        pauseReason: undefined,
+        resumeAfter: undefined,
+        updatedAt: new Date(),
+      });
+
+      await this.store.addLog(currentId, {
+        level: 'info',
+        message: `Parent unpaused: child ${task.id} was resumed`,
+      });
+
+      currentId = parent.parentTaskId;
     }
   }
 

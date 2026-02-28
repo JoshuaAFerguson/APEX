@@ -7794,6 +7794,42 @@ Parent: ${parentTask.description}`;
       return [];
     }
 
+    // --- Decomposition limits ---
+
+    // Cap subtasks per decomposition (prevents planner from creating 50+ subtasks)
+    const maxSubtasksPerDecomposition = 10;
+    if (subtaskDefinitions.length > maxSubtasksPerDecomposition) {
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Capping subtasks from ${subtaskDefinitions.length} to ${maxSubtasksPerDecomposition}`,
+      });
+      subtaskDefinitions = subtaskDefinitions.slice(0, maxSubtasksPerDecomposition);
+    }
+
+    // Limit nesting depth: walk up parent chain to count depth
+    const maxDecompositionDepth = 2;
+    let depth = 0;
+    let ancestorId = parentTask.parentTaskId;
+    const visited = new Set<string>();
+    while (ancestorId && !visited.has(ancestorId)) {
+      visited.add(ancestorId);
+      const ancestor = await this.store.getTask(ancestorId);
+      if (!ancestor) break;
+      // Only count levels where the ancestor itself was decomposed (has subtasks)
+      if (ancestor.subtaskIds && ancestor.subtaskIds.length > 0) {
+        depth++;
+      }
+      ancestorId = ancestor.parentTaskId;
+    }
+
+    if (depth >= maxDecompositionDepth) {
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Decomposition blocked: nesting depth ${depth} >= max ${maxDecompositionDepth}. Task will execute directly.`,
+      });
+      return [];
+    }
+
     this.decomposingTaskIds.add(parentTaskId);
     try {
       return await this._decomposeTaskInner(parentTaskId, parentTask, subtaskDefinitions, strategy);
