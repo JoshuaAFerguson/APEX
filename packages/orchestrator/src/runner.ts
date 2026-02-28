@@ -1963,22 +1963,23 @@ export class DaemonRunner {
   /**
    * Kill orphaned OS processes left behind by completed/failed/paused tasks.
    *
-   * When the Claude Agent SDK spawns `claude` subprocesses, those may in turn
-   * run commands like `npx vitest` that fork worker processes. If the `claude`
-   * process terminates before its children, those workers become orphans
-   * (PPID=1 on Unix) and consume CPU indefinitely.
+   * When the Claude Agent SDK spawns `claude` subprocesses, those run Bash
+   * commands (like `npm test`) that spawn deep process trees:
+   *   claude → zsh → npm → vitest → worker forks
    *
-   * This method identifies and kills such orphans by looking for:
-   * - vitest worker fork processes (PPID=1, running vitest/dist/workers/forks.js)
-   * - Other node processes that were spawned from APEX project paths (PPID=1)
+   * When `claude` dies, the zsh shell gets reparented to PID 1, but the rest
+   * of the tree (npm → vitest → workers) keeps valid parent chains and
+   * continues burning CPU. We must:
+   *
+   * 1. Build a set of legitimate daemon-descendant PIDs
+   * 2. Kill any vitest/npm/zsh processes NOT in that set
    */
   private cleanupOrphanedProcesses(): void {
     if (process.platform === 'win32') {
-      return; // Not applicable on Windows — orphan semantics differ
+      return;
     }
 
     try {
-      // Use execFileSync (not exec) to avoid shell injection — args are static
       const result = execFileSync('ps', ['-eo', 'pid,ppid,args'], {
         encoding: 'utf8',
         timeout: 5000,
@@ -1986,39 +1987,72 @@ export class DaemonRunner {
 
       const daemonPid = process.pid;
       const lines = result.split('\n');
-      const orphanPids: number[] = [];
 
+      // Parse all processes into a lookup structure
+      const procMap = new Map<number, { ppid: number; args: string }>();
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-
         const parts = trimmed.split(/\s+/);
         const pid = parseInt(parts[0], 10);
         const ppid = parseInt(parts[1], 10);
-        const args = parts.slice(2).join(' ');
+        if (isNaN(pid) || isNaN(ppid)) continue;
+        procMap.set(pid, { ppid, args: parts.slice(2).join(' ') });
+      }
 
-        // Only look at processes orphaned to init (PPID=1)
-        if (ppid !== 1) continue;
-        // Don't kill ourselves or our known children
-        if (pid === daemonPid) continue;
+      // Build set of legitimate daemon descendants by walking the tree
+      const legitimatePids = new Set<number>();
+      legitimatePids.add(daemonPid);
+      // Iteratively expand — walk children until no new ones found
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const [pid, info] of procMap) {
+          if (!legitimatePids.has(pid) && legitimatePids.has(info.ppid)) {
+            legitimatePids.add(pid);
+            changed = true;
+          }
+        }
+      }
 
-        // Match orphaned vitest worker processes
-        if (args.includes('vitest') && args.includes('workers/forks')) {
-          orphanPids.push(pid);
+      // Find processes to kill: anything matching our patterns that is NOT
+      // a legitimate descendant of the daemon
+      const killPids: number[] = [];
+      for (const [pid, info] of procMap) {
+        if (legitimatePids.has(pid)) continue;
+        if (pid === 1) continue;
+
+        const args = info.args;
+
+        // Orphaned vitest workers (the main CPU drain)
+        if (args.includes('vitest') && (args.includes('workers/forks') || args.includes('vitest run'))) {
+          killPids.push(pid);
           continue;
         }
 
-        // Match orphaned node processes that reference our project path
-        if (args.includes('node') && args.includes(this.options.projectPath) &&
+        // Orphaned zsh shells from claude's Bash tool
+        if (args.includes('.claude/shell-snapshots')) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned npm test / npm run commands for our project
+        if ((args.includes('npm test') || args.includes('npm run')) && args.includes(this.options.projectPath)) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned node processes referencing our project (not daemon, not MCP)
+        if (info.ppid === 1 && args.includes('node') && args.includes(this.options.projectPath) &&
             !args.includes('daemon-entry') && !args.includes('mcp-server')) {
-          orphanPids.push(pid);
+          killPids.push(pid);
           continue;
         }
       }
 
-      if (orphanPids.length > 0) {
-        this.log('warn', `Killing ${orphanPids.length} orphaned process(es): ${orphanPids.join(', ')}`);
-        for (const pid of orphanPids) {
+      if (killPids.length > 0) {
+        this.log('warn', `Killing ${killPids.length} orphaned process(es): ${killPids.join(', ')}`);
+        for (const pid of killPids) {
           try {
             process.kill(pid, 'SIGKILL');
           } catch {
@@ -2027,19 +2061,18 @@ export class DaemonRunner {
         }
       }
     } catch (error) {
-      // Non-critical — log and continue
       this.log('debug', `Orphaned process cleanup error: ${(error as Error).message}`);
     }
   }
 
   /**
    * Start periodic cleanup of orphaned OS processes.
-   * Runs every 60 seconds to catch processes that were orphaned between task completions.
+   * Runs every 30 seconds — vitest workers at ~80% CPU each cause rapid resource exhaustion.
    */
   private startProcessCleanupInterval(): void {
     this.processCleanupInterval = setInterval(() => {
       if (!this.isRunning || this.isShuttingDown) return;
       this.cleanupOrphanedProcesses();
-    }, 60_000);
+    }, 30_000);
   }
 }
