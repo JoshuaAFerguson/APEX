@@ -1,66 +1,87 @@
-import { 
-  AiDriver, 
-  DriverRequest, 
-  DriverEvent 
-} from './types.js';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { CredentialManager } from '../auth/credential-manager.js';
+import type { AiDriver, DriverRequest, DriverEvent } from './types.js';
 
+/**
+ * Google Gemini driver using the @google/generative-ai package.
+ * Maps APEX driver interface to Gemini's streaming API.
+ */
 export class GeminiDriver implements AiDriver {
   readonly providerId = 'gemini';
-  private client?: GoogleGenerativeAI;
-  private credentialManager = new CredentialManager();
+  private apiKey: string | undefined;
 
   async initialize(): Promise<void> {
-    const creds = await this.credentialManager.getCredentials('gemini');
-    const apiKey = creds?.accessToken || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    
-    if (apiKey) {
-      this.client = new GoogleGenerativeAI(apiKey);
-    }
+    this.apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   }
 
   async authenticate(): Promise<void> {
-    // This will be implemented in the CLI layer to handle Google Cloud OAuth
-    console.log('Please run "apex auth login gemini"');
+    if (!this.apiKey) {
+      this.apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+    }
+    if (!this.apiKey) {
+      throw new Error('GOOGLE_API_KEY or GEMINI_API_KEY environment variable is required');
+    }
   }
 
-  async dispose(): Promise<void> {}
-
   resolveModel(modelAlias: string): string {
-    switch (modelAlias) {
-      case 'opus': return 'gemini-1.5-pro';
-      case 'haiku': return 'gemini-1.5-flash';
-      case 'sonnet':
-      default:
-        return 'gemini-1.5-pro';
-    }
+    const modelMap: Record<string, string> = {
+      opus: 'gemini-2.0-flash',
+      sonnet: 'gemini-2.0-flash',
+      haiku: 'gemini-2.0-flash-lite',
+      inherit: 'gemini-2.0-flash',
+    };
+    return modelMap[modelAlias] || modelAlias;
   }
 
   async *stream(request: DriverRequest): AsyncIterable<DriverEvent> {
-    if (!this.client) {
-      yield { type: 'error', message: 'Gemini client not initialized. Please authenticate.' };
+    if (!this.apiKey) {
+      yield { type: 'error', message: 'Gemini API key not configured' };
       return;
     }
 
+    yield { type: 'status', message: 'Connecting to Gemini...' };
+
     try {
-      const model = this.client.getGenerativeModel({ model: request.model });
-      
-      // Simple non-agentic implementation for now, 
-      // can be expanded to use Function Calling (Tools)
-      const result = await model.generateContentStream(request.prompt);
+      // Dynamic import to avoid requiring @google/generative-ai at module load time.
+      // The @google/generative-ai package is an optional peer dependency - only users
+      // of the Gemini driver need to install it.
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(this.apiKey);
+
+      const model = genAI.getGenerativeModel({ model: request.model });
+
+      // Build content with system instruction if provided
+      const chat = model.startChat({
+        history: [],
+        ...(request.systemPrompt ? { systemInstruction: request.systemPrompt } : {}),
+      });
+
+      const result = await chat.sendMessageStream(request.prompt);
+      let fullContent = '';
 
       for await (const chunk of result.stream) {
         const text = chunk.text();
         if (text) {
+          fullContent += text;
           yield { type: 'text', content: text };
         }
       }
 
-      yield { type: 'usage', inputTokens: 0, outputTokens: 0 }; // Gemini SDK token tracking varies
-      yield { type: 'complete', summary: 'Finished' };
+      // Get final response for usage metadata
+      const response = await result.response;
+      const usageMetadata = response.usageMetadata;
+
+      yield {
+        type: 'usage',
+        inputTokens: usageMetadata?.promptTokenCount || 0,
+        outputTokens: usageMetadata?.candidatesTokenCount || 0,
+      };
+
+      yield { type: 'complete', summary: fullContent.substring(0, 200) };
     } catch (error) {
-      yield { type: 'error', message: error instanceof Error ? error.message : String(error) };
+      yield { type: 'error', message: `Gemini error: ${(error as Error).message}` };
     }
+  }
+
+  async dispose(): Promise<void> {
+    // No cleanup needed
   }
 }

@@ -572,6 +572,16 @@ export interface StagePromptContext {
   config: ReturnType<typeof getEffectiveConfig>;
   /** Results from previously completed stages */
   previousStageResults: Map<string, StageResult>;
+  /** Analyzed project context from ProjectContextAnalyzer */
+  projectContext?: import('@apexcli/core').ProjectContext;
+  /** Enriched codebase intelligence context */
+  enrichedContext?: string;
+  /** Memory context from the memory system */
+  memoryContext?: string;
+  /** Living memory file content */
+  livingMemory?: string;
+  /** Cross-task learning context */
+  taskHistoryContext?: string;
 }
 
 /**
@@ -677,6 +687,11 @@ ${formatExpectedOutputs(stage)}
 ${config.project.language ? `- **Language**: ${config.project.language}` : ''}
 ${config.project.framework ? `- **Framework**: ${config.project.framework}` : ''}
 - **Branch**: ${task.branchName || 'main'}
+${buildProjectContextSection(context.projectContext)}
+${context.enrichedContext ? `\n## Codebase Intelligence\n${context.enrichedContext}\n` : ''}
+${context.memoryContext ? `\n## Relevant Knowledge\n${context.memoryContext}\n` : ''}
+${context.livingMemory ? `\n## Project Knowledge Base\n${context.livingMemory}\n` : ''}
+${context.taskHistoryContext ? `\n## Cross-Task Learnings\n${context.taskHistoryContext}\n` : ''}
 ${multimodalDescription}
 
 ## Instructions
@@ -712,6 +727,79 @@ Begin your work on the ${stage.name} stage now.`;
 
   // Build multimodal content
   return buildMultimodalContent(textContent, images);
+}
+
+/**
+ * Build enriched project context section from ProjectContextAnalyzer results
+ */
+function buildProjectContextSection(projectContext?: import('@apexcli/core').ProjectContext): string {
+  if (!projectContext) return '';
+
+  const sections: string[] = [];
+
+  // Git status
+  if (projectContext.gitStatus) {
+    const git = projectContext.gitStatus;
+    const gitLines: string[] = [];
+    if (git.branch) gitLines.push(`- **Git Branch**: ${git.branch}`);
+    if (git.isDirty) {
+      const changedCount = (git.staged?.length || 0) + (git.unstaged?.length || 0);
+      gitLines.push(`- **Uncommitted Changes**: ${changedCount} file(s)`);
+    }
+    if (git.ahead && git.ahead > 0) gitLines.push(`- **Ahead of Remote**: ${git.ahead} commit(s)`);
+    if (git.behind && git.behind > 0) gitLines.push(`- **Behind Remote**: ${git.behind} commit(s)`);
+    if (git.recentCommits && git.recentCommits.length > 0) {
+      gitLines.push(`- **Recent Commits**:`);
+      for (const commit of git.recentCommits.slice(0, 3)) {
+        gitLines.push(`  - \`${commit.hash}\` ${commit.message}`);
+      }
+    }
+    if (gitLines.length > 0) sections.push(gitLines.join('\n'));
+  }
+
+  // Detected frameworks
+  if (projectContext.frameworks && projectContext.frameworks.length > 0) {
+    const frameworkList = projectContext.frameworks
+      .map(f => `${f.name}${f.version ? `@${f.version}` : ''} (${f.category})`)
+      .join(', ');
+    sections.push(`- **Detected Frameworks**: ${frameworkList}`);
+  }
+
+  // Test frameworks
+  if (projectContext.testFrameworks && projectContext.testFrameworks.length > 0) {
+    const testList = projectContext.testFrameworks
+      .map(t => {
+        let info = t.name;
+        if (t.version) info += `@${t.version}`;
+        if (t.runCommand) info += ` (run: \`${t.runCommand}\`)`;
+        return info;
+      })
+      .join(', ');
+    sections.push(`- **Test Frameworks**: ${testList}`);
+  }
+
+  // Key configuration files
+  if (projectContext.configurations && projectContext.configurations.length > 0) {
+    const configs = projectContext.configurations
+      .filter(c => ['package-manager', 'typescript', 'build', 'testing', 'linting'].includes(c.purpose))
+      .map(c => c.name)
+      .slice(0, 10)
+      .join(', ');
+    if (configs) {
+      sections.push(`- **Key Config Files**: ${configs}`);
+    }
+  }
+
+  // Project structure insights
+  if (projectContext.structure) {
+    const struct = projectContext.structure;
+    const structLines: string[] = [];
+    if (struct.isMonorepo) structLines.push(`- **Monorepo**: Yes${struct.workspaces ? ` (${struct.workspaces.length} workspaces)` : ''}`);
+    if (struct.totalFiles) structLines.push(`- **Total Files**: ${struct.totalFiles}`);
+    if (structLines.length > 0) sections.push(structLines.join('\n'));
+  }
+
+  return sections.join('\n');
 }
 
 /**
@@ -867,6 +955,9 @@ ${task.acceptanceCriteria ? `\n### Acceptance Criteria\n${task.acceptanceCriteri
 ${config.project.language ? `- **Language**: ${config.project.language}` : ''}
 ${config.project.framework ? `- **Framework**: ${config.project.framework}` : ''}
 - **Workflow**: ${workflow.name}
+${buildProjectContextSection(context.projectContext)}
+${context.enrichedContext ? `\n## Codebase Intelligence\n${context.enrichedContext}\n` : ''}
+${context.taskHistoryContext ? `\n## Cross-Task Learnings\n${context.taskHistoryContext}\n` : ''}
 ${multimodalDescription}
 
 ## CRITICAL: Task Analysis and Decomposition
@@ -903,9 +994,14 @@ ${multimodalDescription}
 \`\`\`
 
 ### Decomposition Strategies:
-- **sequential**: Subtasks must run in order (most common)
-- **parallel**: Independent subtasks can run simultaneously
-- **dependency-based**: Subtasks run when their explicit dependencies complete
+- **parallel**: Independent subtasks run simultaneously (PREFERRED when subtasks don't depend on each other)
+- **dependency-based**: Subtasks run when their explicit dependencies complete (use when some subtasks depend on others)
+- **sequential**: Subtasks must run strictly in order (use ONLY when every task depends on the previous one)
+
+### IMPORTANT: Prefer parallel execution
+When subtasks are independent (e.g., implementing different features, fixing separate bugs), use "parallel" strategy.
+Only use "sequential" when every subtask truly depends on the completion of the previous one.
+When only SOME subtasks have dependencies, use "dependency-based" and specify which tasks depend on which via the "dependsOn" field.
 
 ### Only for SIMPLE tasks (rare):
 If the task is truly simple (single small change):
@@ -1013,9 +1109,24 @@ export function parseDecompositionRequest(output: string): DecompositionRequest 
 
     // Validate strategy
     const validStrategies: SubtaskStrategy[] = ['sequential', 'parallel', 'dependency-based'];
-    const strategy = validStrategies.includes(parsed.strategy)
+    let strategy = validStrategies.includes(parsed.strategy)
       ? parsed.strategy as SubtaskStrategy
       : 'sequential';
+
+    // Auto-detect optimal strategy when the planner defaults to 'sequential':
+    // If any subtasks declare dependencies, use 'dependency-based' for proper ordering
+    // If no subtasks have dependencies, use 'parallel' for maximum throughput
+    if (strategy === 'sequential') {
+      const hasDependencies = subtasks.some(
+        (s: SubtaskDefinition) => s.dependsOn && s.dependsOn.length > 0
+      );
+      if (hasDependencies) {
+        strategy = 'dependency-based';
+      } else if (subtasks.length > 1) {
+        // Multiple independent subtasks — execute in parallel
+        strategy = 'parallel';
+      }
+    }
 
     return {
       shouldDecompose: true,

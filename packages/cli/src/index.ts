@@ -3448,6 +3448,156 @@ export const commands: Command[] = [
     },
   },
   {
+    name: 'remember',
+    aliases: ['rem'],
+    description: 'Store information in long-term memory',
+    usage: '/remember <content> [--type fact|insight|preference|convention|pattern] [--tags tag1,tag2]',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const memory = (ctx.orchestrator as any).memory;
+      if (!memory) {
+        console.log(chalk.red('Memory system not available.'));
+        return;
+      }
+      // Parse args
+      let content = '';
+      let type: string = 'fact';
+      let tags: string[] = [];
+      const rawArgs = [...args];
+      for (let i = 0; i < rawArgs.length; i++) {
+        if (rawArgs[i] === '--type' && rawArgs[i + 1]) {
+          type = rawArgs[i + 1];
+          i++;
+        } else if (rawArgs[i] === '--tags' && rawArgs[i + 1]) {
+          tags = rawArgs[i + 1].split(',').map(t => t.trim());
+          i++;
+        } else {
+          content += (content ? ' ' : '') + rawArgs[i];
+        }
+      }
+      if (!content) {
+        console.log(chalk.yellow('Usage: /remember <content> [--type fact|insight|preference|convention|pattern] [--tags tag1,tag2]'));
+        return;
+      }
+      const stored = memory.remember(content, { type: type as any, tags, source: 'user' });
+      console.log(chalk.green(`Remembered (${stored.type}): "${stored.content.substring(0, 60)}${stored.content.length > 60 ? '...' : ''}"`));
+      if (tags.length > 0) console.log(chalk.gray(`  Tags: ${tags.join(', ')}`));
+    },
+  },
+  {
+    name: 'recall',
+    aliases: ['search-memory'],
+    description: 'Search long-term memory',
+    usage: '/recall <query>',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const memory = (ctx.orchestrator as any).memory;
+      if (!memory) {
+        console.log(chalk.red('Memory system not available.'));
+        return;
+      }
+      const query = args.join(' ');
+      if (!query) {
+        console.log(chalk.yellow('Usage: /recall <query>'));
+        return;
+      }
+      const results = memory.recall(query, { limit: 10 });
+      if (results.length === 0) {
+        console.log(chalk.gray('No matching memories found.'));
+        return;
+      }
+      console.log(chalk.bold(`\nFound ${results.length} memories:\n`));
+      for (const mem of results) {
+        const age = Math.floor((Date.now() - mem.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        console.log(chalk.cyan(`  [${mem.type}]`) + ` ${mem.content}`);
+        console.log(chalk.gray(`    Confidence: ${(mem.confidence * 100).toFixed(0)}% | Accessed: ${mem.accessCount}x | Age: ${age}d | Tags: ${mem.tags.join(', ') || 'none'}`));
+      }
+    },
+  },
+  {
+    name: 'memories',
+    aliases: ['mem-list'],
+    description: 'List all stored memories',
+    usage: '/memories [--limit N]',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const memory = (ctx.orchestrator as any).memory;
+      if (!memory) {
+        console.log(chalk.red('Memory system not available.'));
+        return;
+      }
+      let limit = 20;
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--limit' && args[i + 1]) {
+          limit = parseInt(args[i + 1], 10) || 20;
+        }
+      }
+      const count = memory.getMemoryCount();
+      const memories = memory.listMemories(limit);
+      console.log(chalk.bold(`\nMemory System (${count} total, showing ${memories.length}):\n`));
+      for (const mem of memories) {
+        const age = Math.floor((Date.now() - mem.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        console.log(chalk.cyan(`  [${mem.type}]`) + ` ${mem.content.substring(0, 80)}${mem.content.length > 80 ? '...' : ''}`);
+        console.log(chalk.gray(`    ID: ${mem.id.substring(0, 8)} | Age: ${age}d | Accessed: ${mem.accessCount}x`));
+      }
+    },
+  },
+  {
+    name: 'forget',
+    aliases: ['forget-memory'],
+    description: 'Delete memories by ID or criteria',
+    usage: '/forget <id> | /forget --type <type> | /forget --tags <tag1,tag2>',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const memory = (ctx.orchestrator as any).memory;
+      if (!memory) {
+        console.log(chalk.red('Memory system not available.'));
+        return;
+      }
+      if (args.length === 0) {
+        console.log(chalk.yellow('Usage: /forget <id> | /forget --type <type> | /forget --tags <tag1,tag2>'));
+        return;
+      }
+      // Check for criteria-based deletion
+      let type: string | undefined;
+      let tags: string[] | undefined;
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--type' && args[i + 1]) {
+          type = args[i + 1];
+          i++;
+        } else if (args[i] === '--tags' && args[i + 1]) {
+          tags = args[i + 1].split(',').map(t => t.trim());
+          i++;
+        }
+      }
+      if (type || tags) {
+        const count = memory.forget({ type: type as any, tags });
+        console.log(chalk.green(`Forgot ${count} memories`));
+      } else {
+        // Delete by ID (support partial match)
+        const id = args[0];
+        const deleted = memory.deleteMemory(id);
+        if (deleted) {
+          console.log(chalk.green(`Memory deleted`));
+        } else {
+          console.log(chalk.red(`Memory not found: ${id}`));
+        }
+      }
+    },
+  },
+  {
     name: 'doctor',
     aliases: ['dr', 'health'],
     description: 'Run comprehensive health checks for APEX environment',
@@ -3463,6 +3613,25 @@ export const commands: Command[] = [
     usage: '/map-codebase [--output-dir <path>] [--parallel <n>] [--output-format <type>] [--include-debt] [--quick] [--verbose]',
     handler: async (ctx, args) => {
       await handleMapCodebase(ctx, args);
+    },
+  },
+  {
+    name: 'context',
+    aliases: ['ctx'],
+    description: 'Show context allocation visualization',
+    usage: '/context',
+    handler: async (ctx, _args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const viz = ctx.orchestrator.getContextVisualization();
+      if (!viz) {
+        console.log(chalk.gray('No context data available. Run a task first to see context allocation.'));
+        return;
+      }
+      console.log(chalk.bold('\nSmart Context Allocation:\n'));
+      console.log(viz);
     },
   },
 ];

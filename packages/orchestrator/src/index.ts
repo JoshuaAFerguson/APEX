@@ -1,4 +1,4 @@
-import { query, type AgentDefinition as SDKAgentDefinition, type McpServerConfig, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { type AgentDefinition as SDKAgentDefinition, type McpServerConfig, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { RepairLoop, resolveRepairConfig, ErrorClassifier } from './repair-loop/index.js';
 import type { RepairLoopHost, RepairQueryOptions, RepairQueryResult, RepairContext, RepairLoopEvents, RepairConfig } from './repair-loop/index.js';
 import { EventEmitter } from 'eventemitter3';
@@ -105,7 +105,9 @@ import {
   ProcessedMultimodalInput,
   MultimodalProcessingStatus,
   MultimodalInputCounts,
+  ProjectContextAnalyzer,
 } from '@apexcli/core';
+import type { ProjectContext } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
 import { AliasResolver } from './alias-resolver';
@@ -146,6 +148,9 @@ import { generateFileDiff, type DiffResult } from './utils/diff';
 import { buildCustomToolsServer, type CustomToolsServer } from './custom-tools';
 import { MCPServerManager } from './mcp/server-manager';
 import { MCPInstaller, type InstalledMCPResult } from './mcp-installer';
+import { MemoryManager } from './memory-manager.js';
+import { LearningExtractor } from './learning-extractor.js';
+import { SmartContextManager, type UnifiedContext } from './smart-context-manager.js';
 import { MCPMarketplaceService, type AutoConfigurationOptions } from './mcp/marketplace-service';
 import { MCPConnectionManager, type MCPConnectionManagerOptions } from './mcp';
 import { MCPToolRegistry, type MCPToolRegistryOptions, type MCPToolRegistryStats } from './mcp-tool-registry';
@@ -157,6 +162,10 @@ import { TDDExecutor, type TDDExecutorConfig, type TDDExecutionResult, type TDDI
 import { ImportAutoFixer } from './import-auto-fixer/import-auto-fixer';
 import type { ImportFixResult, MissingImportAnalysis } from './import-auto-fixer/types';
 import { TestReportGenerator, type TestReportGeneratorOptions, type TestStartInfo, type TestCompleteInfo } from './test-report-generator';
+import { ReplayBundleBuilder } from './replay-bundle-builder';
+export type { ReplayBundle } from './replay-bundle-builder';
+import { enrichTaskContext, formatEnrichedContext, type EnrichedContext } from './context-enrichment';
+import { CodebaseIntelligenceService } from './codebase-intelligence/codebase-intelligence-service';
 
 const execAsync = promisify(exec);
 
@@ -1343,6 +1352,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private browserToolsServer?: BrowserToolsServer;
   private tddExecutor?: TDDExecutor;
   private driver!: import('./drivers/index.js').AiDriver;
+  private projectContextAnalyzer?: ProjectContextAnalyzer;
+  private cachedProjectContext?: ProjectContext;
+  private codebaseIntelligence?: CodebaseIntelligenceService;
+  private cachedEnrichedContext?: EnrichedContext;
+  private memoryManager?: MemoryManager;
+  private learningExtractor?: LearningExtractor;
+  private cachedTaskHistoryContext?: string;
+  private cachedStageResults?: Map<string, import('@apexcli/core').StageResult>;
+  private smartContextManager?: SmartContextManager;
+  private cachedUnifiedContext?: UnifiedContext;
+  private replayBundleBuilder?: ReplayBundleBuilder;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -1371,6 +1391,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }> = new Map();
   private fileChangesByTask: Map<string, { created: string[]; modified: string[] }> = new Map();
 
+  // Execution guards: prevent concurrent execution of the same task
+  private executingTaskIds: Set<string> = new Set();
+
+  // Decomposition guard: prevent duplicate decomposition of the same task
+  private decomposingTaskIds: Set<string> = new Set();
+
+  // Tool call tracking per task: counts mutating tool calls (Write, Edit, Bash)
+  private taskToolCallCounts: Map<string, { total: number; mutating: number }> = new Map();
+
   // Tool execution tracking with full timing information
   private activeToolExecutions: Map<string, ToolExecution> = new Map();
 
@@ -1396,6 +1425,23 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     this.projectPath = options.projectPath;
     this.apiUrl = options.apiUrl || 'http://localhost:3000';
     this.policyEngine = options.policyEngine;  // Store the optional PolicyEngine
+  }
+
+  /** Get the memory manager for external access (CLI commands) */
+  get memory(): MemoryManager | undefined {
+    return this.memoryManager;
+  }
+
+  /**
+   * Get context visualization for the /context command.
+   * Returns a human-readable string showing token budget allocation
+   * across all context sources, or undefined if no context data is available.
+   */
+  getContextVisualization(): string | undefined {
+    if (!this.smartContextManager || !this.cachedUnifiedContext) {
+      return undefined;
+    }
+    return this.smartContextManager.getContextVisualization(this.cachedUnifiedContext.visualization);
   }
 
   /**
@@ -1489,6 +1535,19 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize task store
     this.store = new TaskStore(this.projectPath);
     await this.store.initialize();
+
+    // Initialize memory manager (v0.6.0)
+    try {
+      this.memoryManager = new MemoryManager(this.store.getDatabase());
+      this.memoryManager.initialize();
+    } catch (error) {
+      console.warn(`Memory system initialization failed: ${(error as Error).message}`);
+    }
+
+    // Initialize learning extractor (v0.6.0, depends on memory manager)
+    if (this.memoryManager) {
+      this.learningExtractor = new LearningExtractor(this.memoryManager);
+    }
 
     // Initialize MCP installer (requires store to be initialized)
     this.mcpInstaller = new MCPInstaller(this.projectPath, this.store);
@@ -1640,6 +1699,35 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const repairConfig = resolveRepairConfig(this.config.repair);
     this.repairLoop = new RepairLoop(this.createRepairLoopHost(), repairConfig);
 
+    // Initialize project context analyzer (v0.6.0)
+    try {
+      this.projectContextAnalyzer = new ProjectContextAnalyzer(this.projectPath);
+      this.cachedProjectContext = await this.projectContextAnalyzer.analyze();
+    } catch (error) {
+      // Non-fatal: project context is optional enrichment
+      console.warn(`Project context analysis failed: ${(error as Error).message}`);
+    }
+
+    // Initialize codebase intelligence (v0.6.0 - opt-in)
+    if ((this.effectiveConfig as any).codebaseIntelligence?.enabled !== false) {
+      try {
+        this.codebaseIntelligence = new CodebaseIntelligenceService({
+          enableCaching: true,
+          enableIncrementalIndexing: true,
+        });
+        await this.codebaseIntelligence.initialize(this.projectPath);
+      } catch (error) {
+        // Non-fatal: codebase intelligence is optional
+        console.warn(`Codebase intelligence initialization failed: ${(error as Error).message}`);
+        this.codebaseIntelligence = undefined;
+      }
+    }
+
+    // Initialize smart context manager (v0.6.0)
+    this.smartContextManager = new SmartContextManager({
+      maxTokensPerTask: this.effectiveConfig.limits.maxTokensPerTask || 100000,
+    });
+
     this.initialized = true;
   }
 
@@ -1702,39 +1790,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     return {
       async queryAgent(prompt: string, model: string, options?: RepairQueryOptions): Promise<RepairQueryResult> {
         let text = '';
-        let tokensUsed = 0;
+        let inputTokens = 0;
+        let outputTokens = 0;
 
-        for await (const message of query({
+        // Resolve the model alias through the driver
+        const resolvedModel = orchestrator.driver.resolveModel(model);
+
+        // Use the platform-agnostic driver instead of the Claude SDK directly
+        for await (const event of orchestrator.driver.stream({
           prompt,
-          options: {
-            model,
-            permissionMode: 'acceptEdits',
-            maxTurns: options?.maxTurns || 20,
-            cwd: options?.cwd || orchestrator.projectPath,
-            tools: options?.tools || ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
-          },
+          model: resolvedModel,
+          maxTurns: options?.maxTurns || 20,
+          cwd: options?.cwd || orchestrator.projectPath,
         })) {
-          // Collect text from response
-          const msg = message as Record<string, unknown>;
-          if (msg.type === 'result' && typeof msg.result === 'string') {
-            text += msg.result;
-          } else if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
-            const assistantMsg = msg.message as { content?: Array<{ type: string; text?: string }> };
-            if (Array.isArray(assistantMsg.content)) {
-              for (const block of assistantMsg.content) {
-                if (block.type === 'text' && block.text) {
-                  text += block.text;
-                }
-              }
-            }
-            // Track tokens from usage info
-            const usage = (msg.message as Record<string, unknown>).usage as { input_tokens?: number; output_tokens?: number } | undefined;
-            if (usage) {
-              tokensUsed += (usage.input_tokens || 0) + (usage.output_tokens || 0);
-            }
+          switch (event.type) {
+            case 'text':
+              text += event.content;
+              break;
+            case 'usage':
+              inputTokens += event.inputTokens;
+              outputTokens += event.outputTokens;
+              break;
+            case 'error':
+              // Log error but don't throw - the repair loop handles failures
+              text += `\n[Driver Error: ${event.message}]`;
+              break;
+            // status and complete events are informational, no action needed
           }
         }
 
+        const tokensUsed = inputTokens + outputTokens;
         // Estimate cost based on tokens (rough approximation)
         const costUsd = tokensUsed * 0.000015; // ~$15/MTok average
 
@@ -2148,6 +2233,30 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async executeTask(taskId: string, options?: { autoRetry?: boolean; cliFlags?: { diffPreview?: boolean } }): Promise<void> {
     await this.ensureInitialized();
 
+    // Concurrent execution guard: prevent the same task from being executed twice
+    if (this.executingTaskIds.has(taskId)) {
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: `Skipping concurrent execution — task ${taskId} is already being executed`,
+      });
+      return;
+    }
+    this.executingTaskIds.add(taskId);
+
+    // Initialize tool call tracking for this task
+    this.taskToolCallCounts.set(taskId, { total: 0, mutating: 0 });
+
+    try {
+      await this._executeTaskInner(taskId, options);
+    } finally {
+      this.executingTaskIds.delete(taskId);
+    }
+  }
+
+  /**
+   * Inner task execution logic, wrapped by executeTask's guard
+   */
+  private async _executeTaskInner(taskId: string, options?: { autoRetry?: boolean; cliFlags?: { diffPreview?: boolean } }): Promise<void> {
     // Store CLI flags for current task
     this.currentTaskCliFlags = options?.cliFlags;
 
@@ -2272,6 +2381,62 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Set current task for event tracking
     this.currentTaskId = taskId;
 
+    // Build enriched context from codebase intelligence (v0.6.0)
+    if (this.codebaseIntelligence) {
+      try {
+        this.cachedEnrichedContext = await enrichTaskContext(
+          task.description,
+          this.codebaseIntelligence,
+          { maxTokens: Math.floor((this.effectiveConfig.limits.maxTokensPerTask || 100000) * 0.10) }
+        );
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Codebase intelligence: found ${this.cachedEnrichedContext.relevantFiles.length} relevant files, ${this.cachedEnrichedContext.relevantSymbols.length} symbols`,
+        });
+      } catch (error) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Codebase intelligence enrichment failed: ${(error as Error).message}`,
+        });
+      }
+    }
+
+    // Build task history context from previous learnings (v0.6.0)
+    if (this.learningExtractor) {
+      try {
+        this.cachedTaskHistoryContext = this.learningExtractor.buildTaskHistoryContext(task.description);
+      } catch {
+        // Non-fatal - learning context is optional
+      }
+    }
+
+    // Build unified context using SmartContextManager (v0.6.0)
+    if (this.smartContextManager) {
+      try {
+        this.cachedUnifiedContext = this.smartContextManager.buildContext({
+          taskDescription: task.description,
+          projectContext: this.cachedProjectContext,
+          enrichedContext: this.cachedEnrichedContext ? formatEnrichedContext(this.cachedEnrichedContext) : undefined,
+          memoryManager: this.memoryManager,
+          learningExtractor: this.learningExtractor,
+        });
+      } catch (error) {
+        // Non-fatal
+        console.warn(`Smart context build failed: ${(error as Error).message}`);
+      }
+    }
+
+    // Initialize replay bundle builder if configured (v0.6.0)
+    if ((this.effectiveConfig as any).replay?.enabled) {
+      this.replayBundleBuilder = new ReplayBundleBuilder({
+        taskId,
+        taskDescription: task.description,
+        workflow: task.workflow,
+        projectPath: this.projectPath,
+        branchName: task.branchName || undefined,
+      });
+    }
+
     // Discover MCP tools at task start and merge with built-in tools
     let discoveredMcpTools: string[] = [];
     let builtInTools: string[] = [];
@@ -2361,9 +2526,79 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         const shouldComplete = await this.runWorkflow(task, workflow);
 
         if (shouldComplete) {
+          // Ghost completion detection: if a task completed with no mutating tool calls
+          // and minimal tokens, it likely didn't do any actual work
+          const toolCounts = this.taskToolCallCounts.get(taskId) || { total: 0, mutating: 0 };
+          const currentTask = await this.store.getTask(taskId);
+          const totalTokens = currentTask?.usage?.totalTokens || 0;
+          const isGhostCompletion = toolCounts.mutating === 0 && totalTokens < 5000;
+
+          if (isGhostCompletion && task.parentTaskId) {
+            // Subtask completed without doing any work — flag as no-op
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Ghost completion detected: task completed with ${toolCounts.total} tool calls (${toolCounts.mutating} mutating) and ${totalTokens} tokens. ` +
+                `This task likely found no work to do. Marking as completed but flagging for review.`,
+              metadata: {
+                ghostCompletion: true,
+                ghostCompletionReason: 'no_mutating_tool_calls',
+                toolCallCounts: toolCounts,
+              },
+            });
+          }
+
+          // Clean up tool call tracking
+          this.taskToolCallCounts.delete(taskId);
+
           await this.updateTaskStatus(taskId, 'completed');
           const completedTask = await this.store.getTask(taskId);
           this.emit('task:completed', completedTask!);
+
+          // Finalize replay bundle if recording
+          if (this.replayBundleBuilder) {
+            try {
+              const replayPath = await this.replayBundleBuilder.finalize({
+                totalTokens: completedTask?.usage?.totalTokens || 0,
+                estimatedCost: completedTask?.usage?.estimatedCost || 0,
+                agentModels: {},
+              });
+              await this.store.addLog(taskId, {
+                level: 'info',
+                message: `Replay bundle saved: ${replayPath}`,
+              });
+            } catch (error) {
+              await this.store.addLog(taskId, {
+                level: 'warn',
+                message: `Failed to save replay bundle: ${(error as Error).message}`,
+              });
+            }
+            this.replayBundleBuilder = undefined;
+          }
+
+          // Extract learnings from completed task (v0.6.0)
+          if (this.learningExtractor && completedTask) {
+            try {
+              const stageResultsForLearning = this.cachedStageResults || new Map();
+              const learnings = this.learningExtractor.extractFromTask(
+                taskId,
+                completedTask.description,
+                stageResultsForLearning
+              );
+              if (learnings.length > 0) {
+                await this.store.addLog(taskId, {
+                  level: 'info',
+                  message: `Extracted ${learnings.length} learnings from task completion`,
+                });
+              }
+            } catch (error) {
+              await this.store.addLog(taskId, {
+                level: 'warn',
+                message: `Learning extraction failed: ${(error as Error).message}`,
+              });
+            }
+            // Clear cached stage results
+            this.cachedStageResults = undefined;
+          }
 
           // Clear current task tracking if this was the current task
           if (this.currentTaskId === taskId) {
@@ -2727,7 +2962,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
-   * Resume a paused task
+   * Resume a paused task with subtask readiness check and exponential backoff
    */
   async resumePausedTask(taskId: string): Promise<boolean> {
     await this.ensureInitialized();
@@ -2739,6 +2974,42 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     if (task.status !== 'paused') {
       return false; // Not paused
+    }
+
+    // Subtask readiness check: if this task was paused because a subtask was paused,
+    // verify the subtask is actually ready before resuming the parent
+    if (task.pauseReason?.startsWith('subtask_paused:')) {
+      const pausedSubtaskId = task.pauseReason.replace('subtask_paused:', '');
+      const pausedSubtask = await this.store.getTask(pausedSubtaskId);
+
+      if (pausedSubtask && pausedSubtask.status === 'paused') {
+        // The subtask is still paused — don't resume the parent yet.
+        // Apply exponential backoff: double the delay each time (capped at 30 minutes)
+        const baseDelay = 120_000; // 2 minutes
+        const backoffDelay = Math.min(
+          baseDelay * Math.pow(2, task.resumeAttempts),
+          1_800_000 // 30 minutes max
+        );
+
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Subtask ${pausedSubtaskId} is still paused (${pausedSubtask.pauseReason}). ` +
+            `Deferring resume with exponential backoff: ${Math.round(backoffDelay / 1000)}s ` +
+            `(attempt ${task.resumeAttempts + 1})`,
+        });
+
+        // Schedule the next auto-resume with backoff delay
+        this.scheduleAutoResume(taskId, backoffDelay);
+        return false;
+      }
+
+      // If the subtask is no longer paused (completed, in-progress, etc.), proceed with resume
+      if (pausedSubtask && (pausedSubtask.status === 'completed' || pausedSubtask.status === 'in-progress')) {
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Subtask ${pausedSubtaskId} is now ${pausedSubtask.status}. Proceeding with resume.`,
+        });
+      }
     }
 
     // Pre-check max resume attempts before clearing pause state
@@ -3507,17 +3778,52 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
       // Handle decomposition request from planner
       if (decompositionRequest && decompositionRequest.shouldDecompose) {
+        // Re-check: task might already have subtasks from a concurrent decomposition
+        const freshTask = await this.store.getTask(task.id);
+        if (freshTask?.subtaskIds && freshTask.subtaskIds.length > 0) {
+          await this.store.addLog(task.id, {
+            level: 'warn',
+            message: `Decomposition request ignored — task already has ${freshTask.subtaskIds.length} subtasks`,
+          });
+          // Skip to subtask execution with existing subtasks
+          const allSubtasksComplete = await this.executeSubtasks(task.id);
+          if (allSubtasksComplete) {
+            await this.store.addLog(task.id, {
+              level: 'info',
+              message: `All subtasks completed. Workflow finished via decomposition.`,
+            });
+            return true;
+          } else {
+            await this.store.addLog(task.id, {
+              level: 'info',
+              message: `Subtask execution paused or incomplete. Task will remain in-progress.`,
+            });
+            return false;
+          }
+        }
+
         await this.store.addLog(task.id, {
           level: 'info',
           message: `Task decomposition requested: creating ${decompositionRequest.subtasks.length} subtasks with ${decompositionRequest.strategy} strategy`,
         });
 
-        // Create subtasks
+        // Create subtasks (guarded against duplicates)
         const subtasks = await this.decomposeTask(
           task.id,
           decompositionRequest.subtasks,
           decompositionRequest.strategy
         );
+
+        if (subtasks.length === 0) {
+          // Decomposition was skipped (duplicate), check for existing subtasks
+          const taskWithSubtasks = await this.store.getTask(task.id);
+          if (taskWithSubtasks?.subtaskIds && taskWithSubtasks.subtaskIds.length > 0) {
+            const allSubtasksComplete = await this.executeSubtasks(task.id);
+            return allSubtasksComplete;
+          }
+          // No subtasks at all — continue with workflow stages
+          continue;
+        }
 
         await this.store.addLog(task.id, {
           level: 'info',
@@ -3558,6 +3864,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       message: `Workflow "${workflow.name}" completed successfully. Stages completed: ${Array.from(completedStages).join(', ')}`,
     });
 
+    // Cache stage results for post-completion learning extraction (v0.6.0)
+    this.cachedStageResults = stageResults;
+
     return true; // Workflow completed, task can be marked as completed
   }
 
@@ -3578,6 +3887,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Build focused prompt for this stage
     // Use special planner prompt if this is a planning stage
+    // Use unified context from SmartContextManager when available, with individual fallbacks
     const stagePromptResult = isPlanner
       ? buildPlannerStagePromptMultimodal({
           task,
@@ -3586,6 +3896,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           workflow,
           config: this.effectiveConfig,
           previousStageResults: previousResults,
+          projectContext: this.cachedProjectContext,
+          enrichedContext: this.cachedUnifiedContext?.enrichedContext || (this.cachedEnrichedContext ? formatEnrichedContext(this.cachedEnrichedContext) : undefined),
+          taskHistoryContext: this.cachedUnifiedContext?.taskHistoryContext || this.cachedTaskHistoryContext,
         })
       : buildStagePromptMultimodal({
           task,
@@ -3594,6 +3907,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           workflow,
           config: this.effectiveConfig,
           previousStageResults: previousResults,
+          projectContext: this.cachedProjectContext,
+          enrichedContext: this.cachedUnifiedContext?.enrichedContext || (this.cachedEnrichedContext ? formatEnrichedContext(this.cachedEnrichedContext) : undefined),
+          memoryContext: this.cachedUnifiedContext?.memoryContext || this.memoryManager?.buildMemoryContext(task.description) || undefined,
+          livingMemory: this.cachedUnifiedContext?.livingMemory || this.memoryManager?.getLivingMemoryContent() || undefined,
+          taskHistoryContext: this.cachedUnifiedContext?.taskHistoryContext || this.cachedTaskHistoryContext,
         });
 
     // Inject resume context if available (only for the first stage being resumed)
@@ -3842,6 +4160,20 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
           // Store the active tool execution
           this.activeToolExecutions.set(callId, toolExecution);
 
+          // Track tool call counts for ghost completion detection
+          const counts = this.taskToolCallCounts.get(task.id) || { total: 0, mutating: 0 };
+          counts.total++;
+          const mutatingTools = ['Write', 'Edit', 'Bash', 'NotebookEdit'];
+          if (mutatingTools.includes(toolName)) {
+            counts.mutating++;
+          }
+          this.taskToolCallCounts.set(task.id, counts);
+
+          // Record to replay bundle
+          if (this.replayBundleBuilder) {
+            this.replayBundleBuilder.recordToolCallStart(callId, toolName, input);
+          }
+
           this.emit('tool:start', {
             taskId: task.id,
             toolName,
@@ -3893,10 +4225,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
               timestamp,
             });
           }
-          
-          this.emit('agent:message', task.id, { 
-            type: 'assistant', 
-            message: { 
+
+          // Record tool result to replay bundle
+          if (this.replayBundleBuilder) {
+            this.replayBundleBuilder.recordToolCallComplete(callId, result, isError);
+          }
+
+          this.emit('agent:message', task.id, {
+            type: 'assistant',
+            message: {
               role: 'assistant', 
               content: [{ type: 'tool_result', tool_use_id: callId, content: result, is_error: isError }] 
             } 
@@ -3921,6 +4258,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
       if (textContent.trim().length > 0) {
         messages.push(textContent);
+
+        // Record message to replay bundle
+        if (this.replayBundleBuilder) {
+          this.replayBundleBuilder.recordMessage('assistant', textContent);
+        }
       }
 
       // Check budget
@@ -3957,6 +4299,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Extract stage summary and outputs from the final messages
     const { summary, outputs, artifacts } = this.parseStageOutput(messages, stage);
 
+    // Token tracking fix: if the stage produced messages but reported 0 tokens,
+    // estimate minimum token usage based on message content length.
+    // This catches cases where the SDK doesn't emit usage events (fast exits, resume sessions).
+    if (stageUsage.totalTokens === 0 && messages.length > 0) {
+      const totalChars = messages.reduce((sum, m) => sum + m.length, 0);
+      // Rough estimate: ~4 chars per token, plus input prompt overhead
+      const estimatedOutputTokens = Math.ceil(totalChars / 4);
+      const estimatedInputTokens = Math.ceil(estimatedOutputTokens * 2); // Input is typically 2x output
+
+      if (estimatedOutputTokens > 0) {
+        stageUsage.inputTokens = estimatedInputTokens;
+        stageUsage.outputTokens = estimatedOutputTokens;
+        stageUsage.totalTokens = estimatedInputTokens + estimatedOutputTokens;
+        stageUsage.estimatedCost = calculateCost(estimatedInputTokens, estimatedOutputTokens);
+
+        // Persist the estimated usage to the task
+        await this.updateUsage(task.id, {
+          inputTokens: estimatedInputTokens,
+          outputTokens: estimatedOutputTokens,
+        });
+
+        await this.store.addLog(task.id, {
+          level: 'debug',
+          message: `Token tracking gap detected: stage "${stage.name}" reported 0 tokens but produced ${messages.length} messages (${totalChars} chars). ` +
+            `Estimated ~${stageUsage.totalTokens} tokens.`,
+          stage: stage.name,
+        });
+      }
+    }
+
     // Check if the output indicates the task was blocked by permission restrictions
     // Skip these heuristic checks for planning stages - they don't run tests or write files,
     // and their output often discusses previous failures which triggers false positives
@@ -3974,10 +4346,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
       }
 
-      return {
+      const plannerResult = {
         stageName: stage.name,
         agent: agent.name,
-        status: 'completed',
+        status: 'completed' as const,
         outputs,
         artifacts,
         summary,
@@ -3986,6 +4358,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         completedAt: new Date(),
         decompositionRequest: decompositionRequest2,
       };
+
+      // Record stage result to replay bundle
+      if (this.replayBundleBuilder) {
+        this.replayBundleBuilder.recordStageResult(stage.name, plannerResult);
+      }
+
+      return plannerResult;
     }
 
     const permissionBlockedPatterns = [
@@ -4121,10 +4500,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       });
     }
 
-    return {
+    const finalResult = {
       stageName: stage.name,
       agent: agent.name,
-      status: 'completed',
+      status: 'completed' as const,
       outputs,
       artifacts,
       summary,
@@ -4133,6 +4512,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       completedAt: new Date(),
       autoFixResults: autoFixResults || undefined,
     };
+
+    // Record stage result to replay bundle
+    if (this.replayBundleBuilder) {
+      this.replayBundleBuilder.recordStageResult(stage.name, finalResult);
+    }
+
+    return finalResult;
   }
 
   /**
@@ -7353,11 +7739,46 @@ Parent: ${parentTask.description}`;
   ): Promise<Task[]> {
     await this.ensureInitialized();
 
+    // Decomposition guard: prevent duplicate decomposition of the same task
+    if (this.decomposingTaskIds.has(parentTaskId)) {
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Skipping duplicate decomposition — task ${parentTaskId} is already being decomposed`,
+      });
+      return [];
+    }
+
     const parentTask = await this.store.getTask(parentTaskId);
     if (!parentTask) {
       throw new Error(`Parent task not found: ${parentTaskId}`);
     }
 
+    // If subtasks already exist, skip decomposition entirely
+    if (parentTask.subtaskIds && parentTask.subtaskIds.length > 0) {
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Skipping decomposition — task already has ${parentTask.subtaskIds.length} subtasks (race condition prevented)`,
+      });
+      return [];
+    }
+
+    this.decomposingTaskIds.add(parentTaskId);
+    try {
+      return await this._decomposeTaskInner(parentTaskId, parentTask, subtaskDefinitions, strategy);
+    } finally {
+      this.decomposingTaskIds.delete(parentTaskId);
+    }
+  }
+
+  /**
+   * Inner decomposition logic, protected by the decomposition guard
+   */
+  private async _decomposeTaskInner(
+    parentTaskId: string,
+    parentTask: Task,
+    subtaskDefinitions: SubtaskDefinition[],
+    strategy: SubtaskStrategy
+  ): Promise<Task[]> {
     // Update parent task strategy
     await this.store.updateTask(parentTaskId, {
       subtaskStrategy: strategy,
@@ -7770,6 +8191,7 @@ Parent: ${parentTask.description}`;
     const subtaskSummaries: string[] = [];
     let pendingCount = 0;
     let failedCount = 0;
+    let ghostCount = 0;
 
     for (const subtaskId of parentTask.subtaskIds || []) {
       const subtask = await this.store.getTask(subtaskId);
@@ -7785,7 +8207,16 @@ Parent: ${parentTask.description}`;
         }
       }
 
-      subtaskSummaries.push(`- ${subtask.description}: ${subtask.status}`);
+      // Detect ghost completions: completed subtasks with 0 tokens and 0 usage
+      const isGhost = subtask.status === 'completed' &&
+        subtask.usage.totalTokens === 0 &&
+        subtask.usage.estimatedCost === 0;
+      if (isGhost) {
+        ghostCount++;
+        subtaskSummaries.push(`- ${subtask.description}: ${subtask.status} (ghost - no work done)`);
+      } else {
+        subtaskSummaries.push(`- ${subtask.description}: ${subtask.status}`);
+      }
 
       // Track incomplete subtasks (including in-progress!)
       if (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused' || subtask.status === 'in-progress') {
@@ -7815,6 +8246,16 @@ Parent: ${parentTask.description}`;
         message: `Subtask execution incomplete: ${pendingCount} pending, ${failedCount} failed\n${subtaskSummaries.join('\n')}`,
       });
       return false;
+    }
+
+    // Warn about ghost completions
+    if (ghostCount > 0) {
+      const totalSubtasks = parentTask.subtaskIds?.length || 0;
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Ghost completion warning: ${ghostCount}/${totalSubtasks} subtasks completed without doing any work. ` +
+          `These subtasks may need to be re-executed or investigated.`,
+      });
     }
 
     await this.store.addLog(parentTaskId, {
@@ -12476,3 +12917,21 @@ export {
   type CodebaseMapperProgress,
   type CodebaseMapperEvents,
 } from './codebase-mapper.js';
+
+// =============================================================================
+// Memory Persistence System
+// =============================================================================
+
+export {
+  MemoryManager,
+  type RememberOptions,
+  type RecallOptions,
+} from './memory-manager.js';
+
+export {
+  MemoryStore,
+  type Memory,
+  type MemoryType,
+  type MemorySearchCriteria,
+  type LivingMemoryFile,
+} from './memory-store.js';

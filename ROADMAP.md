@@ -468,14 +468,14 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### Project Context
 
-- ⚪ **Git status awareness** - Branch, uncommitted changes, recent commits
-- ⚪ **Project structure analysis** - Understand directory layout
-- ⚪ **Dependency detection** - Identify project dependencies
-- ⚪ **Framework detection** - Auto-detect frameworks and conventions
-- ⚪ **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
-- ⚪ **Test framework detection** - Know how to run tests
-- ⚪ **Workspace health checks** - `apex doctor` validates toolchain and config per package
-- ⚪ **Update available checker** - Check npm registry for newer APEX versions on CLI startup with non-intrusive notification
+- 🟢 **Git status awareness** - Branch, uncommitted changes, recent commits
+- 🟢 **Project structure analysis** - Understand directory layout
+- 🟢 **Dependency detection** - Identify project dependencies
+- 🟢 **Framework detection** - Auto-detect frameworks and conventions
+- 🟢 **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
+- 🟢 **Test framework detection** - Know how to run tests
+- 🟢 **Workspace health checks** - `apex doctor` validates toolchain and config per package
+- 🟢 **Update available checker** - Check npm registry for newer APEX versions on CLI startup with non-intrusive notification
 
 ### Brownfield Codebase Analysis (inspired by [GSD](https://github.com/glittercowboy/get-shit-done))
 
@@ -483,67 +483,67 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - 🟢 **Stack documentation** - Auto-generate stack/technology documentation
 - 🟢 **Architecture documentation** - Auto-document architecture patterns
 - 🟢 **Convention extraction** - Extract and document coding conventions
-- ⚪ **Testing patterns** - Document existing test patterns and coverage
-- ⚪ **Integration mapping** - Map third-party integrations and APIs
+- 🟢 **Testing patterns** - Document existing test patterns and coverage
+- 🟢 **Integration mapping** - Map third-party integrations and APIs
 - 🟢 **Technical concerns** - Identify technical debt and concerns
 
 ### Codebase Intelligence (inspired by [Aider](https://github.com/Aider-AI/aider))
 
-- ⚪ **Repository map** - AST-aware map of entire codebase (functions, classes, signatures)
-- ⚪ **Codebase indexing** - Build searchable index of code
-- ⚪ **Semantic code search** - Find code by meaning, not just text
-- ⚪ **Symbol resolution** - Understand function/class definitions and usages
-- ⚪ **Import graph** - Understand module dependencies
-- ⚪ **Type awareness** - Leverage TypeScript/type information
-- ⚪ **Documentation extraction** - Parse JSDoc, docstrings, comments
-- ⚪ **Tree-sitter integration** - Language-aware parsing for all major languages
+- 🟢 **Repository map** - AST-aware map of entire codebase (functions, classes, signatures)
+- 🟢 **Codebase indexing** - Build searchable index of code
+- 🟢 **Semantic code search** - Find code by meaning, not just text
+- 🟢 **Symbol resolution** - Understand function/class definitions and usages
+- 🟢 **Import graph** - Understand module dependencies
+- 🟢 **Type awareness** - Leverage TypeScript/type information
+- 🟢 **Documentation extraction** - Parse JSDoc, docstrings, comments
+- 🟢 **Tree-sitter integration** - Language-aware parsing for all major languages
 
 ### Multimodal Input (inspired by [Aider](https://github.com/Aider-AI/aider) & [SWE-agent](https://github.com/SWE-agent/SWE-agent))
 
-- ⚪ **Image context** - Add screenshots, diagrams to provide visual context
-- ⚪ **Web page context** - Fetch and include web pages as reference
-- ⚪ **GitHub issue images** - Process images attached to GitHub issues
-- ⚪ **Design mockup input** - Accept Figma/design mockups as input
-- ⚪ **Error screenshot analysis** - Analyze screenshots of errors/bugs
+- 🟢 **Image context** - Add screenshots, diagrams to provide visual context
+- 🟢 **Web page context** - Fetch and include web pages as reference
+- 🟢 **GitHub issue images** - Process images attached to GitHub issues
+- 🟢 **Design mockup input** - Accept Figma/design mockups as input
+- 🟢 **Error screenshot analysis** - Analyze screenshots of errors/bugs
 
 ### Conversation Memory (inspired by [GSD](https://github.com/glittercowboy/get-shit-done) & [Auto-Claude](https://github.com/AndyMik90/Auto-Claude))
 
-- ⚪ **Session context** - Remember everything in current session
-- ⚪ **Run replay bundles** - Capture inputs, tool calls, and diffs for reproducible reruns
-- ⚪ **Long-term memory** - Persistent project and user memory across sessions
-- ⚪ **RAG over repo/docs/issues** - Retrieval-augmented context for answers and plans
-- ⚪ **Context summarization** - Compress old context intelligently
-- ⚪ **Memory persistence** - Remember across sessions
-- ⚪ **Explicit memory** - User can tell APEX to remember things
-- ⚪ **Memory search** - Search through remembered information
-- ⚪ **Memory management UI** - View, edit, delete memories
-- ⚪ **Living memory files** - STATE.md-style living memory for multi-session continuity (GSD)
-- ⚪ **Cross-session agent insights** - Agents retain insights and patterns across sessions (Auto-Claude)
+- 🟢 **Session context** - Remember everything in current session
+- 🟢 **Run replay bundles** - Capture inputs, tool calls, and diffs for reproducible reruns
+- 🟢 **Long-term memory** - Persistent project and user memory across sessions
+- 🟢 **RAG over repo/docs/issues** - Retrieval-augmented context for answers and plans
+- 🟢 **Context summarization** - Compress old context intelligently
+- 🟢 **Memory persistence** - Remember across sessions
+- 🟢 **Explicit memory** - User can tell APEX to remember things
+- 🟢 **Memory search** - Search through remembered information
+- 🟢 **Memory management UI** - View, edit, delete memories
+- 🟢 **Living memory files** - STATE.md-style living memory for multi-session continuity (GSD)
+- 🟢 **Cross-session agent insights** - Agents retain insights and patterns across sessions (Auto-Claude)
 
 ### Cross-Task Context
 
-- ⚪ **Task history** - Learn from previous tasks
-- ⚪ **Pattern learning** - Recognize repeated patterns
-- ⚪ **Preference learning** - Remember user preferences
-- ⚪ **Style learning** - Adapt to coding style over time
-- ⚪ **Project conventions** - Learn and follow project conventions
+- 🟢 **Task history** - Learn from previous tasks
+- 🟢 **Pattern learning** - Recognize repeated patterns
+- 🟢 **Preference learning** - Remember user preferences
+- 🟢 **Style learning** - Adapt to coding style over time
+- 🟢 **Project conventions** - Learn and follow project conventions
 
 ### Smart Context Management
 
-- ⚪ **Relevant file detection** - Auto-include relevant files
-- ⚪ **Context prioritization** - Most relevant context first
-- ⚪ **Token-aware truncation** - Smart truncation when context is full
-- ⚪ **Context refresh** - Detect when files have changed externally
-- ⚪ **Context visualization** - Show what's in current context
+- 🟢 **Relevant file detection** - Auto-include relevant files
+- 🟢 **Context prioritization** - Most relevant context first
+- 🟢 **Token-aware truncation** - Smart truncation when context is full
+- 🟢 **Context refresh** - Detect when files have changed externally
+- 🟢 **Context visualization** - Show what's in current context
 
 ### AI Platform Agnostic Orchestration
 
-- 🟡 **Multi-provider Driver Architecture** - Modular system for switching AI backends
-- ⚪ **Claude Code MAX Support** - Support for Anthropic's premium subscription via OAuth
-- ⚪ **OpenAI Codex Support** - Support for OpenAI's premium subscription via OpenAuth
-- ⚪ **Gemini Code Assist Support** - Support for Google's premium subscription via OAuth
-- ⚪ **Agnostic API Driver** - Generic support for any LLM via Vercel AI SDK
-- ⚪ **Standalone MCP Integration** - Provider-independent Tool discovery and execution
+- 🟢 **Multi-provider Driver Architecture** - Modular system for switching AI backends
+- 🟢 **Claude Code MAX Support** - Support for Anthropic's premium subscription via OAuth
+- 🟢 **OpenAI Codex Support** - Support for OpenAI's premium subscription via OpenAuth
+- 🟢 **Gemini Code Assist Support** - Support for Google's premium subscription via OAuth
+- 🟢 **Agnostic API Driver** - Generic support for any LLM via Vercel AI SDK
+- 🟢 **Standalone MCP Integration** - Provider-independent Tool discovery and execution
 
 ---
 

@@ -4659,6 +4659,40 @@ export class TaskStore {
   }
 
   /**
+   * Get summaries of recently completed tasks for learning extraction
+   */
+  getCompletedTasksSummary(limit: number = 10): Array<{
+    id: string;
+    description: string;
+    workflow: string;
+    completedAt: string;
+    status: string;
+  }> {
+    this.ensureInitialized();
+    const rows = this.db.prepare(`
+      SELECT id, description, workflow, completed_at, status
+      FROM tasks
+      WHERE status = 'completed'
+      ORDER BY completed_at DESC
+      LIMIT ?
+    `).all(limit) as Array<{
+      id: string;
+      description: string;
+      workflow: string;
+      completed_at: string;
+      status: string;
+    }>;
+
+    return rows.map(row => ({
+      id: row.id,
+      description: row.description,
+      workflow: row.workflow,
+      completedAt: row.completed_at,
+      status: row.status,
+    }));
+  }
+
+  /**
    * Close the database connection
    */
   close(): void {
