@@ -1399,17 +1399,46 @@ export class DaemonRunner {
    * Stop integrated services
    */
   private async stopIntegratedServices(): Promise<void> {
+    const killWithTimeout = (proc: ChildProcess, name: string) => {
+      return new Promise<void>((resolve) => {
+        if (!proc || proc.killed) { resolve(); return; }
+
+        const forceKillTimer = setTimeout(() => {
+          try {
+            // Force kill if SIGTERM didn't work after 3 seconds
+            proc.kill('SIGKILL');
+          } catch { /* already dead */ }
+          resolve();
+        }, 3000);
+
+        proc.once('exit', () => {
+          clearTimeout(forceKillTimer);
+          resolve();
+        });
+
+        this.log('info', `Stopping ${name}...`);
+        try {
+          proc.kill('SIGTERM');
+        } catch {
+          clearTimeout(forceKillTimer);
+          resolve();
+        }
+      });
+    };
+
+    const promises: Promise<void>[] = [];
+
     if (this.apiProcess) {
-      this.log('info', 'Stopping API server...');
-      this.apiProcess.kill('SIGTERM');
+      promises.push(killWithTimeout(this.apiProcess, 'API server'));
       this.apiProcess = null;
     }
 
     if (this.webuiProcess) {
-      this.log('info', 'Stopping Web UI...');
-      this.webuiProcess.kill('SIGTERM');
+      promises.push(killWithTimeout(this.webuiProcess, 'Web UI'));
       this.webuiProcess = null;
     }
+
+    await Promise.all(promises);
   }
 
   /**

@@ -12285,6 +12285,15 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
    * Disconnects all MCP servers and cleans up resources
    */
   async shutdown(): Promise<void> {
+    // Abort all active SDK queries — kills spawned claude subprocesses
+    if (this.driver) {
+      try {
+        await this.driver.dispose();
+      } catch {
+        // Best-effort cleanup
+      }
+    }
+
     // Disconnect all MCP servers with timeout
     if (this.mcpConnectionManager) {
       try {

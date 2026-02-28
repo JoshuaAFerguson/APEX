@@ -16,6 +16,9 @@ export class AnthropicDriver implements AiDriver {
   readonly providerId = 'anthropic';
   private credentialManager = new CredentialManager();
 
+  /** Track active AbortControllers so dispose() can kill all running queries */
+  private activeControllers = new Set<AbortController>();
+
   async initialize(): Promise<void> {
     const creds = await this.credentialManager.getCredentials('anthropic');
     if (creds?.accessToken) {
@@ -27,7 +30,17 @@ export class AnthropicDriver implements AiDriver {
     console.log('Please run "apex auth login anthropic" to authenticate.');
   }
 
-  async dispose(): Promise<void> {}
+  async dispose(): Promise<void> {
+    // Abort all active SDK queries — this kills the spawned claude subprocesses
+    for (const controller of this.activeControllers) {
+      try {
+        controller.abort();
+      } catch {
+        // Ignore errors during abort
+      }
+    }
+    this.activeControllers.clear();
+  }
 
   resolveModel(modelAlias: string): string {
     switch (modelAlias) {
@@ -40,9 +53,13 @@ export class AnthropicDriver implements AiDriver {
   }
 
   async *stream(request: DriverRequest): AsyncIterable<DriverEvent> {
+    const abortController = new AbortController();
+    this.activeControllers.add(abortController);
+
     try {
       // Build SDK options from the driver request
       const sdkOptions: SdkOptions = {
+        abortController,
         systemPrompt: request.systemPrompt,
         model: request.model,
         maxTurns: request.maxTurns,
@@ -68,7 +85,14 @@ export class AnthropicDriver implements AiDriver {
         yield* this.mapSdkMessage(message);
       }
     } catch (error) {
-      yield { type: 'error', message: error instanceof Error ? error.message : String(error) };
+      // Don't emit error events for intentional aborts
+      if (error instanceof Error && error.name === 'AbortError') {
+        yield { type: 'status', message: 'Query aborted' };
+      } else {
+        yield { type: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+    } finally {
+      this.activeControllers.delete(abortController);
     }
   }
 
