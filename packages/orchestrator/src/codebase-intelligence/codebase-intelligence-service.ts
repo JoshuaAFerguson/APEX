@@ -485,10 +485,21 @@ export class CodebaseIntelligenceService {
     if (!this.repositoryMap || !this.referenceExtractor) return;
 
     for (const file of this.repositoryMap.files) {
+      // Skip files in excluded directories (node_modules, dist, .git, build)
+      if (file.path && this.config.excludePatterns?.some(pattern => {
+        const dir = pattern.replace('/**', '');
+        return file.path.includes(`/${dir}/`) || file.path.startsWith(`${dir}/`);
+      })) {
+        continue;
+      }
       if (file.path && this.isAnalyzableFile(file.path, file.language)) {
         try {
           await this.referenceExtractor.updateRepositoryMapReferences(file.path);
         } catch (error) {
+          // Silently skip files that can't be parsed (e.g. .d.cts, .d.mts)
+          if (error instanceof Error && error.message.includes('Failed to parse')) {
+            continue;
+          }
           console.warn(`Failed to extract references from ${file.path}:`, error);
         }
       }
