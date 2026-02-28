@@ -574,15 +574,12 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         return reply.status(404).send({ error: 'Task not found' });
       }
 
-      // Handle paused tasks
+      // Handle paused tasks — fire-and-forget so the HTTP response returns immediately
       if (task.status === 'paused') {
-        const resumed = await orchestrator.resumePausedTask(id);
-        if (!resumed) {
-          return reply.status(500).send({
-            error: 'Failed to resume task. Check if the task has a valid checkpoint.'
-          });
-        }
-        return { ok: true, message: 'Task resumed from paused state', taskId: id };
+        orchestrator.resumePausedTask(id).catch((error: Error) => {
+          app.log.error(`Task ${id} resume failed: ${error.message}`);
+        });
+        return { ok: true, message: 'Task resume initiated', taskId: id };
       }
 
       // Handle pending tasks (subtasks that were never started)

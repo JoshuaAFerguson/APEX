@@ -1,6 +1,6 @@
 import { createWriteStream, WriteStream, promises as fs } from 'fs';
 import { join } from 'path';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execFileSync, ChildProcess } from 'child_process';
 import { ApexOrchestrator, TaskSessionResumedEvent } from './index';
 import { TaskStore } from './store';
 import { loadConfig, getEffectiveConfig, ApexConfig, Task, TaskStatus, DaemonConfig, TaskSessionData } from '@apexcli/core';
@@ -209,6 +209,7 @@ export class DaemonRunner {
   private stateUpdateInterval: NodeJS.Timeout | null = null;
   private orphanCheckInterval: NodeJS.Timeout | null = null;
   private pausedTaskCheckInterval: NodeJS.Timeout | null = null;
+  private processCleanupInterval: NodeJS.Timeout | null = null;
 
   // Metrics
   private startedAt: Date | null = null;
@@ -374,6 +375,9 @@ export class DaemonRunner {
       // Setup periodic stuck task auto-triage
       this.setupPeriodicStuckTaskCheck();
 
+      // Setup periodic orphaned OS process cleanup
+      this.startProcessCleanupInterval();
+
       // Initial check for paused tasks on startup
       await this.checkAndResumePausedTasks();
 
@@ -466,6 +470,14 @@ export class DaemonRunner {
       clearInterval(this.pausedTaskCheckInterval);
       this.pausedTaskCheckInterval = null;
     }
+
+    if (this.processCleanupInterval) {
+      clearInterval(this.processCleanupInterval);
+      this.processCleanupInterval = null;
+    }
+
+    // Final orphaned process cleanup before shutdown
+    this.cleanupOrphanedProcesses();
 
     // Write final state file with running: false
     try {
@@ -1069,6 +1081,8 @@ export class DaemonRunner {
       })
       .finally(() => {
         this.runningTasks.delete(taskId);
+        // Clean up orphaned child processes after each task ends
+        this.cleanupOrphanedProcesses();
       });
 
     this.runningTasks.set(taskId, taskPromise);
@@ -1944,5 +1958,88 @@ export class DaemonRunner {
     }, interval);
 
     this.log('info', `Periodic stuck task auto-triage enabled (interval: ${interval}ms)`);
+  }
+
+  /**
+   * Kill orphaned OS processes left behind by completed/failed/paused tasks.
+   *
+   * When the Claude Agent SDK spawns `claude` subprocesses, those may in turn
+   * run commands like `npx vitest` that fork worker processes. If the `claude`
+   * process terminates before its children, those workers become orphans
+   * (PPID=1 on Unix) and consume CPU indefinitely.
+   *
+   * This method identifies and kills such orphans by looking for:
+   * - vitest worker fork processes (PPID=1, running vitest/dist/workers/forks.js)
+   * - Other node processes that were spawned from APEX project paths (PPID=1)
+   */
+  private cleanupOrphanedProcesses(): void {
+    if (process.platform === 'win32') {
+      return; // Not applicable on Windows — orphan semantics differ
+    }
+
+    try {
+      // Use execFileSync (not exec) to avoid shell injection — args are static
+      const result = execFileSync('ps', ['-eo', 'pid,ppid,args'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+
+      const daemonPid = process.pid;
+      const lines = result.split('\n');
+      const orphanPids: number[] = [];
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        const parts = trimmed.split(/\s+/);
+        const pid = parseInt(parts[0], 10);
+        const ppid = parseInt(parts[1], 10);
+        const args = parts.slice(2).join(' ');
+
+        // Only look at processes orphaned to init (PPID=1)
+        if (ppid !== 1) continue;
+        // Don't kill ourselves or our known children
+        if (pid === daemonPid) continue;
+
+        // Match orphaned vitest worker processes
+        if (args.includes('vitest') && args.includes('workers/forks')) {
+          orphanPids.push(pid);
+          continue;
+        }
+
+        // Match orphaned node processes that reference our project path
+        if (args.includes('node') && args.includes(this.options.projectPath) &&
+            !args.includes('daemon-entry') && !args.includes('mcp-server')) {
+          orphanPids.push(pid);
+          continue;
+        }
+      }
+
+      if (orphanPids.length > 0) {
+        this.log('warn', `Killing ${orphanPids.length} orphaned process(es): ${orphanPids.join(', ')}`);
+        for (const pid of orphanPids) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // Process may have already exited
+          }
+        }
+      }
+    } catch (error) {
+      // Non-critical — log and continue
+      this.log('debug', `Orphaned process cleanup error: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Start periodic cleanup of orphaned OS processes.
+   * Runs every 60 seconds to catch processes that were orphaned between task completions.
+   */
+  private startProcessCleanupInterval(): void {
+    this.processCleanupInterval = setInterval(() => {
+      if (!this.isRunning || this.isShuttingDown) return;
+      this.cleanupOrphanedProcesses();
+    }, 60_000);
   }
 }
