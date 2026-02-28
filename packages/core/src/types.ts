@@ -2013,6 +2013,49 @@ export const WorkflowDefinitionSchema = z.object({
 export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 
 // ============================================================================
+// AI Provider Configuration (v0.6.0)
+// ============================================================================
+
+/**
+ * Authentication methods for AI providers
+ */
+export const AiProviderAuthMethodSchema = z.enum(['api_key', 'oauth', 'openauth', 'none']);
+export type AiProviderAuthMethod = z.infer<typeof AiProviderAuthMethodSchema>;
+
+/**
+ * Configuration for an individual AI provider
+ */
+export const AiProviderConfigSchema = z.object({
+  /** Whether this provider is enabled */
+  enabled: z.boolean().default(true),
+  /** Authentication method to use */
+  authMethod: AiProviderAuthMethodSchema,
+  /** API key (if using api_key auth) */
+  apiKey: z.string().optional(),
+  /** Default model for this provider */
+  defaultModel: z.string().optional(),
+  /** Provider-specific options */
+  options: z.record(z.unknown()).optional().default({}),
+});
+export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>;
+
+/**
+ * Global AI provider configuration
+ */
+export const AiProvidersConfigSchema = z.object({
+  /** Primary provider to use */
+  primary: z.string().default('anthropic'),
+  /** Map of provider configurations */
+  configs: z.record(AiProviderConfigSchema).optional().default({
+    anthropic: { enabled: true, authMethod: 'oauth' },
+    openai: { enabled: true, authMethod: 'openauth' },
+    gemini: { enabled: true, authMethod: 'oauth' },
+    agnostic: { enabled: true, authMethod: 'api_key' },
+  }),
+});
+export type AiProvidersConfig = z.infer<typeof AiProvidersConfigSchema>;
+
+// ============================================================================
 // Project Configuration
 // ============================================================================
 
@@ -4532,6 +4575,16 @@ export const ApexConfigSchema = z.object({
     })
     .optional(),
   models: ModelsConfigSchema.optional(),
+  /** AI provider configurations for multi-platform support (v0.6.0) */
+  providers: AiProvidersConfigSchema.optional().default({
+    primary: 'anthropic',
+    configs: {
+      anthropic: { enabled: true, authMethod: 'oauth' },
+      openai: { enabled: true, authMethod: 'openauth' },
+      gemini: { enabled: true, authMethod: 'oauth' },
+      agnostic: { enabled: true, authMethod: 'api_key' },
+    },
+  }),
   gates: z.array(WorkflowGateSchema).optional(),
   git: GitConfigSchema.optional(),
   limits: LimitsConfigSchema.optional(),
@@ -12071,7 +12124,7 @@ export type DesignMockupInput = z.infer<typeof DesignMockupInputSchema>;
  * }
  * ```
  */
-export const MultimodalInputSchema = z.discriminatedUnion('type', [
+export const MultimodalInputSchema = z.union([
   ImageInputSchema,
   WebPageInputSchema,
   DesignMockupInputSchema,

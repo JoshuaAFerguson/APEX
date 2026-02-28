@@ -433,10 +433,8 @@ class PermissionRevokedError extends ApexError {
         // Set the prototype explicitly for proper instanceof checks
         Object.setPrototypeOf(this, PermissionRevokedError.prototype);
     }
-    /** Legacy code property for backward compatibility with tests */
-    get code() {
-        return 'PERMISSION_REVOKED';
-    }
+    /** Override code to be the specific PERMISSION_REVOKED value */
+    code = ApexErrorCode.PERMISSION_REVOKED;
 }
 exports.PermissionRevokedError = PermissionRevokedError;
 /**

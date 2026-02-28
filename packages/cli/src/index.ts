@@ -42,6 +42,7 @@ import {
 } from './handlers/workspace-handlers.js';
 import { handleDoctor } from './handlers/doctor-handlers.js';
 import { handleMapCodebase } from './handlers/map-codebase-handlers.js';
+import { handleAuth } from './handlers/auth-handlers.js';
 import { checkAndNotifyUpdates } from './utils/update-checker.js';
 import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
 import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
@@ -1138,6 +1139,13 @@ export const commands: Command[] = [
     },
   },
 
+  {
+    name: 'auth',
+    aliases: ['login'],
+    description: 'Manage AI provider authentication (OAuth/OpenAuth)',
+    usage: '/auth login [provider] | /auth logout <provider> | /auth status',
+    handler: handleAuth,
+  },
   {
     name: 'exit',
     aliases: ['quit', 'q'],

@@ -536,6 +536,15 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 - ⚪ **Context refresh** - Detect when files have changed externally
 - ⚪ **Context visualization** - Show what's in current context
 
+### AI Platform Agnostic Orchestration
+
+- 🟡 **Multi-provider Driver Architecture** - Modular system for switching AI backends
+- ⚪ **Claude Code MAX Support** - Support for Anthropic's premium subscription via OAuth
+- ⚪ **OpenAI Codex Support** - Support for OpenAI's premium subscription via OpenAuth
+- ⚪ **Gemini Code Assist Support** - Support for Google's premium subscription via OAuth
+- ⚪ **Agnostic API Driver** - Generic support for any LLM via Vercel AI SDK
+- ⚪ **Standalone MCP Integration** - Provider-independent Tool discovery and execution
+
 ---
 
 ## v0.7.0 - Web Dashboard & Integrations

@@ -7140,15 +7140,23 @@ Parent: ${parentTask.description}`;
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    // Increment resume attempts counter
-    const newResumeAttempts = task.resumeAttempts + 1;
+    // Only count resume attempts for non-external pause reasons.
+    // External pauses (usage_limit, rate_limit, subtask pauses) are not indicative
+    // of a broken task — they're environment constraints that resolve on their own.
+    const externalPauseReasons = ['usage_limit', 'rate_limit', 'budget', 'session_limit'];
+    const isExternalPause = task.pauseReason && (
+      externalPauseReasons.includes(task.pauseReason) ||
+      task.pauseReason.startsWith('subtask_paused')
+    );
+
+    const newResumeAttempts = isExternalPause ? task.resumeAttempts : task.resumeAttempts + 1;
     await this.store.updateTask(taskId, {
       resumeAttempts: newResumeAttempts,
       updatedAt: new Date(),
     });
 
-    // Check if max resume attempts exceeded
-    const maxResumeAttempts = this.effectiveConfig.daemon?.sessionRecovery?.maxResumeAttempts ?? 3;
+    // Check if max resume attempts exceeded (default raised from 3 to 10)
+    const maxResumeAttempts = this.effectiveConfig.daemon?.sessionRecovery?.maxResumeAttempts ?? 10;
     if (newResumeAttempts > maxResumeAttempts) {
       await this.failTaskWithMaxResumeError(taskId, newResumeAttempts, maxResumeAttempts);
       return false;

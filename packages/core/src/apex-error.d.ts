@@ -274,8 +274,8 @@ export declare class PermissionRevokedError extends ApexError {
     /** Static code for this specific error type */
     static readonly CODE: ApexErrorCode.PERMISSION_REVOKED;
     constructor(message?: string, context?: ApexErrorContext, cause?: Error);
-    /** Legacy code property for backward compatibility with tests */
-    get code(): 'PERMISSION_REVOKED';
+    /** Override code to be the specific PERMISSION_REVOKED value */
+    readonly code: ApexErrorCode;
 }
 /**
  * Type guard to check if an error is a PermissionRevokedError
