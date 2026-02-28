@@ -28,6 +28,8 @@ export interface DriverRequest {
   tools?: ToolDefinition[];
   context?: any;
   cwd?: string;
+  /** MCP server configurations to pass to the SDK */
+  mcpServers?: Record<string, any>;
 }
 
 /**

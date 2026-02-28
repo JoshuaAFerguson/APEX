@@ -4125,6 +4125,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       model: sdkModel,
       maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50),
       cwd: workingDirectory,
+      mcpServers: mcpServers,
     })) {
       // Collect text content for summary extraction and log AI responses
       let textContent = '';
