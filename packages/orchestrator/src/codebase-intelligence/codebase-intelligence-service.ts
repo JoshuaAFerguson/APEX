@@ -147,7 +147,7 @@ export class CodebaseIntelligenceService {
       enableIncrementalIndexing: true,
       enableBackgroundProcessing: false,
       includeExternalDependencies: false,
-      excludePatterns: ['node_modules/**', '.git/**', 'dist/**', 'build/**'],
+      excludePatterns: ['node_modules/**', '.git/**', 'dist/**', 'build/**', '__fixtures__/**', '__tests__/**'],
       maxFileSize: 10 * 1024 * 1024, // 10MB
       ...config,
     };
@@ -495,12 +495,9 @@ export class CodebaseIntelligenceService {
       if (file.path && this.isAnalyzableFile(file.path, file.language)) {
         try {
           await this.referenceExtractor.updateRepositoryMapReferences(file.path);
-        } catch (error) {
-          // Silently skip files that can't be parsed (e.g. .d.cts, .d.mts)
-          if (error instanceof Error && error.message.includes('Failed to parse')) {
-            continue;
-          }
-          console.warn(`Failed to extract references from ${file.path}:`, error);
+        } catch {
+          // Silently skip files that can't be parsed (tree-sitter grammar issues, .d.cts, etc.)
+          continue;
         }
       }
     }
