@@ -1699,28 +1699,31 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const repairConfig = resolveRepairConfig(this.config.repair);
     this.repairLoop = new RepairLoop(this.createRepairLoopHost(), repairConfig);
 
-    // Initialize project context analyzer (v0.6.0)
+    // Initialize project context analyzer (v0.6.0, non-blocking)
     try {
       this.projectContextAnalyzer = new ProjectContextAnalyzer(this.projectPath);
-      this.cachedProjectContext = await this.projectContextAnalyzer.analyze();
-    } catch (error) {
-      // Non-fatal: project context is optional enrichment
-      console.warn(`Project context analysis failed: ${(error as Error).message}`);
+      this.projectContextAnalyzer.analyze().then((ctx) => {
+        this.cachedProjectContext = ctx;
+      }).catch(() => {
+        // Non-fatal: project context is optional enrichment
+      });
+    } catch {
+      // Constructor failure — skip
     }
 
-    // Initialize codebase intelligence (v0.6.0 - opt-in)
+    // Initialize codebase intelligence (v0.6.0 - opt-in, non-blocking)
+    // Indexing can take a long time on large codebases — run in background
+    // so it doesn't block daemon startup or CLI responsiveness
     if ((this.effectiveConfig as any).codebaseIntelligence?.enabled !== false) {
-      try {
-        this.codebaseIntelligence = new CodebaseIntelligenceService({
-          enableCaching: true,
-          enableIncrementalIndexing: true,
-        });
-        await this.codebaseIntelligence.initialize(this.projectPath);
-      } catch (error) {
+      const ciService = new CodebaseIntelligenceService({
+        enableCaching: true,
+        enableIncrementalIndexing: true,
+      });
+      ciService.initialize(this.projectPath).then(() => {
+        this.codebaseIntelligence = ciService;
+      }).catch(() => {
         // Non-fatal: codebase intelligence is optional
-        console.warn(`Codebase intelligence initialization failed: ${(error as Error).message}`);
-        this.codebaseIntelligence = undefined;
-      }
+      });
     }
 
     // Initialize smart context manager (v0.6.0)
