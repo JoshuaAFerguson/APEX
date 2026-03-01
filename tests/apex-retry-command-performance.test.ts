@@ -1,6 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { Task } from '@apexcli/core';
+
+// Mock types for testing
+type MockOrchestrator = {
+  getTask: any;
+  updateTaskStatus: any;
+  executeTask: any;
+  on: any;
+  off: any;
+  initialize: any;
+  createTask: any;
+  listTasks: any;
+  cancelTask: any;
+  resumePausedTask: any;
+  getTaskLogs: any;
+};
 
 /**
  * APEX Retry Command Performance Test Suite
@@ -13,7 +27,7 @@ import { Task } from '@apexcli/core';
  * - Resource utilization monitoring
  */
 describe('APEX Retry Command Performance Tests', () => {
-  let mockOrchestrator: ApexOrchestrator;
+  let mockOrchestrator: MockOrchestrator;
   let mockApp: any;
   let handleRetry: (args: string[]) => Promise<void>;
   let performanceMetrics: {
@@ -44,7 +58,7 @@ describe('APEX Retry Command Performance Tests', () => {
       cancelTask: vi.fn(),
       resumePausedTask: vi.fn(),
       getTaskLogs: vi.fn(),
-    } as unknown as ApexOrchestrator;
+    };
 
     mockApp = {
       addMessage: vi.fn(),

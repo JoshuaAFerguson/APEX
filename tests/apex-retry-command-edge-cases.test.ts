@@ -1,6 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { Task } from '@apexcli/core';
+
+// Mock types for testing
+type MockOrchestrator = {
+  getTask: any;
+  updateTaskStatus: any;
+  executeTask: any;
+  on: any;
+  off: any;
+  initialize: any;
+  createTask: any;
+  listTasks: any;
+  cancelTask: any;
+  resumePausedTask: any;
+  getTaskLogs: any;
+};
 
 /**
  * APEX Retry Command Edge Cases Test Suite
@@ -14,7 +28,7 @@ import { Task } from '@apexcli/core';
  * - Resource exhaustion scenarios
  */
 describe('APEX Retry Command Edge Cases', () => {
-  let mockOrchestrator: ApexOrchestrator;
+  let mockOrchestrator: MockOrchestrator;
   let mockApp: any;
   let handleRetry: (args: string[]) => Promise<void>;
 
@@ -31,7 +45,7 @@ describe('APEX Retry Command Edge Cases', () => {
       cancelTask: vi.fn(),
       resumePausedTask: vi.fn(),
       getTaskLogs: vi.fn(),
-    } as unknown as ApexOrchestrator;
+    };
 
     mockApp = {
       addMessage: vi.fn(),
@@ -43,7 +57,7 @@ describe('APEX Retry Command Edge Cases', () => {
     // Create retry handler similar to actual implementation
     handleRetry = async (args: string[]): Promise<void> => {
       const taskId = args[0];
-      if (!taskId) {
+      if (!taskId || !taskId.trim()) {
         mockApp.addMessage({
           type: 'error',
           content: 'Usage: /retry <task_id>',

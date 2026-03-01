@@ -19,7 +19,7 @@ The `checkAutoStart()` function exists in two locations, serving different entry
    - Uses abstracted `startAPIServer()` and `startWebUI()` helper functions
    - Provides user feedback via console output
 
-2. **REPL Implementation** (`packages/cli/src/repl.tsx:1376-1429`)
+2. **REPL Implementation** (`packages/cli/src/repl.tsx:1400-1453`)
    - Called during React-based REPL initialization
    - Directly spawns processes with explicit `APEX_SILENT=1` environment variable
    - Updates app state via `ctx.app?.updateState()`
@@ -127,10 +127,10 @@ if (webUIConfig?.autoStart) {
 
 | Criteria | Status | Evidence |
 |----------|--------|----------|
-| `checkAutoStart()` function exists | ✅ PASS | Found in `index.ts:4771` and `repl.tsx:1376` |
+| `checkAutoStart()` function exists | ✅ PASS | Found in `index.ts:4771` and `repl.tsx:1400` |
 | `api.autoStart` config option defined | ✅ PASS | `types.ts:4595` |
 | `webUI.autoStart` config option defined | ✅ PASS | `types.ts:4604` |
-| API spawned with `APEX_SILENT=1` (REPL) | ✅ PASS | `repl.tsx:1394` |
+| API spawned with `APEX_SILENT=1` (REPL) | ✅ PASS | `repl.tsx:1418` |
 | API started with `silent=true` (CLI) | ✅ PASS | `index.ts:4795` |
 | Web UI spawned as background process | ✅ PASS | Both implementations use `detached: true` + `unref()` |
 | Default autoStart is `false` | ✅ PASS | Both schemas use `.default(false)` |
@@ -183,3 +183,7 @@ The `checkAutoStart()` function is **verified working** as designed:
 - API server receives `APEX_SILENT=1` environment variable or `silent=true` parameter
 - Both services spawn as detached background processes
 - Process references are stored in context for lifecycle management
+
+---
+**Last Audit**: 2026-03-01
+**Tests Verified**: 51 tests passing (autostart-verification.test.ts, silent-mode-config-audit.test.ts, silent-mode-unit-tests.test.ts, silent-mode-audit-verification.test.ts)

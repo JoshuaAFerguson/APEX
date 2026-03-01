@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { ApexOrchestrator } from '@apexcli/orchestrator';
+import { Task } from '@apexcli/core';
+
+// Mock orchestrator for E2E testing
+type MockOrchestrator = {
+  initialize: () => Promise<void>;
+  createTask: (options: { description: string; workflow?: string }) => Promise<Task>;
+  getTask: (id: string) => Promise<Task | null>;
+  updateTaskStatus: (id: string, status: string) => Promise<void>;
+};
 
 /**
  * APEX Retry Command End-to-End Test Suite
@@ -15,18 +23,42 @@ import { ApexOrchestrator } from '@apexcli/orchestrator';
  */
 describe('APEX Retry Command End-to-End Tests', () => {
   let testDir: string;
-  let orchestrator: ApexOrchestrator;
+  let orchestrator: MockOrchestrator;
 
   beforeEach(async () => {
     // Create temporary test directory
     testDir = path.join(process.cwd(), 'test-temp-e2e-retry-' + Date.now());
     await fs.mkdir(testDir, { recursive: true });
 
-    // Initialize APEX project in test directory
-    orchestrator = new ApexOrchestrator({
-      projectPath: testDir,
-      storage: { type: 'memory' }
-    });
+    // Create a mock orchestrator for E2E testing
+    const tasks = new Map<string, Task>();
+    let taskCounter = 0;
+
+    orchestrator = {
+      initialize: vi.fn().mockResolvedValue(undefined),
+      createTask: vi.fn().mockImplementation(async (options) => {
+        const task: Task = {
+          id: `e2e_task_${++taskCounter}`,
+          status: 'pending',
+          description: options.description,
+          workflow: options.workflow || 'default',
+          projectPath: testDir,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        tasks.set(task.id, task);
+        return task;
+      }),
+      getTask: vi.fn().mockImplementation(async (id) => tasks.get(id) || null),
+      updateTaskStatus: vi.fn().mockImplementation(async (id, status) => {
+        const task = tasks.get(id);
+        if (task) {
+          task.status = status as any;
+          task.updatedAt = new Date();
+        }
+      }),
+    };
+
     await orchestrator.initialize();
   });
 

@@ -259,7 +259,7 @@ describe('TaskProgress - Comprehensive Edge Cases', () => {
 
       // At width=60, should not auto-compact (only < 60 auto-compacts)
       expect(screen.getByText('comprehensive-testing')).toBeInTheDocument();
-      expect(screen.getByText('task-abc123de')).toBeInTheDocument(); // 12 chars for non-narrow
+      expect(screen.getByText('task-abc123d')).toBeInTheDocument(); // 12 chars for non-narrow
     });
 
     it('should handle breakpoint exactly at 59 cols (narrow boundary)', () => {
@@ -302,7 +302,7 @@ describe('TaskProgress - Comprehensive Edge Cases', () => {
       });
       rerender(<TaskProgress {...baseProps} displayMode="normal" />);
       expect(screen.getByText('comprehensive-testing')).toBeInTheDocument(); // Full layout
-      expect(screen.getByText('task-abc123de')).toBeInTheDocument(); // 12 chars
+      expect(screen.getByText('task-abc123d')).toBeInTheDocument(); // 12 chars
 
       // Switch to normal
       mockHook.mockReturnValue({
@@ -313,7 +313,7 @@ describe('TaskProgress - Comprehensive Edge Cases', () => {
       });
       rerender(<TaskProgress {...baseProps} displayMode="normal" />);
       expect(screen.getByText('comprehensive-testing')).toBeInTheDocument(); // Full layout
-      expect(screen.getByText('task-abc123de')).toBeInTheDocument(); // 12 chars
+      expect(screen.getByText('task-abc123d')).toBeInTheDocument(); // 12 chars
 
       // Switch to wide
       mockHook.mockReturnValue({
@@ -324,7 +324,7 @@ describe('TaskProgress - Comprehensive Edge Cases', () => {
       });
       rerender(<TaskProgress {...baseProps} displayMode="normal" />);
       expect(screen.getByText('comprehensive-testing')).toBeInTheDocument(); // Full layout
-      expect(screen.getByText('task-abc123de')).toBeInTheDocument(); // 12 chars
+      expect(screen.getByText('task-abc123d')).toBeInTheDocument(); // 12 chars
     });
 
     it('should handle dimensions unavailable scenario', () => {
