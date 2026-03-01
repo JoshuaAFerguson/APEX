@@ -1403,6 +1403,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private globalActiveTaskCount = 0;
   private globalConcurrencyWaiters: Array<() => void> = [];
 
+  // Per-task AbortControllers: lets us kill the claude subprocess when a task
+  // is paused, cancelled, or fails — preventing orphaned processes.
+  private taskAbortControllers: Map<string, AbortController> = new Map();
+
   // Tool call tracking per task: counts mutating tool calls (Write, Edit, Bash)
   private taskToolCallCounts: Map<string, { total: number; mutating: number }> = new Map();
 
@@ -2263,6 +2267,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     } finally {
       this.releaseGlobalSlot();
       this.executingTaskIds.delete(taskId);
+      // Clean up abort controller if still present (normal completion)
+      this.taskAbortControllers.delete(taskId);
     }
   }
 
@@ -2854,6 +2860,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     resumeAfterSeconds?: number
   ): Promise<void> {
     await this.ensureInitialized();
+
+    // Abort the claude subprocess for this task to prevent orphaned processes
+    this.abortTaskProcess(taskId);
 
     const now = new Date();
     const resumeAfter = resumeAfterSeconds
@@ -4132,6 +4141,11 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
     }
 
+    // Create a per-task AbortController so we can kill the claude subprocess
+    // when the task is paused, cancelled, or fails
+    const taskAbortController = new AbortController();
+    this.taskAbortControllers.set(task.id, taskAbortController);
+
     for await (const message of this.driver.stream({
       prompt: typeof stagePrompt === 'string' ? stagePrompt : stagePromptResult.textPrompt,
       systemPrompt: agent.prompt,
@@ -4139,6 +4153,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50),
       cwd: workingDirectory,
       mcpServers: mcpServers,
+      abortController: taskAbortController,
     })) {
       // Collect text content for summary extraction and log AI responses
       let textContent = '';
@@ -7256,12 +7271,12 @@ Parent: ${parentTask.description}`;
       return false;
     }
 
+    // Abort the claude subprocess for this task to prevent orphaned processes
+    this.abortTaskProcess(taskId);
+
     await this.updateTaskStatus(taskId, 'cancelled', 'Task was cancelled by user');
 
-    // If it's in our running map, we can't actually stop the SDK call,
-    // but we mark it cancelled so subsequent processing knows to stop
     if (this.runningTasks.has(taskId)) {
-      // The task will complete and see the cancelled status
       this.runningTasks.delete(taskId);
     }
 
@@ -7505,6 +7520,24 @@ Parent: ${parentTask.description}`;
     const next = this.globalConcurrencyWaiters.shift();
     if (next) {
       next();
+    }
+  }
+
+  /**
+   * Abort the claude subprocess for a specific task. Called when a task is
+   * paused, cancelled, or fails. This triggers the AbortController that was
+   * passed to the SDK's query(), which kills the spawned claude subprocess
+   * and its entire process tree (shell snapshots, npm test, vitest, etc.).
+   */
+  private abortTaskProcess(taskId: string): void {
+    const controller = this.taskAbortControllers.get(taskId);
+    if (controller) {
+      try {
+        controller.abort();
+      } catch {
+        // Ignore abort errors
+      }
+      this.taskAbortControllers.delete(taskId);
     }
   }
 

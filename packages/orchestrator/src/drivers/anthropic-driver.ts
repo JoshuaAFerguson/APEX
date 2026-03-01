@@ -53,7 +53,8 @@ export class AnthropicDriver implements AiDriver {
   }
 
   async *stream(request: DriverRequest): AsyncIterable<DriverEvent> {
-    const abortController = new AbortController();
+    // Use caller's AbortController if provided, so they can abort this specific query
+    const abortController = request.abortController ?? new AbortController();
     this.activeControllers.add(abortController);
 
     try {

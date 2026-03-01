@@ -30,6 +30,8 @@ export interface DriverRequest {
   cwd?: string;
   /** MCP server configurations to pass to the SDK */
   mcpServers?: Record<string, any>;
+  /** AbortController for cancelling this specific request and its subprocess tree */
+  abortController?: AbortController;
 }
 
 /**
