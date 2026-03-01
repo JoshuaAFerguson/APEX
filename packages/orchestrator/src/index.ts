@@ -1397,6 +1397,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   // Decomposition guard: prevent duplicate decomposition of the same task
   private decomposingTaskIds: Set<string> = new Set();
 
+  // Global concurrency semaphore: limits how many tasks can be actively
+  // running an AI query across the entire orchestrator (all nesting levels).
+  // Tasks that exceed this limit wait until a slot opens.
+  private globalActiveTaskCount = 0;
+  private globalConcurrencyWaiters: Array<() => void> = [];
+
   // Tool call tracking per task: counts mutating tool calls (Write, Edit, Bash)
   private taskToolCallCounts: Map<string, { total: number; mutating: number }> = new Map();
 
@@ -2246,12 +2252,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
     this.executingTaskIds.add(taskId);
 
+    // Global concurrency: wait for an available slot before starting
+    await this.acquireGlobalSlot();
+
     // Initialize tool call tracking for this task
     this.taskToolCallCounts.set(taskId, { total: 0, mutating: 0 });
 
     try {
       await this._executeTaskInner(taskId, options);
     } finally {
+      this.releaseGlobalSlot();
       this.executingTaskIds.delete(taskId);
     }
   }
@@ -7467,6 +7477,38 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Acquire a global concurrency slot. If all slots are taken, waits until
+   * one becomes available. This ensures that across the entire task tree
+   * (root + all nested subtasks), only N tasks are actively running AI
+   * queries at the same time.
+   */
+  private async acquireGlobalSlot(): Promise<void> {
+    const maxConcurrent = this.getMaxConcurrentTasks();
+    if (this.globalActiveTaskCount < maxConcurrent) {
+      this.globalActiveTaskCount++;
+      return;
+    }
+    // Wait for a slot to open
+    return new Promise<void>((resolve) => {
+      this.globalConcurrencyWaiters.push(() => {
+        this.globalActiveTaskCount++;
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Release a global concurrency slot, waking the next waiter if any.
+   */
+  private releaseGlobalSlot(): void {
+    this.globalActiveTaskCount--;
+    const next = this.globalConcurrencyWaiters.shift();
+    if (next) {
+      next();
+    }
+  }
+
+  /**
    * Check if the task runner is active
    */
   isTaskRunnerActive(): boolean {
@@ -7791,42 +7833,6 @@ Parent: ${parentTask.description}`;
       await this.store.addLog(parentTaskId, {
         level: 'warn',
         message: `Skipping decomposition — task already has ${parentTask.subtaskIds.length} subtasks (race condition prevented)`,
-      });
-      return [];
-    }
-
-    // --- Decomposition limits ---
-
-    // Cap subtasks per decomposition (prevents planner from creating 50+ subtasks)
-    const maxSubtasksPerDecomposition = 10;
-    if (subtaskDefinitions.length > maxSubtasksPerDecomposition) {
-      await this.store.addLog(parentTaskId, {
-        level: 'warn',
-        message: `Capping subtasks from ${subtaskDefinitions.length} to ${maxSubtasksPerDecomposition}`,
-      });
-      subtaskDefinitions = subtaskDefinitions.slice(0, maxSubtasksPerDecomposition);
-    }
-
-    // Limit nesting depth: walk up parent chain to count depth
-    const maxDecompositionDepth = 2;
-    let depth = 0;
-    let ancestorId = parentTask.parentTaskId;
-    const visited = new Set<string>();
-    while (ancestorId && !visited.has(ancestorId)) {
-      visited.add(ancestorId);
-      const ancestor = await this.store.getTask(ancestorId);
-      if (!ancestor) break;
-      // Only count levels where the ancestor itself was decomposed (has subtasks)
-      if (ancestor.subtaskIds && ancestor.subtaskIds.length > 0) {
-        depth++;
-      }
-      ancestorId = ancestor.parentTaskId;
-    }
-
-    if (depth >= maxDecompositionDepth) {
-      await this.store.addLog(parentTaskId, {
-        level: 'warn',
-        message: `Decomposition blocked: nesting depth ${depth} >= max ${maxDecompositionDepth}. Task will execute directly.`,
       });
       return [];
     }
