@@ -2256,16 +2256,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
     this.executingTaskIds.add(taskId);
 
-    // Global concurrency: wait for an available slot before starting
-    await this.acquireGlobalSlot();
-
     // Initialize tool call tracking for this task
     this.taskToolCallCounts.set(taskId, { total: 0, mutating: 0 });
 
     try {
       await this._executeTaskInner(taskId, options);
     } finally {
-      this.releaseGlobalSlot();
       this.executingTaskIds.delete(taskId);
       // Clean up abort controller if still present (normal completion)
       this.taskAbortControllers.delete(taskId);
@@ -4123,6 +4119,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Execute stage via Claude Agent SDK
     // Wrap in try-catch to detect limit errors from collected messages
+    // Acquire a global concurrency slot ONLY for actual AI execution.
+    // This is intentionally placed here (not in executeTask) so that parent tasks
+    // doing subtask orchestration don't hold slots — only tasks running driver.stream()
+    // consume concurrency, preventing deadlocks in nested task trees.
+    await this.acquireGlobalSlot();
+    try { // Global slot try-finally: ensures releaseGlobalSlot on ALL exit paths
     try {
     // Log MCP tool availability for observability (debug level)
     const mcpServers = this.buildQueryMcpServers();
@@ -4576,6 +4578,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     return finalResult;
+    } finally {
+      // Always release the global concurrency slot when AI execution finishes
+      this.releaseGlobalSlot();
+    }
   }
 
   /**
@@ -7493,9 +7499,10 @@ Parent: ${parentTask.description}`;
 
   /**
    * Acquire a global concurrency slot. If all slots are taken, waits until
-   * one becomes available. This ensures that across the entire task tree
-   * (root + all nested subtasks), only N tasks are actively running AI
-   * queries at the same time.
+   * one becomes available. Called in executeWorkflowStage() (not executeTask())
+   * so that only tasks actively running driver.stream() hold slots. Parent tasks
+   * orchestrating subtasks via continuePendingSubtasks() do NOT hold slots,
+   * preventing deadlocks where parents hold all slots while children wait.
    */
   private async acquireGlobalSlot(): Promise<void> {
     const maxConcurrent = this.getMaxConcurrentTasks();
