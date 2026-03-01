@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Text } from 'ink';
-import Spinner from 'ink-spinner';
+import InkSpinner from 'ink-spinner';
 import { useStdoutDimensions } from '../hooks/useStdoutDimensions.js';
 
 export interface ProgressBarProps {
@@ -129,33 +129,91 @@ export function ProgressBar({
 }
 
 export interface CircularProgressProps {
-  progress: number; // 0-100
-  size?: number;
+  progress?: number; // 0-100
+  size?: 'small' | 'medium' | 'large' | number;
   showPercentage?: boolean;
   color?: string;
   backgroundColor?: string;
+  indeterminate?: boolean;
+  children?: React.ReactNode;
 }
 
 /**
  * Circular progress indicator
  */
 export function CircularProgress({
-  progress,
-  size = 8,
+  progress = 0,
+  size = 'medium',
   showPercentage = true,
   color = 'cyan',
   backgroundColor = 'gray',
+  indeterminate = false,
+  children,
 }: CircularProgressProps): React.ReactElement {
-  const clampedProgress = Math.max(0, Math.min(100, progress));
+  const [spinnerStep, setSpinnerStep] = useState(0);
   const steps = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  const stepIndex = Math.floor((clampedProgress / 100) * (steps.length - 1));
-  const spinner = steps[stepIndex];
+
+  useEffect(() => {
+    if (!indeterminate) return;
+
+    const interval = setInterval(() => {
+      setSpinnerStep(prev => (prev + 1) % steps.length);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [indeterminate, steps.length]);
+
+  const clampedProgress = Math.max(0, Math.min(100, progress));
+  const displayStep = indeterminate
+    ? steps[spinnerStep]
+    : steps[Math.floor((clampedProgress / 100) * (steps.length - 1))];
+
+  const getSizeClass = (sizeValue: 'small' | 'medium' | 'large' | number): string => {
+    if (typeof sizeValue === 'number') return '';
+    return sizeValue;
+  };
 
   return (
-    <Box>
-      <Text color={color}>{spinner}</Text>
-      {showPercentage && (
-        <Text color="gray"> {Math.round(clampedProgress)}%</Text>
+    <Box data-testid="circular-progress" className={getSizeClass(size)}>
+      <Text color={color}>{displayStep}</Text>
+      {children ? (
+        <Box marginLeft={1}>{children}</Box>
+      ) : (
+        showPercentage && !indeterminate && (
+          <Text color="gray"> {Math.round(clampedProgress)}%</Text>
+        )
+      )}
+    </Box>
+  );
+}
+
+export interface SpinnerProps {
+  type?: 'dots' | 'line' | 'pipe' | 'star' | 'flip' | 'hamburger' | 'growVertical';
+  text?: string;
+  color?: string;
+  size?: 'small' | 'medium' | 'large';
+  hidden?: boolean;
+}
+
+/**
+ * Basic spinner component
+ */
+export function Spinner({
+  type = 'dots',
+  text,
+  color = 'cyan',
+  size = 'medium',
+  hidden = false,
+}: SpinnerProps): React.ReactElement | null {
+  if (hidden) return null;
+
+  return (
+    <Box data-testid="spinner" className={`${type} ${size} animate`}>
+      <Text color={color}>
+        <Spinner type={type} />
+      </Text>
+      {text && (
+        <Text color="gray"> {text}</Text>
       )}
     </Box>
   );

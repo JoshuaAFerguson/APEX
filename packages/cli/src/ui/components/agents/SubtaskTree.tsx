@@ -218,7 +218,9 @@ const SubtaskNodeRow = React.memo(function SubtaskNodeRow({
   showProgress: boolean;
   showElapsedTime: boolean;
 }): React.ReactElement {
-  const { icon, color } = statusIcons[node.status];
+  // Handle invalid status gracefully by defaulting to pending
+  const statusConfig = statusIcons[node.status] || statusIcons['pending'];
+  const { icon, color } = statusConfig;
   const connector = isLast ? '└── ' : '├── ';
   const childPrefix = prefix + (isLast ? '    ' : '│   ');
 

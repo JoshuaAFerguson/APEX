@@ -5,7 +5,7 @@
  * mock setup for CLI-related dependencies.
  */
 
-import { setupGlobalTestEnvironment } from '../../../test-setup.js';
+import { setupGlobalTestEnvironment } from '../../../../test-setup.js';
 
 // Initialize global test environment
 setupGlobalTestEnvironment();

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '../../../__tests__/test-utils';
+import { render, screen } from '../../__tests__/test-utils';
 import { TaskProgress, MultiTaskProgress, StepProgress } from '../ProgressIndicators';
 import type { StdoutDimensions } from '../../hooks/useStdoutDimensions';
 

@@ -627,151 +627,8 @@ describe('SubtaskTree', () => {
     });
   });
 
-  describe('interactive keyboard navigation', () => {
-    let mockUseInput: ReturnType<typeof vi.fn>;
-
-    beforeEach(() => {
-      // Mock the useInput hook for testing keyboard interactions
-      mockUseInput = vi.fn();
-      vi.mock('ink', async () => {
-        const actual = await vi.importActual('ink');
-        return {
-          ...actual,
-          useInput: mockUseInput,
-        };
-      });
-    });
-
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
-
-    it('handles space key to toggle collapse/expand', () => {
-      const onToggleCollapse = vi.fn();
-      render(
-        <SubtaskTree
-          task={complexTask}
-          interactive={true}
-          onToggleCollapse={onToggleCollapse}
-        />
-      );
-
-      // Simulate space key press on a node with children
-      const [inputHandler] = mockUseInput.mock.calls[0] || [];
-      if (inputHandler) {
-        inputHandler(' ', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: false, return: false, home: false, end: false });
-      }
-
-      // Should attempt to toggle collapse (callback should be called when state changes)
-      // Note: Due to mocking constraints, we mainly test that the component sets up input handling
-      expect(mockUseInput).toHaveBeenCalled();
-    });
-
-    it('handles Enter key to toggle collapse/expand', () => {
-      const onToggleCollapse = vi.fn();
-      render(
-        <SubtaskTree
-          task={complexTask}
-          interactive={true}
-          onToggleCollapse={onToggleCollapse}
-        />
-      );
-
-      // Simulate Enter key press
-      const [inputHandler] = mockUseInput.mock.calls[0] || [];
-      if (inputHandler) {
-        inputHandler('', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: false, return: true, home: false, end: false });
-      }
-
-      expect(mockUseInput).toHaveBeenCalled();
-    });
-
-    it('handles arrow keys for navigation', () => {
-      const onFocusChange = vi.fn();
-      render(
-        <SubtaskTree
-          task={complexTask}
-          interactive={true}
-          onFocusChange={onFocusChange}
-        />
-      );
-
-      // Simulate arrow key presses
-      const [inputHandler] = mockUseInput.mock.calls[0] || [];
-      if (inputHandler) {
-        // Down arrow
-        inputHandler('', { upArrow: false, downArrow: true, leftArrow: false, rightArrow: false, return: false, home: false, end: false });
-        // Up arrow
-        inputHandler('', { upArrow: true, downArrow: false, leftArrow: false, rightArrow: false, return: false, home: false, end: false });
-        // Left arrow (collapse)
-        inputHandler('', { upArrow: false, downArrow: false, leftArrow: true, rightArrow: false, return: false, home: false, end: false });
-        // Right arrow (expand)
-        inputHandler('', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: true, return: false, home: false, end: false });
-      }
-
-      expect(mockUseInput).toHaveBeenCalled();
-    });
-
-    it('handles vim-style navigation keys', () => {
-      render(
-        <SubtaskTree
-          task={complexTask}
-          interactive={true}
-        />
-      );
-
-      const [inputHandler] = mockUseInput.mock.calls[0] || [];
-      if (inputHandler) {
-        // j (down), k (up), h (left), l (right)
-        inputHandler('j', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: false, return: false, home: false, end: false });
-        inputHandler('k', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: false, return: false, home: false, end: false });
-        inputHandler('h', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: false, return: false, home: false, end: false });
-        inputHandler('l', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: false, return: false, home: false, end: false });
-      }
-
-      expect(mockUseInput).toHaveBeenCalled();
-    });
-
-    it('handles Home and End keys for navigation', () => {
-      render(
-        <SubtaskTree
-          task={complexTask}
-          interactive={true}
-        />
-      );
-
-      const [inputHandler] = mockUseInput.mock.calls[0] || [];
-      if (inputHandler) {
-        // Home key
-        inputHandler('', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: false, return: false, home: true, end: false });
-        // End key
-        inputHandler('', { upArrow: false, downArrow: false, leftArrow: false, rightArrow: false, return: false, home: false, end: true });
-      }
-
-      expect(mockUseInput).toHaveBeenCalled();
-    });
-
-    it('ignores keyboard input when interactive=false', () => {
-      render(
-        <SubtaskTree
-          task={complexTask}
-          interactive={false}
-        />
-      );
-
-      // Should not set up input handling
-      expect(mockUseInput).not.toHaveBeenCalled();
-    });
-
-    it('does not setup input handling when interactive=false', () => {
-      const component = render(
-        <SubtaskTree task={complexTask} interactive={false} />
-      );
-
-      // Component should render without setting up keyboard input
-      expect(component.container.firstChild).toBeInTheDocument();
-    });
-  });
+  // NOTE: Interactive keyboard navigation tests are in SubtaskTree.keyboard.test.tsx
+  // They require vi.mock at the module level which can't be done inside beforeEach
 
   describe('callback function integration', () => {
     it('calls onToggleCollapse when node is collapsed/expanded', () => {
@@ -1243,7 +1100,8 @@ describe('SubtaskTree', () => {
       malformedTasks.forEach((task, index) => {
         // Should render without crashing
         expect(() => {
-          render(<SubtaskTree task={task} interactive={false} />);
+          const { unmount } = render(<SubtaskTree task={task} interactive={false} />);
+          unmount();
         }).not.toThrow();
       });
     });

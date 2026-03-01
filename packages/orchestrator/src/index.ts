@@ -7240,8 +7240,9 @@ Parent: ${parentTask.description}`;
       return false;
     }
 
-    // Only cancel if task is running or pending
-    if (task.status !== 'in-progress' && task.status !== 'pending') {
+    // Only cancel if task is cancellable (not completed, failed, or already cancelled)
+    const cancellableStatuses = ['pending', 'queued', 'planning', 'in-progress', 'awaiting-approval', 'paused'];
+    if (!cancellableStatuses.includes(task.status)) {
       return false;
     }
 
