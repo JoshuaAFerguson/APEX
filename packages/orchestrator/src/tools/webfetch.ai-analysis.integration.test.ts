@@ -40,7 +40,9 @@ vi.mock('@anthropic-ai/sdk', () => ({
 }));
 
 // Mock fetch with realistic responses
-global.fetch = vi.fn();
+global.fetch = vi.fn(function() {
+  return Promise.resolve(new Response());
+});
 
 describe('WebFetch AI Analysis Integration', () => {
   let webFetchTool: WebFetchTool;
