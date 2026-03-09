@@ -232,9 +232,17 @@ export function formatDuration(ms: number): string {
  * console.log(formatElapsed(new Date(Date.now() - 5000))); // '5s'
  * ```
  */
-export function formatElapsed(startTime: Date, currentTime: Date = new Date()): string {
+export function formatElapsed(startTime: Date, currentTime?: Date): string {
+  // Handle null/undefined inputs - if either is explicitly null (not just undefined), return 0s
+  if (!startTime || (arguments.length > 1 && currentTime == null)) {
+    return '0s';
+  }
+
+  // Assign default for undefined currentTime (but not null)
+  const actualCurrentTime = currentTime || new Date();
+
   const startMs = startTime?.getTime?.();
-  const currentMs = currentTime?.getTime?.();
+  const currentMs = actualCurrentTime?.getTime?.();
 
   if (!Number.isFinite(startMs) || !Number.isFinite(currentMs)) {
     return '0s';
@@ -634,6 +642,9 @@ export interface ConventionalCommit {
  * ```
  */
 export function parseConventionalCommit(message: string): ConventionalCommit | null {
+  // Handle null/undefined input
+  if (!message || typeof message !== 'string') return null;
+
   const match = message.match(
     /^([a-z]+)(?:\(([^)]+)\))?(!)?:\s*(.+?)(?:\n\n([\s\S]*))?$/
   );
@@ -645,12 +656,16 @@ export function parseConventionalCommit(message: string): ConventionalCommit | n
   // Reject empty scope
   if (scope !== undefined && scope.trim() === '') return null;
 
+  // Check for breaking change in body (BREAKING CHANGE: footer)
+  const isBreakingFromExclamation = !!breaking;
+  const isBreakingFromBody = body ? /\bBREAKING CHANGE:\s/.test(body) : false;
+
   return {
     type,
     scope: scope || undefined,
     description: description.trim(),
     body: body?.trim() || undefined,
-    breaking: !!breaking,
+    breaking: isBreakingFromExclamation || isBreakingFromBody,
   };
 }
 
@@ -1403,9 +1418,18 @@ export function parseGitLog(logOutput: string): GitLogEntry[] {
  * ```
  */
 export function groupCommitsByType(entries: GitLogEntry[]): ChangelogGroup[] {
+  // Input validation
+  if (!entries || !Array.isArray(entries)) {
+    return [];
+  }
+
   const groups = new Map<CommitType | 'other', GitLogEntry[]>();
 
   for (const entry of entries) {
+    // Skip invalid entries
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
     const type = entry.conventional?.type as CommitType;
     const groupType = type && type in COMMIT_TYPES ? type : 'other';
 
@@ -1489,6 +1513,17 @@ export function generateChangelogMarkdown(
     repoUrl?: string;
   }
 ): string {
+  // Input validation
+  if (!version || typeof version !== 'string') {
+    version = '0.0.0';
+  }
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+    date = new Date();
+  }
+  if (!groups || !Array.isArray(groups)) {
+    groups = [];
+  }
+
   const { includeHashes = true, includeAuthors = false, repoUrl } = options || {};
 
   let markdown = `## [${version}] - ${date.toISOString().split('T')[0]}\n\n`;
@@ -1502,19 +1537,28 @@ export function generateChangelogMarkdown(
     markdown += `### ${emoji} ${group.title}\n\n`;
 
     for (const commit of group.commits) {
-      const description = commit.conventional?.description || commit.message.split('\n')[0];
+      // Safely extract description with proper null checks
+      let description: string;
+      if (commit.conventional?.description) {
+        description = commit.conventional.description;
+      } else if (commit.message && typeof commit.message === 'string') {
+        description = commit.message.split('\n')[0];
+      } else {
+        description = '(no description)';
+      }
+
       const scope = commit.conventional?.scope ? `**${commit.conventional.scope}:** ` : '';
       const breaking = commit.conventional?.breaking ? '⚠️ BREAKING: ' : '';
 
       let line = `- ${breaking}${scope}${description}`;
 
-      if (includeHashes && repoUrl) {
+      if (includeHashes && repoUrl && commit.shortHash && commit.hash) {
         line += ` ([${commit.shortHash}](${repoUrl}/commit/${commit.hash}))`;
-      } else if (includeHashes) {
+      } else if (includeHashes && commit.shortHash) {
         line += ` (${commit.shortHash})`;
       }
 
-      if (includeAuthors) {
+      if (includeAuthors && commit.author) {
         line += ` - ${commit.author}`;
       }
 
