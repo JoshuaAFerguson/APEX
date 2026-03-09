@@ -30,6 +30,7 @@ export default mergeConfig(
         'packages/*/src/**/*.integration.test.ts',
         'packages/*/src/**/*.e2e.test.ts',
         'tests/**/*.test.ts',
+        'tests/**/*.test.tsx',
         'docs/tests/**/*.test.ts',
 
         // Additional E2E test patterns to ensure comprehensive discovery

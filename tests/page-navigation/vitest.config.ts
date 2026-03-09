@@ -61,14 +61,10 @@ export default defineConfig({
 
     // Pool configuration for navigation tests
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        // Limit concurrent tests to prevent navigation conflicts
-        // Each test may create browser instances and mock servers
-        maxForks: 2,
-        minForks: 1,
-      },
-    },
+    // Limit concurrent tests to prevent navigation conflicts
+    // Each test may create browser instances and mock servers
+    maxForks: 2,
+    minForks: 1,
 
     // Coverage configuration for navigation testing
     coverage: {

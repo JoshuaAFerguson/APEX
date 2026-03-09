@@ -67,12 +67,8 @@ export default mergeConfig(
 
       // Pool configuration optimized for form testing
       pool: 'threads',
-      poolOptions: {
-        threads: {
-          maxThreads: 4,
-          minThreads: 1,
-        },
-      },
+      maxThreads: 4,
+      minThreads: 1,
 
       // Reporter configuration with detailed form test output
       reporters: [

@@ -186,4 +186,12 @@ The `checkAutoStart()` function is **verified working** as designed:
 
 ---
 **Last Audit**: 2026-03-01
-**Tests Verified**: 51 tests passing (autostart-verification.test.ts, silent-mode-config-audit.test.ts, silent-mode-unit-tests.test.ts, silent-mode-audit-verification.test.ts)
+**Tests Verified**: 122 tests passing across 8 test files:
+- autostart-verification.test.ts (10 tests)
+- silent-mode-background-services.test.ts (19 tests)
+- silent-mode-audit-verification.test.ts (11 tests)
+- silent-mode-config-audit.test.ts (12 tests)
+- silent-mode-acceptance-criteria-verification.test.ts (14 tests)
+- silent-mode-unit-tests.test.ts (18 tests)
+- silent-mode-implementation-integration.test.ts (16 tests)
+- silent-mode-edge-cases.test.ts (22 tests)

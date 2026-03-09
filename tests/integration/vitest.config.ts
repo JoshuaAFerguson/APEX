@@ -57,14 +57,10 @@ export default defineConfig({
 
     // Pool configuration for integration tests
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        // Limit concurrent tests to prevent resource exhaustion
-        // Each integration test creates its own temp directory and database
-        maxForks: 4,
-        minForks: 1,
-      },
-    },
+    // Limit concurrent tests to prevent resource exhaustion
+    // Each integration test creates its own temp directory and database
+    maxForks: 4,
+    minForks: 1,
 
     // Coverage configuration for integration tests
     coverage: {

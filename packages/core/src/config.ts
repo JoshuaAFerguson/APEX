@@ -402,37 +402,57 @@ export async function loadAgents(
  * ```
  */
 export function parseAgentMarkdown(content: string): AgentDefinition | null {
-  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  try {
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
-  if (!frontmatterMatch) {
+    if (!frontmatterMatch) {
+      return null;
+    }
+
+    const [, frontmatter, body] = frontmatterMatch;
+
+    // Parse YAML frontmatter
+    let metadata;
+    try {
+      metadata = yaml.parse(frontmatter);
+    } catch (yamlError) {
+      // Invalid YAML should return null
+      return null;
+    }
+
+    // Validate that metadata is an object
+    if (!metadata || typeof metadata !== 'object') {
+      return null;
+    }
+
+    // Parse tools from comma-separated string if needed
+    let tools = metadata.tools;
+    if (typeof tools === 'string') {
+      tools = tools.split(',').map((t: string) => t.trim());
+    }
+
+    // Parse skills from comma-separated string if needed
+    let skills = metadata.skills;
+    if (typeof skills === 'string') {
+      skills = skills.split(',').map((s: string) => s.trim());
+    }
+
+    const agentDef = {
+      name: metadata.name,
+      description: metadata.description,
+      prompt: body.trim(),
+      tools,
+      model: metadata.model,
+      skills,
+    };
+
+    // Use safeParse to handle validation errors gracefully
+    const result = AgentDefinitionSchema.safeParse(agentDef);
+    return result.success ? result.data : null;
+  } catch (error) {
+    // Any unexpected error should return null
     return null;
   }
-
-  const [, frontmatter, body] = frontmatterMatch;
-  const metadata = yaml.parse(frontmatter);
-
-  // Parse tools from comma-separated string if needed
-  let tools = metadata.tools;
-  if (typeof tools === 'string') {
-    tools = tools.split(',').map((t: string) => t.trim());
-  }
-
-  // Parse skills from comma-separated string if needed
-  let skills = metadata.skills;
-  if (typeof skills === 'string') {
-    skills = skills.split(',').map((s: string) => s.trim());
-  }
-
-  const agentDef = {
-    name: metadata.name,
-    description: metadata.description,
-    prompt: body.trim(),
-    tools,
-    model: metadata.model,
-    skills,
-  };
-
-  return AgentDefinitionSchema.parse(agentDef);
 }
 
 /**

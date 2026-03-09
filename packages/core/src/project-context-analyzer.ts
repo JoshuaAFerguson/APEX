@@ -495,6 +495,15 @@ export class ProjectContextAnalyzer {
     };
 
     try {
+      // Check if project path exists first
+      try {
+        await fs.promises.access(this.projectPath);
+      } catch {
+        // Project path doesn't exist, return default structure
+        console.warn(`Project path does not exist: ${this.projectPath}`);
+        return ProjectStructureSchema.parse(structure);
+      }
+
       // Scan directory structure
       const scanResult = await this.scanDirectory(this.projectPath, '', 0);
       structure.entries = scanResult.entries;
@@ -502,11 +511,16 @@ export class ProjectContextAnalyzer {
       structure.totalDirectories = scanResult.totalDirectories;
       structure.maxDepthScanned = scanResult.maxDepth;
 
-      // Get root files
-      const rootEntries = await fs.promises.readdir(this.projectPath, { withFileTypes: true });
-      structure.rootFiles = rootEntries
-        .filter(entry => entry.isFile())
-        .map(entry => entry.name);
+      // Get root files safely
+      try {
+        const rootEntries = await fs.promises.readdir(this.projectPath, { withFileTypes: true });
+        structure.rootFiles = rootEntries
+          .filter(entry => entry.isFile())
+          .map(entry => entry.name);
+      } catch (error) {
+        console.warn(`Failed to read root directory: ${error instanceof Error ? error.message : error}`);
+        structure.rootFiles = [];
+      }
 
       // Check for key files
       structure.hasPackageJson = structure.rootFiles.includes('package.json');

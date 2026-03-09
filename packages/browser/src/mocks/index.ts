@@ -72,7 +72,7 @@ export const defaultMockConfig: MockBehaviorConfig = {
  * ```
  */
 export function createMockBrowserManager(
-  config?: Parameters<typeof MockBrowserManager.prototype.constructor>[0]
+  config?: ConstructorParameters<typeof MockBrowserManager>[0]
 ) {
   return new MockBrowserManager(config);
 }

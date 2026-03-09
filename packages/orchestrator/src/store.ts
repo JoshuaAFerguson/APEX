@@ -1195,6 +1195,38 @@ export class TaskStore {
   }
 
   /**
+   * Count in-progress tasks, optionally excluding parent orchestrators.
+   * This is a fast single-query count used by the daemon and orchestrator
+   * to enforce concurrency limits.
+   *
+   * @param excludeParents - If true, don't count parent tasks that have
+   *   subtasks. Parent tasks in subtask-execution mode are just coordinators —
+   *   they don't run Claude or spawn processes. Only leaf tasks consume real
+   *   resources (CPU, memory, Claude API slots). Default: true.
+   */
+  countInProgressTasks(excludeParents = true): number {
+    if (!excludeParents) {
+      const row = this.db.prepare(
+        `SELECT COUNT(*) as cnt FROM tasks WHERE status = 'in-progress' AND trashed_at IS NULL`
+      ).get() as { cnt: number };
+      return row.cnt;
+    }
+
+    // Count in-progress leaf tasks only — exclude any task that has subtasks.
+    // Parent tasks are just coordinators waiting for children to finish.
+    // Previously this only excluded parents with in-progress children,
+    // which caused a deadlock: parents with pending children still consumed
+    // capacity slots, so children could never start.
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as cnt FROM tasks t
+      WHERE t.status = 'in-progress'
+        AND t.trashed_at IS NULL
+        AND (t.subtask_ids IS NULL OR t.subtask_ids = '[]')
+    `).get() as { cnt: number };
+    return row.cnt;
+  }
+
+  /**
    * Count tasks matching the given filters (lightweight, no data loading).
    */
   countTasks(options?: {

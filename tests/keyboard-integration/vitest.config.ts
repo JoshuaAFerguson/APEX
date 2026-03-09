@@ -57,13 +57,9 @@ export default defineConfig({
 
     // Pool configuration for keyboard tests
     pool: 'threads',
-    poolOptions: {
-      threads: {
-        // Allow parallel execution for independent tests
-        maxThreads: 4,
-        minThreads: 1,
-      },
-    },
+    // Allow parallel execution for independent tests
+    maxThreads: 4,
+    minThreads: 1,
 
     // Coverage configuration for keyboard-related code
     coverage: {

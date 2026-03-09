@@ -153,12 +153,6 @@ export class MockBrowserManager extends EventEmitter<BrowserManagerEvents> {
           headless: sessionConfig?.headless ?? true,
           viewport: sessionConfig?.viewport || { width: 1280, height: 720 },
           timeout: sessionConfig?.timeout || 30000,
-          mockConfig: sessionConfig?.mockConfig || {
-            defaultSuccess: true,
-            defaultDelay: 100,
-            useRealisticDelays: false,
-          },
-          trackOperations: sessionConfig?.trackOperations ?? true,
         },
       };
 
@@ -179,7 +173,16 @@ export class MockBrowserManager extends EventEmitter<BrowserManagerEvents> {
 
       // Update state
       this.state.activeSessions++;
-      this.state.sessions.set(sessionId, contextInfo.config);
+      const mockConfig: MockBrowserSessionConfig = {
+        ...contextInfo.config,
+        mockConfig: sessionConfig?.mockConfig || {
+          defaultSuccess: true,
+          defaultDelay: 100,
+          useRealisticDelays: false,
+        },
+        trackOperations: sessionConfig?.trackOperations ?? true,
+      };
+      this.state.sessions.set(sessionId, mockConfig);
       instanceInfo.contextCount++;
 
       return {

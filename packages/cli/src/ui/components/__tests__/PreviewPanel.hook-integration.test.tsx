@@ -6,7 +6,7 @@ import { PreviewPanel, type PreviewPanelProps } from '../PreviewPanel';
 // Mock the useStdoutDimensions hook to test integration
 const mockUseStdoutDimensions = vi.fn();
 
-vi.mock('../hooks/useStdoutDimensions.js', () => ({
+vi.mock('../../hooks/useStdoutDimensions.js', () => ({
   useStdoutDimensions: (options: any) => mockUseStdoutDimensions(options),
 }));
 

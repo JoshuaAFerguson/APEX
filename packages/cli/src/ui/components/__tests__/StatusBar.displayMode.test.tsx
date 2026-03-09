@@ -5,8 +5,8 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '../../__tests__/test-utils';
 import type { DisplayMode } from '@apexcli/core';
 
 // Mock Ink components
@@ -240,7 +240,7 @@ describe('StatusBar Display Mode Adaptation', () => {
     it('should display abbreviated model name', () => {
       render(<MockStatusBar {...defaultProps} displayMode="compact" />);
 
-      expect(screen.getByTestId('model-info')).toHaveTextContent('claude-3-');
+      expect(screen.getByTestId('model-info')).toHaveTextContent('claude-3');
     });
 
     it('should show compact processing indicator', () => {
@@ -447,7 +447,7 @@ describe('StatusBar Display Mode Adaptation', () => {
       const modes: DisplayMode[] = ['normal', 'compact', 'verbose'];
 
       modes.forEach(mode => {
-        const { rerender } = render(
+        const { rerender, unmount } = render(
           <MockStatusBar {...defaultProps} displayMode={mode} isProcessing={false} />
         );
 
@@ -456,6 +456,9 @@ describe('StatusBar Display Mode Adaptation', () => {
         rerender(<MockStatusBar {...defaultProps} displayMode={mode} isProcessing={true} />);
 
         expect(screen.getByTestId('processing-indicator')).toBeInTheDocument();
+
+        // Clean up for next iteration
+        unmount();
       });
     });
 
@@ -463,12 +466,15 @@ describe('StatusBar Display Mode Adaptation', () => {
       const modes: DisplayMode[] = ['normal', 'compact', 'verbose'];
 
       modes.forEach(mode => {
-        render(<MockStatusBar {...defaultProps} displayMode={mode} />);
+        const { unmount } = render(<MockStatusBar {...defaultProps} displayMode={mode} />);
 
         // Status bar should always be present
         expect(screen.getByTestId('status-bar')).toBeInTheDocument();
         expect(screen.getByTestId('layout-type')).toBeInTheDocument();
         expect(screen.getByTestId('model-info')).toBeInTheDocument();
+
+        // Clean up for next iteration
+        unmount();
       });
     });
   });

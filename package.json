@@ -88,6 +88,7 @@
     "test:jsdoc:runner": "ts-node tests/jsdoc-validation/run-jsdoc-tests.ts",
     "validate:jsdoc-tests": "ts-node tests/jsdoc-validation/test-validation-check.ts",
     "audit:turborepo": "node scripts/run-turborepo-audit.js",
+    "audit:agents": "npx tsx scripts/audit-agent-definitions.ts",
     "test:turborepo": "vitest run --config vitest.turborepo-audit.config.ts",
     "apex": "node packages/cli/dist/index.js"
   },

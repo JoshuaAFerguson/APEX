@@ -992,24 +992,44 @@ export class DaemonRunner {
       this.setPaused(false);
     }
 
-    // Check available concurrent task slots
-    const availableSlots = this.options.maxConcurrentTasks - this.runningTasks.size;
+    // Check available concurrent task slots using TOTAL in-progress task count
+    // (not just top-level runningTasks), so subtask trees are counted against the limit.
+    // This prevents memory exhaustion from having too many in-flight task trees.
+    const inProgressCount = this.store.countInProgressTasks(/* excludeParentsWithRunningChildren */ true);
+    const availableSlots = this.options.maxConcurrentTasks - inProgressCount;
     if (availableSlots <= 0) {
-      this.log('debug', `At capacity (${this.runningTasks.size}/${this.options.maxConcurrentTasks})`);
+      this.log('debug', `At capacity (${inProgressCount} in-progress tasks, limit ${this.options.maxConcurrentTasks})`);
       return;
     }
 
-    // Get next tasks
+    // Also check the orchestrator's global semaphore — if all Claude API slots
+    // are occupied plus waiters, there's no point starting more work.
+    if (this.orchestrator) {
+      const activeSlots = this.orchestrator.getGlobalActiveTaskCount();
+      const waiters = this.orchestrator.getGlobalWaiterCount();
+      if (activeSlots + waiters >= this.options.maxConcurrentTasks) {
+        this.log('debug', `Global semaphore saturated (${activeSlots} active + ${waiters} waiting, limit ${this.options.maxConcurrentTasks})`);
+        return;
+      }
+    }
+
+    // Start at most ONE new parent task per poll cycle.
+    // Each parent task can expand into a tree of subtasks internally, and
+    // those subtasks take time to register as in-progress in the DB.
+    // Starting multiple parents per poll creates a "stampede" where each
+    // parent launches subtask batches before the capacity check catches up.
+    // The next poll cycle (typically 5s later) will start another parent
+    // if capacity permits — this is safe and avoids the explosion.
     try {
-      // Check if we should only restart parent tasks (default: true)
       const restartParentOnly = this.config?.daemon?.taskRestart?.restartParentOnly ?? true;
 
-      for (let i = 0; i < availableSlots; i++) {
-        const task = await this.store.getNextQueuedTask();
-        if (!task) {
-          break; // No more tasks
-        }
+      // Fetch candidates and pick the first eligible one
+      const candidates = await this.store.getReadyTasks({
+        limit: 10,
+        orderByPriority: true,
+      });
 
+      for (const task of candidates) {
         // Skip if already running
         if (this.runningTasks.has(task.id)) {
           continue;
@@ -1022,8 +1042,9 @@ export class DaemonRunner {
           continue;
         }
 
-        // Start task
+        // Start ONE task and return — next poll will start more if capacity permits
         this.startTask(task.id);
+        break;
       }
     } catch (error) {
       this.log('error', `Failed to get tasks: ${(error as Error).message}`);
@@ -1741,7 +1762,9 @@ export class DaemonRunner {
       const maxToResume = this.options.maxConcurrentTasks || 3;
 
       for (const task of leafPausedTasks) {
-        if (this.runningTasks.size + resumedCount >= maxToResume) {
+        // Use DB-level in-progress count to respect total capacity including subtasks
+        const inProgressCount = this.store!.countInProgressTasks(true);
+        if (inProgressCount + resumedCount >= maxToResume) {
           break;
         }
 

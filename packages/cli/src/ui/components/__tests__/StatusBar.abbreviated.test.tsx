@@ -3,19 +3,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '../../__tests__/test-utils';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 
-// Mock useStdoutDimensions hook
-const mockUseStdoutDimensions = vi.fn(() => ({
-  width: 120,
-  height: 30,
-  breakpoint: 'normal' as const,
-  isAvailable: true,
-  isNarrow: false,
-  isCompact: false,
-  isNormal: true,
-  isWide: false,
+// Use vi.hoisted to ensure mock function is available during module hoisting
+const { mockUseStdoutDimensions } = vi.hoisted(() => ({
+  mockUseStdoutDimensions: vi.fn(() => ({
+    width: 120,
+    height: 30,
+    breakpoint: 'normal' as const,
+    isAvailable: true,
+    isNarrow: false,
+    isCompact: false,
+    isNormal: true,
+    isWide: false,
+  })),
 }));
 
-vi.mock('../hooks/useStdoutDimensions.js', () => ({
+vi.mock('../../hooks/useStdoutDimensions.js', () => ({
   useStdoutDimensions: mockUseStdoutDimensions,
 }));
 
@@ -70,9 +72,12 @@ describe('StatusBar - Abbreviated Labels', () => {
       expect(screen.getByText('model:')).toBeInTheDocument();
     });
 
-    it('uses abbreviated labels when terminal width < 80', () => {
+    it('uses abbreviated labels when terminal width < 60 (narrow mode)', () => {
+      // Note: In the 4-tier system, narrow mode (<60) filters OUT medium and low priority segments
+      // Only critical and high priority are shown in narrow mode
+      // Abbreviations apply but tokens/apiUrl are NOT visible (filtered by tier)
       mockUseStdoutDimensions.mockReturnValue({
-        width: 75,
+        width: 55,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -93,20 +98,23 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      expect(screen.getByText('tok:')).toBeInTheDocument();
-      expect(screen.getByText('mod:')).toBeInTheDocument();
-      expect(screen.getByText('api:')).toBeInTheDocument();
-      expect(screen.getByText('web:')).toBeInTheDocument();
+      // In narrow mode: tokens (medium) and apiUrl/webUrl (low) are FILTERED OUT, not abbreviated
+      // Only critical (connection, timer) and high (cost, model) are shown
+      expect(screen.queryByText('tok:')).not.toBeInTheDocument();
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+      expect(screen.queryByText('api:')).not.toBeInTheDocument();
+      expect(screen.queryByText('web:')).not.toBeInTheDocument();
 
       // Cost should show just the value (no label when abbreviated)
       expect(screen.getByText('$0.1234')).toBeInTheDocument();
       expect(screen.queryByText('cost:')).not.toBeInTheDocument();
-      expect(screen.queryByText('$')).not.toBeInTheDocument(); // No separate $ label
     });
 
-    it('handles boundary case at exactly 80 columns', () => {
+    it('handles boundary case at exactly 60 columns (compact tier)', () => {
+      // 60 cols is the boundary between narrow and compact tiers
+      // At 60 cols (compact tier), medium priority segments are visible
       mockUseStdoutDimensions.mockReturnValue({
-        width: 80,
+        width: 60,
         height: 24,
         breakpoint: 'compact' as const,
         isAvailable: true,
@@ -125,14 +133,15 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // At 80 columns, should still use full labels (>= 80)
+      // At compact tier (60-100), medium priority visible with full labels
       expect(screen.getByText('tokens:')).toBeInTheDocument();
       expect(screen.getByText('model:')).toBeInTheDocument();
     });
 
-    it('handles boundary case at exactly 79 columns', () => {
+    it('handles boundary case at exactly 59 columns (narrow tier)', () => {
+      // 59 cols is narrow tier - medium priority filtered out
       mockUseStdoutDimensions.mockReturnValue({
-        width: 79,
+        width: 59,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -151,8 +160,10 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // At 79 columns, should use abbreviated labels (< 80)
-      expect(screen.getByText('tok:')).toBeInTheDocument();
+      // At 59 cols (narrow), tokens (medium) is FILTERED OUT entirely
+      expect(screen.queryByText('tok:')).not.toBeInTheDocument();
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+      // Model is high priority, should be visible but abbreviated in narrow mode
       expect(screen.getByText('mod:')).toBeInTheDocument();
     });
   });
@@ -183,9 +194,11 @@ describe('StatusBar - Abbreviated Labels', () => {
       expect(screen.queryByText('cost:')).not.toBeInTheDocument();
     });
 
-    it('always uses full labels in verbose mode regardless of width', () => {
+    it('uses abbreviated labels in verbose mode when terminal is narrow', () => {
+      // Verbose mode bypasses TIER filtering (shows ALL segments)
+      // But abbreviations still apply based on breakpoint in narrow mode
       mockUseStdoutDimensions.mockReturnValue({
-        width: 60,
+        width: 55,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -212,20 +225,22 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // Should use full labels even in narrow terminal
-      expect(screen.getByText('tokens:')).toBeInTheDocument();
-      expect(screen.getByText('total:')).toBeInTheDocument();
-      expect(screen.getByText('cost:')).toBeInTheDocument();
-      expect(screen.getByText('session:')).toBeInTheDocument();
-      expect(screen.getByText('model:')).toBeInTheDocument();
-      expect(screen.getByText('active:')).toBeInTheDocument();
-      expect(screen.getByText('idle:')).toBeInTheDocument();
-      expect(screen.getByText('stage:')).toBeInTheDocument();
+      // In verbose mode with narrow width: tier filtering is bypassed BUT abbreviations apply
+      expect(screen.getByText('tk:')).toBeInTheDocument(); // tokens abbreviated
+      expect(screen.getByText('∑:')).toBeInTheDocument(); // total abbreviated
+      expect(screen.getByText('$0.1234')).toBeInTheDocument(); // cost no label when abbreviated
+      expect(screen.getByText('sess:')).toBeInTheDocument(); // session abbreviated
+      expect(screen.getByText('mod:')).toBeInTheDocument(); // model abbreviated
+      expect(screen.getByText('act:')).toBeInTheDocument(); // active abbreviated
+      expect(screen.getByText('i:')).toBeInTheDocument(); // idle abbreviated
+      expect(screen.getByText('s:')).toBeInTheDocument(); // stage abbreviated
     });
 
     it('uses auto mode in normal display mode', () => {
+      // In narrow mode (<60), MEDIUM priority segments (tokens) are filtered out
+      // Only CRITICAL and HIGH priority segments are shown
       mockUseStdoutDimensions.mockReturnValue({
-        width: 75,
+        width: 55,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -244,8 +259,10 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // Should use abbreviated labels due to narrow width
-      expect(screen.getByText('tok:')).toBeInTheDocument();
+      // Tokens (MEDIUM) filtered out in narrow mode
+      expect(screen.queryByText('tok:')).not.toBeInTheDocument();
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+      // Model (HIGH) should use abbreviated label in narrow mode
       expect(screen.getByText('mod:')).toBeInTheDocument();
     });
   });
@@ -265,16 +282,30 @@ describe('StatusBar - Abbreviated Labels', () => {
       });
     });
 
-    it('abbreviates "tokens:" to "tok:"', () => {
+    it('abbreviates "tokens:" to "tok:" (only visible in verbose mode for narrow)', () => {
+      // In narrow mode, tokens (MEDIUM) are filtered out by tier filtering
+      // Use verbose mode to bypass tier filtering and see abbreviation
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 55,
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
       render(
         <StatusBar
           {...defaultProps}
-          displayMode="normal"
+          displayMode="verbose"
           tokens={{ input: 500, output: 300 }}
         />
       );
 
-      expect(screen.getByText('tok:')).toBeInTheDocument();
+      // In verbose + narrow mode: tier filtering bypassed, abbreviations apply
+      expect(screen.getByText('tk:')).toBeInTheDocument();
       expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
     });
 
@@ -306,18 +337,32 @@ describe('StatusBar - Abbreviated Labels', () => {
       expect(screen.queryByText('$:')).not.toBeInTheDocument();
     });
 
-    it('keeps "api:" and "web:" unchanged (already short)', () => {
+    it('abbreviates "api:" and "web:" in narrow mode (visible in verbose only)', () => {
+      // API/Web URLs are LOW priority, filtered in narrow mode with normal displayMode
+      // Use verbose mode to bypass tier filtering and see abbreviation
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 55,
+        height: 24,
+        breakpoint: 'narrow' as const,
+        isAvailable: true,
+        isNarrow: true,
+        isCompact: false,
+        isNormal: false,
+        isWide: false,
+      });
+
       render(
         <StatusBar
           {...defaultProps}
-          displayMode="normal"
+          displayMode="verbose"
           apiUrl="http://localhost:4000"
           webUrl="http://localhost:3000"
         />
       );
 
-      expect(screen.getByText('api:')).toBeInTheDocument();
-      expect(screen.getByText('web:')).toBeInTheDocument();
+      // In verbose + narrow mode: tier filtering bypassed, abbreviated labels apply
+      expect(screen.getByText('→')).toBeInTheDocument(); // api abbreviated
+      expect(screen.getByText('↗')).toBeInTheDocument(); // web abbreviated
     });
   });
 
@@ -336,9 +381,8 @@ describe('StatusBar - Abbreviated Labels', () => {
       });
     });
 
-    it('abbreviates timing labels in verbose mode when forced', () => {
-      // Even though verbose mode normally uses full labels,
-      // let's test the abbreviation mapping exists
+    it('abbreviates timing labels in verbose mode when in narrow breakpoint', () => {
+      // Verbose mode bypasses tier filtering but still uses abbreviated labels in narrow mode
       render(
         <StatusBar
           {...defaultProps}
@@ -355,20 +399,22 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // In verbose mode, should use full labels (verbose overrides terminal width)
-      expect(screen.getByText('active:')).toBeInTheDocument();
-      expect(screen.getByText('idle:')).toBeInTheDocument();
-      expect(screen.getByText('stage:')).toBeInTheDocument();
-      expect(screen.getByText('tokens:')).toBeInTheDocument();
-      expect(screen.getByText('total:')).toBeInTheDocument();
-      expect(screen.getByText('session:')).toBeInTheDocument();
+      // In verbose mode with narrow width, abbreviated labels are used
+      expect(screen.getByText('act:')).toBeInTheDocument(); // active abbreviated
+      expect(screen.getByText('i:')).toBeInTheDocument(); // idle abbreviated
+      expect(screen.getByText('s:')).toBeInTheDocument(); // stage abbreviated
+      expect(screen.getByText('tk:')).toBeInTheDocument(); // tokens abbreviated
+      expect(screen.getByText('∑:')).toBeInTheDocument(); // total abbreviated
+      expect(screen.getByText('sess:')).toBeInTheDocument(); // session abbreviated
     });
   });
 
   describe('Mixed content with abbreviations', () => {
     it('shows mix of abbreviated and full content appropriately', () => {
+      // In narrow mode, only CRITICAL and HIGH priority segments are shown
+      // Tokens (MEDIUM) and API URLs (LOW) are filtered out
       mockUseStdoutDimensions.mockReturnValue({
-        width: 75,
+        width: 55,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -392,27 +438,29 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // Items without labels should show normally
-      expect(screen.getByText('main')).toBeInTheDocument();
-      expect(screen.getByText('planner')).toBeInTheDocument();
+      // Items without labels should show normally (HIGH priority)
+      expect(screen.getByText('main')).toBeInTheDocument(); // git branch (HIGH)
+      expect(screen.getByText('planner')).toBeInTheDocument(); // agent (HIGH)
 
-      // Items with labels should be abbreviated
-      expect(screen.getByText('tok:')).toBeInTheDocument();
-      expect(screen.getByText('2.0k')).toBeInTheDocument(); // token value
-      expect(screen.getByText('$0.2345')).toBeInTheDocument(); // cost without label
+      // Cost (HIGH) - no label when abbreviated
+      expect(screen.getByText('$0.2345')).toBeInTheDocument();
+      // Model (HIGH) - abbreviated
       expect(screen.getByText('mod:')).toBeInTheDocument();
       expect(screen.getByText('opus')).toBeInTheDocument();
-      expect(screen.getByText('api:')).toBeInTheDocument();
-      expect(screen.getByText('4000')).toBeInTheDocument();
 
-      // Timer should show (no label)
+      // Timer (CRITICAL) should show
       expect(screen.getByText('00:00')).toBeInTheDocument();
+
+      // Tokens (MEDIUM) and API URLs (LOW) are filtered in narrow mode
+      expect(screen.queryByText('tok:')).not.toBeInTheDocument();
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+      expect(screen.queryByText('api:')).not.toBeInTheDocument();
     });
   });
 
   describe('Dynamic width changes', () => {
     it('switches between full and abbreviated labels when width changes', () => {
-      // Start with wide terminal
+      // Start with normal terminal (MEDIUM priority visible, full labels)
       mockUseStdoutDimensions.mockReturnValue({
         width: 120,
         height: 30,
@@ -433,13 +481,13 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // Should show full labels
-      expect(screen.getByText('tokens:')).toBeInTheDocument();
-      expect(screen.getByText('model:')).toBeInTheDocument();
+      // Should show full labels in normal mode
+      expect(screen.getByText('tokens:')).toBeInTheDocument(); // MEDIUM visible in normal
+      expect(screen.getByText('model:')).toBeInTheDocument(); // HIGH visible always
 
       // Switch to narrow terminal
       mockUseStdoutDimensions.mockReturnValue({
-        width: 70,
+        width: 55,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -458,10 +506,10 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // Should now show abbreviated labels
-      expect(screen.getByText('tok:')).toBeInTheDocument();
-      expect(screen.getByText('mod:')).toBeInTheDocument();
+      // In narrow mode: tokens (MEDIUM) filtered out, model (HIGH) abbreviated
+      expect(screen.queryByText('tok:')).not.toBeInTheDocument();
       expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+      expect(screen.getByText('mod:')).toBeInTheDocument();
       expect(screen.queryByText('model:')).not.toBeInTheDocument();
     });
   });
@@ -493,8 +541,10 @@ describe('StatusBar - Abbreviated Labels', () => {
     });
 
     it('handles segments without labels correctly', () => {
+      // In narrow mode, only CRITICAL and HIGH priority segments are shown
+      // Preview mode indicator (LOW) is filtered out
       mockUseStdoutDimensions.mockReturnValue({
-        width: 70,
+        width: 55,
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -514,12 +564,14 @@ describe('StatusBar - Abbreviated Labels', () => {
         />
       );
 
-      // Elements without labels should render normally
-      expect(screen.getByText('●')).toBeInTheDocument(); // connection icon
-      expect(screen.getByText('main')).toBeInTheDocument(); // git branch
-      expect(screen.getByText('⚡')).toBeInTheDocument(); // agent icon
-      expect(screen.getByText('planner')).toBeInTheDocument(); // agent name
-      expect(screen.getByText('📋 PREVIEW')).toBeInTheDocument(); // preview mode
+      // Elements without labels should render normally (CRITICAL and HIGH priority)
+      expect(screen.getByText('●')).toBeInTheDocument(); // connection icon (CRITICAL)
+      expect(screen.getByText('main')).toBeInTheDocument(); // git branch (HIGH)
+      expect(screen.getByText('⚡')).toBeInTheDocument(); // agent icon (HIGH)
+      expect(screen.getByText('planner')).toBeInTheDocument(); // agent name (HIGH)
+
+      // Preview mode indicator (LOW) is filtered out in narrow mode
+      expect(screen.queryByText('📋 PREVIEW')).not.toBeInTheDocument();
     });
 
     it('handles zero terminal width', () => {

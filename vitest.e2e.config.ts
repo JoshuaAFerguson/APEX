@@ -96,14 +96,10 @@ export default mergeConfig(
       // Use forked process pool for E2E test isolation
       // Each E2E test may create system resources that could conflict
       pool: 'forks',
-      poolOptions: {
-        forks: {
-          // Limit concurrency to prevent resource exhaustion
-          // Each test creates temp directories, git repos, databases
-          maxForks: 4,
-          minForks: 1,
-        },
-      },
+      // Limit concurrency to prevent resource exhaustion
+      // Each test creates temp directories, git repos, databases
+      maxForks: 4,
+      minForks: 1,
 
       // Verbose reporter for debugging E2E failures
       reporters: ['verbose'],

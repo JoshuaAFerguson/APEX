@@ -126,14 +126,12 @@ describe('TaskProgress - Comprehensive Tests', () => {
       expect(screen.getByText('0%')).toBeInTheDocument();
 
       // Advance timers to complete the animation (500ms duration + buffer)
-      await act(async () => {
+      act(() => {
         vi.advanceTimersByTime(600);
       });
 
       // After animation, should show target progress
-      await waitFor(() => {
-        expect(screen.getByText('75%')).toBeInTheDocument();
-      }, { timeout: 1000 });
+      expect(screen.getByText('75%')).toBeInTheDocument();
     });
 
     it('does not render progress bar for non-in-progress tasks', () => {
@@ -221,13 +219,11 @@ describe('TaskProgress - Comprehensive Tests', () => {
       expect(screen.getByText('Narrow Task')).toBeInTheDocument();
 
       // Progress bar should adapt to narrow width
-      await act(async () => {
+      act(() => {
         vi.advanceTimersByTime(600);
       });
 
-      await waitFor(() => {
-        expect(screen.getByText('50%')).toBeInTheDocument();
-      });
+      expect(screen.getByText('50%')).toBeInTheDocument();
     });
 
     it('provides reserved space for progress bar calculations', async () => {

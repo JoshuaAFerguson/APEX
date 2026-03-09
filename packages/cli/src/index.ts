@@ -647,11 +647,14 @@ export const commands: Command[] = [
       }
 
       if (setKeyValue) {
-        const [key, value] = setKeyValue.split('=');
-        if (!key || value === undefined) {
+        const equalIndex = setKeyValue.indexOf('=');
+        if (equalIndex === -1 || equalIndex === 0) {
           console.log(chalk.red('Invalid format. Use: /config set key=value'));
           return;
         }
+
+        const key = setKeyValue.substring(0, equalIndex);
+        const value = setKeyValue.substring(equalIndex + 1);
 
         const keys = key.split('.');
         let current: Record<string, unknown> = ctx.config as unknown as Record<string, unknown>;
@@ -663,14 +666,20 @@ export const commands: Command[] = [
           current = current[keys[i]] as Record<string, unknown>;
         }
 
+        // Try to parse as JSON, otherwise use as string
         let parsedValue: unknown = value;
-        if (value === 'true') parsedValue = true;
-        else if (value === 'false') parsedValue = false;
-        else if (!isNaN(Number(value))) parsedValue = Number(value);
+        try {
+          parsedValue = JSON.parse(value);
+        } catch {
+          // If JSON parsing fails, keep as string
+          parsedValue = value;
+        }
 
         current[keys[keys.length - 1]] = parsedValue;
 
         await saveConfig(ctx.cwd, ctx.config);
+        // Reload config to ensure consistency
+        ctx.config = await loadConfig(ctx.cwd);
         console.log(chalk.green(`Set ${key} = ${value}`));
         return;
       }
@@ -826,30 +835,19 @@ export const commands: Command[] = [
         return;
       }
 
-      const originalTask = await ctx.orchestrator.getTask(taskId);
-      if (!originalTask) {
-        console.log(chalk.red(`Task not found: ${taskId}`));
-        return;
+      try {
+        console.log(chalk.cyan(`\nRetrying task ${taskId}...\n`));
+
+        // Use the new handleRetry method that validates status and resets the task
+        await ctx.orchestrator.handleRetry(taskId);
+
+        console.log(chalk.green(`Task ${taskId} retry initiated successfully`));
+
+        // Monitor execution with output
+        executeTaskWithOutput(ctx, taskId);
+      } catch (error) {
+        console.log(chalk.red(`Failed to retry task: ${error instanceof Error ? error.message : String(error)}`));
       }
-
-      if (originalTask.status !== 'failed' && originalTask.status !== 'cancelled') {
-        console.log(chalk.yellow(`Task is ${originalTask.status}. Only failed or cancelled tasks can be retried.`));
-        return;
-      }
-
-      console.log(chalk.cyan('\nRetrying task...\n'));
-
-      const newTask = await ctx.orchestrator.createTask({
-        description: originalTask.description,
-        acceptanceCriteria: originalTask.acceptanceCriteria,
-        workflow: originalTask.workflow,
-        autonomy: originalTask.autonomy,
-      });
-
-      console.log(chalk.green(`New task created: ${newTask.id}`));
-
-      // Execute in background
-      executeTaskWithOutput(ctx, newTask.id);
     },
   },
 

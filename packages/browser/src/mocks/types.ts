@@ -286,6 +286,8 @@ export interface MockOperationBehavior {
   fails(error: string): MockOperationBehavior;
   /** Set operation delay */
   withDelay(ms: number): MockOperationBehavior;
+  /** Build the scenario configuration */
+  build(): MockScenarioConfig;
   /** Return to scenario builder */
   and(): MockScenarioBuilder;
 }

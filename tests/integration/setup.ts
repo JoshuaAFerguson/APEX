@@ -234,6 +234,9 @@ beforeAll(async () => {
   process.env.NODE_ENV = 'test';
   process.env.APEX_TEST_MODE = 'integration';
 
+  // Increase the max listeners limit for tests to prevent memory leak warnings
+  process.setMaxListeners(50);
+
   // Suppress console output during tests unless DEBUG is set
   if (!process.env.DEBUG) {
     vi.spyOn(console, 'log').mockImplementation(() => {});

@@ -11,12 +11,15 @@ import { IntentDetector, SmartSuggestions } from '../IntentDetector';
 // Mock Fuse.js
 vi.mock('fuse.js', () => {
   return {
-    default: vi.fn().mockImplementation(() => ({
-      search: vi.fn().mockReturnValue([
-        { item: { name: 'run', description: 'Execute a task' }, score: 0.1 },
-        { item: { name: 'status', description: 'Show status' }, score: 0.3 }
-      ]),
-    })),
+    default: class MockFuse {
+      constructor() {}
+      search() {
+        return [
+          { item: { name: 'run', description: 'Execute a task' }, score: 0.1 },
+          { item: { name: 'status', description: 'Show status' }, score: 0.3 }
+        ];
+      }
+    },
   };
 });
 

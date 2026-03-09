@@ -15,7 +15,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { render, screen, RenderResult } from '../../../__tests__/test-utils';
+import { render, screen, RenderResult } from '../../__tests__/test-utils';
 import { Box } from 'ink';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 import { Banner, BannerProps } from '../Banner';
@@ -94,7 +94,7 @@ const TERMINAL_CONFIGS: Record<TerminalWidth, StdoutDimensions> = {
 
 // Mock the useStdoutDimensions hook
 const mockUseStdoutDimensions = vi.fn();
-vi.mock('../hooks/useStdoutDimensions.js', () => ({
+vi.mock('../../hooks/useStdoutDimensions.js', () => ({
   useStdoutDimensions: mockUseStdoutDimensions,
 }));
 

@@ -2280,6 +2280,15 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error(`Task not found: ${taskId}`);
     }
 
+    // Mark task as in-progress EARLY so that capacity checks (getAvailableCapacity)
+    // see accurate DB state. Without this, there's a TOCTOU race: multiple parents
+    // check capacity, all see slots available, and all launch batches that exceed
+    // the limit — causing the resource exhaustion that kills the machine.
+    // If the task later fails (e.g. policy check), it will be set to 'failed'.
+    if (task.status === 'pending') {
+      await this.updateTaskStatus(taskId, 'in-progress');
+    }
+
     // Handle dry-run mode - skip actual execution but simulate the process
     if (task.dryRun) {
       await this.store.addLog(taskId, {
@@ -2389,8 +2398,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error(`Task blocked by policy violations: ${policyCheckResult.failedCount} error(s) found`);
     }
 
-    // Update status
-    await this.updateTaskStatus(taskId, 'in-progress');
+    // Emit task:started (status already set to in-progress at top of _executeTaskInner)
     this.emit('task:started', task);
 
     // Set current task for event tracking
@@ -5592,6 +5600,61 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Retry a task by validating its status and resetting it to pending for re-execution.
+   * Only allows retry for failed, cancelled, in-progress, or planning tasks.
+   *
+   * @param taskId The ID of the task to retry
+   * @returns Promise that resolves when the task has been reset and re-execution started
+   * @throws {Error} When task is not found or not in a retryable status
+   */
+  async handleRetry(taskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Define retryable statuses - allow retry for failed, cancelled, or stuck tasks
+    const retryableStatuses: TaskStatus[] = ['failed', 'cancelled', 'in-progress', 'planning'];
+
+    if (!retryableStatuses.includes(task.status)) {
+      throw new Error(`Task is ${task.status}. Only failed, cancelled, or stuck tasks can be retried.`);
+    }
+
+    // Log retry initiation
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Retrying task (previous status: ${task.status})`,
+      metadata: {
+        previousStatus: task.status,
+        retryInitiatedAt: new Date().toISOString(),
+      },
+    });
+
+    // Reset task status to pending for re-execution
+    await this.updateTaskStatus(taskId, 'pending');
+
+    // Clear any previous error message
+    await this.store.updateTask(taskId, {
+      error: undefined,
+      updatedAt: new Date(),
+    });
+
+    // Re-execute the task asynchronously
+    this.executeTask(taskId).catch(async (error: Error) => {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Task retry failed: ${error.message}`,
+        metadata: {
+          errorStack: error.stack,
+          retryFailedAt: new Date().toISOString(),
+        },
+      });
+    });
+  }
+
+  /**
    * Get the currently active task, if any.
    */
   async getCurrentTask(): Promise<Task | null> {
@@ -7213,14 +7276,28 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Process the task queue, starting new tasks up to the concurrency limit
+   * Process the task queue, starting new tasks up to the concurrency limit.
+   * Uses DB-level in-progress count (via getAvailableCapacity) so that
+   * subtasks spawned by parent tasks are properly counted against the limit.
    */
   private async processTaskQueue(): Promise<void> {
-    const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
-    const availableSlots = maxConcurrent - this.runningTasks.size;
+    // Use DB-level capacity check instead of this.runningTasks.size,
+    // because runningTasks only tracks top-level tasks — subtasks spawned
+    // by executeSubtasksParallel/executeSubtasksDependencyBased are invisible
+    // to that map but still consume system resources.
+    const availableSlots = this.getAvailableCapacity();
 
     if (availableSlots <= 0) {
       return; // At capacity
+    }
+
+    // Also check global semaphore saturation — if all Claude API slots
+    // are occupied plus waiters, there's no point starting more work.
+    const maxConcurrent = this.getMaxConcurrentTasks();
+    const activeSlots = this.globalActiveTaskCount;
+    const waiters = this.globalConcurrencyWaiters.length;
+    if (activeSlots + waiters >= maxConcurrent) {
+      return; // Semaphore saturated, new tasks would just queue up consuming memory
     }
 
     // Get pending tasks ordered by priority
@@ -7458,6 +7535,8 @@ Parent: ${parentTask.description}`;
   /**
    * Execute multiple tasks concurrently
    * Returns when all tasks are complete (or failed)
+   * Respects the global concurrency limit by checking available capacity
+   * before launching each batch, accounting for already-running tasks.
    */
   async executeTasksConcurrently(
     taskIds: string[],
@@ -7468,9 +7547,19 @@ Parent: ${parentTask.description}`;
     const maxConcurrent = options?.maxConcurrent ?? this.effectiveConfig.limits.maxConcurrentTasks;
     const results = new Map<string, { success: boolean; error?: string }>();
 
-    // Process in batches
-    for (let i = 0; i < taskIds.length; i += maxConcurrent) {
-      const batch = taskIds.slice(i, i + maxConcurrent);
+    // Process in capacity-aware batches
+    let i = 0;
+    while (i < taskIds.length) {
+      // Wait for capacity before launching next batch
+      let capacity = this.getAvailableCapacity();
+      while (capacity <= 0) {
+        await this.sleep(1000);
+        capacity = this.getAvailableCapacity();
+      }
+
+      const batchSize = Math.min(maxConcurrent, capacity, taskIds.length - i);
+      const batch = taskIds.slice(i, i + batchSize);
+      i += batchSize;
 
       const batchPromises = batch.map(async (taskId) => {
         try {
@@ -7495,6 +7584,36 @@ Parent: ${parentTask.description}`;
    */
   getMaxConcurrentTasks(): number {
     return this.effectiveConfig?.limits?.maxConcurrentTasks ?? 3;
+  }
+
+  /**
+   * Get the number of tasks currently holding a global concurrency slot
+   * (i.e., actively running a Claude API call via executeWorkflowStage).
+   */
+  getGlobalActiveTaskCount(): number {
+    return this.globalActiveTaskCount;
+  }
+
+  /**
+   * Get the number of tasks waiting to acquire a global concurrency slot.
+   */
+  getGlobalWaiterCount(): number {
+    return this.globalConcurrencyWaiters.length;
+  }
+
+  /**
+   * Check whether the system has capacity to start another task.
+   * Uses the DB-level in-progress count as the source of truth,
+   * so subtask trees are properly accounted for.
+   * Note: countInProgressTasks(true) excludes parent tasks that are merely
+   * orchestrating subtasks — this is critical to avoid deadlock where parents
+   * hold all capacity slots while their children wait for capacity.
+   * Returns the number of available slots (0 = at capacity).
+   */
+  getAvailableCapacity(): number {
+    const max = this.getMaxConcurrentTasks();
+    const inProgress = this.store.countInProgressTasks(/* excludeParentsWithRunningChildren */ true);
+    return Math.max(0, max - inProgress);
   }
 
   /**
@@ -8044,15 +8163,32 @@ Parent: ${parentTask.description}`;
     const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
     const subtaskIds = parentTask.subtaskIds || [];
 
-    // Execute in batches up to max concurrent
-    for (let i = 0; i < subtaskIds.length; i += maxConcurrent) {
+    // Execute in batches. Batch size is dynamically limited to available
+    // capacity (checked via DB in-progress count) to prevent memory exhaustion
+    // from too many in-flight task trees.
+    let i = 0;
+    while (i < subtaskIds.length) {
       // Check if parent was cancelled
       const currentParent = await this.store.getTask(parentTask.id);
       if (currentParent?.status === 'cancelled') {
         return;
       }
 
-      const batch = subtaskIds.slice(i, i + maxConcurrent);
+      // Wait for capacity before launching next batch.
+      // This prevents the "stampede" where multiple parents each launch
+      // full batches before the in-progress count catches up.
+      let capacity = this.getAvailableCapacity();
+      while (capacity <= 0) {
+        await this.sleep(1000);
+        // Re-check cancellation while waiting
+        const parentCheck = await this.store.getTask(parentTask.id);
+        if (parentCheck?.status === 'cancelled') return;
+        capacity = this.getAvailableCapacity();
+      }
+
+      const batchSize = Math.min(maxConcurrent, capacity);
+      const batch = subtaskIds.slice(i, i + batchSize);
+      i += batchSize;
       const completedSubtasks: Task[] = [];
 
       const results = await Promise.allSettled(
@@ -8166,9 +8302,19 @@ Parent: ${parentTask.description}`;
         continue;
       }
 
-      // Execute ready subtasks in parallel (up to max concurrent)
+      // Execute ready subtasks in parallel (up to available capacity)
       const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
-      const batch = readySubtasks.slice(0, maxConcurrent);
+
+      // Wait for capacity before launching batch
+      let capacity = this.getAvailableCapacity();
+      while (capacity <= 0) {
+        await this.sleep(1000);
+        const parentCheck = await this.store.getTask(parentTask.id);
+        if (parentCheck?.status === 'cancelled') return;
+        capacity = this.getAvailableCapacity();
+      }
+
+      const batch = readySubtasks.slice(0, Math.min(maxConcurrent, capacity));
 
       for (const subtaskId of batch) {
         inProgressSubtasks.add(subtaskId);
@@ -8567,15 +8713,29 @@ Parent: ${parentTask.description}`;
           if (!shouldContinue) return;
         }
       } else {
-        // For parallel/dependency-based, execute in batches but respect order within batches
+        // For parallel/dependency-based, execute in batches but respect order within batches.
+        // Batch size is dynamically limited to available DB-level capacity to prevent
+        // memory exhaustion from too many in-flight task trees.
         const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
-        for (let i = 0; i < subtasksToProcess.length; i += maxConcurrent) {
+        let i = 0;
+        while (i < subtasksToProcess.length) {
           const currentParent = await this.store.getTask(parentTaskId);
           if (currentParent?.status === 'cancelled' || currentParent?.status === 'paused') {
             return;
           }
 
-          const batch = subtasksToProcess.slice(i, i + maxConcurrent);
+          // Wait for capacity before launching batch
+          let capacity = this.getAvailableCapacity();
+          while (capacity <= 0) {
+            await this.sleep(1000);
+            const parentCheck = await this.store.getTask(parentTaskId);
+            if (parentCheck?.status === 'cancelled' || parentCheck?.status === 'paused') return;
+            capacity = this.getAvailableCapacity();
+          }
+
+          const batchSize = Math.min(maxConcurrent, capacity);
+          const batch = subtasksToProcess.slice(i, i + batchSize);
+          i += batchSize;
 
           // Clear pause state for paused subtasks in this batch
           for (const { id: subtaskId, status } of batch) {

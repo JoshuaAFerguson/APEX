@@ -52,13 +52,9 @@ export default defineConfig({
 
     // Pool configuration for E2E tests
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        // Limit concurrent tests to prevent event system conflicts
-        maxForks: 2,
-        minForks: 1,
-      },
-    },
+    // Limit concurrent tests to prevent event system conflicts
+    maxForks: 2,
+    minForks: 1,
 
     // Coverage configuration for tri-system integration
     coverage: {

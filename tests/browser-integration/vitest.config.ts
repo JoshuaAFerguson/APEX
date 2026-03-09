@@ -59,14 +59,10 @@ export default defineConfig({
 
     // Pool configuration for browser tests
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        // Limit concurrent tests to prevent browser instance conflicts
-        // Each test may create multiple browser contexts/pages
-        maxForks: 2,
-        minForks: 1,
-      },
-    },
+    // Limit concurrent tests to prevent browser instance conflicts
+    // Each test may create multiple browser contexts/pages
+    maxForks: 2,
+    minForks: 1,
 
     // Coverage configuration for browser automation tests
     coverage: {

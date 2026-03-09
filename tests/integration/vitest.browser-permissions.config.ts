@@ -34,12 +34,8 @@ export default defineConfig({
     // Test isolation and parallel execution
     isolate: true,
     pool: 'threads',
-    poolOptions: {
-      threads: {
-        maxThreads: 4,
-        minThreads: 1,
-      },
-    },
+    maxThreads: 4,
+    minThreads: 1,
 
     // Retry configuration for flaky browser tests
     retry: 2,

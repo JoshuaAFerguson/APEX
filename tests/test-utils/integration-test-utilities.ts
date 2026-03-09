@@ -42,6 +42,10 @@ export * from './tool-integration-fixtures';
 export * from './permission-integration-fixtures';
 export * from './browser-automation-test-setup';
 
+// Import specific functions that may not be properly hoisted via re-export
+import { createPermissionTestEnvironment } from './permission-integration-fixtures';
+import { createMockToolRegistry } from './tool-integration-fixtures';
+
 // ============================================================================
 // Core Integration Test Environment
 // ============================================================================
@@ -156,7 +160,7 @@ export async function createIntegrationTestEnvironment(
   });
 
   // Set up tool mocking
-  const tools = createToolMockRegistry();
+  const tools = createMockToolRegistry();
 
   // Set up browser testing if enabled
   let browser: BrowserTestEnvironment | undefined;
@@ -657,6 +661,20 @@ function setupClaudeAPIMocks() {
         content: 'Mocked Claude response',
         usage: { inputTokens: 100, outputTokens: 50 },
       }),
+    })),
+    tool: vi.fn().mockImplementation((name: string, description: string, inputSchema: any, handler: any) => ({
+      name,
+      description,
+      inputSchema,
+      handler,
+    })),
+    query: vi.fn().mockResolvedValue({
+      content: 'Mocked Claude response',
+      usage: { inputTokens: 100, outputTokens: 50 },
+    }),
+    createSdkMcpServer: vi.fn().mockImplementation(() => ({
+      connect: vi.fn(),
+      close: vi.fn(),
     })),
   }));
 }

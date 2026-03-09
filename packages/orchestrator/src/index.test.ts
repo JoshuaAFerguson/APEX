@@ -14,12 +14,16 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
 }));
 
-// Store exec mock for dynamic behavior
+// Mock child_process using simple automocking
+vi.mock('child_process');
+
+// Store exec mock behavior for dynamic control
 let execMockBehavior: Record<string, { stdout?: string; error?: Error }> = {};
 
-// Mock child_process for git/gh commands
-vi.mock('child_process', () => ({
-  exec: vi.fn((cmd: string, opts: unknown, callback?: unknown) => {
+// Setup exec mock implementation (called in beforeEach)
+const setupExecMock = () => {
+  const mockExec = exec as any;
+  mockExec.mockImplementation((cmd: string, opts: unknown, callback?: unknown) => {
     if (typeof opts === 'function') {
       callback = opts;
     }
@@ -49,14 +53,15 @@ vi.mock('child_process', () => ({
     } else {
       cb(null, { stdout: '' });
     }
-  }),
-}));
+  });
+};
 
 describe('ApexOrchestrator', () => {
   let testDir: string;
   let orchestrator: ApexOrchestrator;
 
   beforeEach(async () => {
+    setupExecMock();
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-orch-test-'));
 
     // Initialize APEX in the test directory

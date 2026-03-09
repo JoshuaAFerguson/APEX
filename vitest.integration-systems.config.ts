@@ -34,11 +34,7 @@ export default mergeConfig(
 
       // Serial execution for resource-intensive tests to avoid conflicts
       pool: 'threads',
-      poolOptions: {
-        threads: {
-          singleThread: true
-        }
-      },
+      singleThread: true,
 
       // Setup files
       setupFiles: ['tests/integration/setup.ts'],

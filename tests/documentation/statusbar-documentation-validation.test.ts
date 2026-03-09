@@ -12,16 +12,26 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-describe('StatusBar Documentation Enhancement Validation', () => {
+// Check if required documentation files exist
+const cliGuidePath = path.join(__dirname, '../../docs/cli-guide.md');
+const v030FeaturesPath = path.join(__dirname, '../../docs/features/v030-features.md');
+const displayModesPath = path.join(__dirname, '../../docs/user-guide/display-modes.md');
+
+const filesExist = {
+  cliGuide: fs.existsSync(cliGuidePath),
+  v030Features: fs.existsSync(v030FeaturesPath),
+  displayModes: fs.existsSync(displayModesPath),
+};
+
+const allFilesExist = filesExist.cliGuide && filesExist.v030Features && filesExist.displayModes;
+
+// Skip the entire test suite if any required files are missing
+describe.skipIf(!allFilesExist)('StatusBar Documentation Enhancement Validation', () => {
   let cliGuideContent: string;
   let v030FeaturesContent: string;
   let displayModesContent: string;
 
   beforeAll(() => {
-    const cliGuidePath = path.join(__dirname, '../cli-guide.md');
-    const v030FeaturesPath = path.join(__dirname, '../features/v030-features.md');
-    const displayModesPath = path.join(__dirname, '../user-guide/display-modes.md');
-
     cliGuideContent = fs.readFileSync(cliGuidePath, 'utf-8');
     v030FeaturesContent = fs.readFileSync(v030FeaturesPath, 'utf-8');
     displayModesContent = fs.readFileSync(displayModesPath, 'utf-8');

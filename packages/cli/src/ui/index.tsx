@@ -1,6 +1,7 @@
 import React from 'react';
 import { render } from 'ink';
 import { App, type AppState, type Message } from './App.js';
+import { ThemeProvider } from './context/ThemeContext.js';
 import type { ApexConfig } from '@apexcli/core';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 
@@ -60,12 +61,14 @@ export async function startInkApp(options: StartInkAppOptions): Promise<InkAppIn
   };
 
   const { waitUntilExit, unmount } = render(
-    <App
-      initialState={initialState}
-      onCommand={onCommand}
-      onTask={onTask}
-      onExit={onExit}
-    />
+    <ThemeProvider defaultTheme="dark">
+      <App
+        initialState={initialState}
+        onCommand={onCommand}
+        onTask={onTask}
+        onExit={onExit}
+      />
+    </ThemeProvider>
   );
 
   // Wait for the app to initialize with polling (max 2 seconds)

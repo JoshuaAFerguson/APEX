@@ -680,8 +680,8 @@ export interface PermissionMatrixEntry {
  * ```typescript
  * generatePermissionMatrix(['Read', 'Write', 'Bash']).forEach(entry => {
  *   describe(`${entry.tool} at ${entry.level}`, () => {
- *     it('should grant permission', () => { /* test with entry.grantedResponse */ });
- *     it('should deny permission', () => { /* test with entry.deniedResponse */ });
+ *     it('should grant permission', () => { // test with entry.grantedResponse });
+ *     it('should deny permission', () => { // test with entry.deniedResponse });
  *   });
  * });
  * ```
@@ -745,8 +745,8 @@ export interface RiskLevelScenario {
  * ```typescript
  * generateRiskLevelScenarios().forEach(scenario => {
  *   describe(`Risk level: ${scenario.riskLevel}`, () => {
- *     it('should handle confirmation', () => { /* test with scenario.confirmedResponse */ });
- *     it('should handle blocking', () => { /* test with scenario.blockedResponse */ });
+ *     it('should handle confirmation', () => { // test with scenario.confirmedResponse });
+ *     it('should handle blocking', () => { // test with scenario.blockedResponse });
  *   });
  * });
  * ```

@@ -402,30 +402,10 @@ export async function createScopedTestEnvironment(
  * Mock browser automation dependencies for unit tests
  */
 export function mockBrowserAutomationDependencies(): void {
-  // Mock playwright
-  vi.mock('playwright', () => {
-    const mockBrowserContext = createMockBrowserContext();
-
-    return {
-      chromium: {
-        launch: vi.fn().mockResolvedValue(mockBrowserContext.browser),
-      },
-      firefox: {
-        launch: vi.fn().mockResolvedValue(mockBrowserContext.browser),
-      },
-      webkit: {
-        launch: vi.fn().mockResolvedValue(mockBrowserContext.browser),
-      },
-    };
-  });
-
-  // Mock file system operations
-  vi.mock('fs/promises', () => ({
-    mkdir: vi.fn().mockResolvedValue(undefined),
-    writeFile: vi.fn().mockResolvedValue(undefined),
-    rm: vi.fn().mockResolvedValue(undefined),
-    mkdtemp: vi.fn().mockResolvedValue('/tmp/test-123'),
-  }));
+  // Note: vi.mock calls need to be at module top-level due to hoisting
+  // This function is kept for API compatibility but actual mocking
+  // should be done at module import time
+  console.warn('mockBrowserAutomationDependencies: vi.mock should be called at module level');
 }
 
 /**
@@ -470,6 +450,4 @@ export type {
   BrowserAutomationTestEnvironment,
 };
 
-export {
-  DEFAULT_TEST_CONFIG,
-};
+// DEFAULT_TEST_CONFIG is already exported inline above

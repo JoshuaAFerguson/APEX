@@ -36,11 +36,7 @@ export default mergeConfig(
 
       // Parallel execution for faster testing
       pool: 'forks',
-      poolOptions: {
-        forks: {
-          singleFork: false,
-        },
-      },
+      singleFork: false,
     },
   })
 );

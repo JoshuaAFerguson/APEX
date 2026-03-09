@@ -635,17 +635,20 @@ export interface ConventionalCommit {
  */
 export function parseConventionalCommit(message: string): ConventionalCommit | null {
   const match = message.match(
-    /^(\w+)(?:\(([^)]+)\))?(!)?:\s*(.+?)(?:\n\n([\s\S]*))?$/
+    /^([a-z]+)(?:\(([^)]+)\))?(!)?:\s*(.+?)(?:\n\n([\s\S]*))?$/
   );
 
   if (!match) return null;
 
   const [, type, scope, breaking, description, body] = match;
 
+  // Reject empty scope
+  if (scope !== undefined && scope.trim() === '') return null;
+
   return {
     type,
     scope: scope || undefined,
-    description,
+    description: description.trim(),
     body: body?.trim() || undefined,
     breaking: !!breaking,
   };
@@ -1547,7 +1550,7 @@ export function generateChangelogMarkdown(
  */
 export function suggestCommitType(files: string[]): CommitType {
   const patterns: Array<{ pattern: RegExp; type: CommitType }> = [
-    { pattern: /\.test\.|\.spec\.|__tests__|\/tests?\//i, type: 'test' },
+    { pattern: /\.test\.|\.spec\.|__tests__|\/tests?\/|^tests?\//i, type: 'test' },
     { pattern: /\.md$|docs\//i, type: 'docs' },
     { pattern: /\.css$|\.scss$|\.less$|\.styled\./i, type: 'style' },
     { pattern: /package\.json$|yarn\.lock$|package-lock\.json$/i, type: 'build' },
@@ -1578,10 +1581,16 @@ export function suggestCommitType(files: string[]): CommitType {
     }
   }
 
-  // Default to 'feat' for new features or 'fix' if files suggest bug fixes
+  // Default to 'feat' for empty lists or unknown files, 'chore' only for specific misc file types
   if (maxCount === 0) {
-    const hasNewFiles = files.some((f) => !f.includes('/'));
-    return hasNewFiles ? 'feat' : 'chore';
+    // If no files or files that could be features, suggest 'feat'
+    // Only suggest 'chore' for clearly non-source files like config, data files
+    const hasMiscFiles = files.some((f) =>
+      /\.(txt|json|xml|yaml|yml|ini|conf|log|csv)$/i.test(f) ||
+      /config\//i.test(f) ||
+      /random.*file/i.test(f)
+    );
+    return hasMiscFiles ? 'chore' : 'feat';
   }
 
   return suggestedType;

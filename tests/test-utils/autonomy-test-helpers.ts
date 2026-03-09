@@ -870,13 +870,18 @@ export function assertTaskStateTransition(
   expect(expectedTransitions[expectedTransitions.length - 1]).toBe(finalState);
 
   // Validate that all transitions are valid
+  // TaskStatus enum: 'pending' | 'queued' | 'planning' | 'in-progress' | 'waiting-approval' | 'awaiting-approval' | 'paused' | 'completed' | 'failed' | 'cancelled'
   const validTransitions: Record<TaskStatus, TaskStatus[]> = {
-    'pending': ['running', 'paused', 'aborted'],
-    'running': ['completed', 'failed', 'paused', 'aborted'],
-    'paused': ['running', 'aborted'],
+    'pending': ['queued', 'in-progress', 'paused', 'cancelled'],
+    'queued': ['planning', 'in-progress', 'paused', 'cancelled'],
+    'planning': ['in-progress', 'paused', 'cancelled', 'failed'],
+    'in-progress': ['completed', 'failed', 'paused', 'cancelled', 'awaiting-approval'],
+    'waiting-approval': ['in-progress', 'cancelled', 'paused'],
+    'awaiting-approval': ['in-progress', 'cancelled', 'paused'],
+    'paused': ['in-progress', 'cancelled', 'queued'],
     'completed': [],
-    'failed': ['running'],
-    'aborted': [],
+    'failed': ['in-progress', 'pending'],
+    'cancelled': [],
   };
 
   for (let i = 0; i < expectedTransitions.length - 1; i++) {

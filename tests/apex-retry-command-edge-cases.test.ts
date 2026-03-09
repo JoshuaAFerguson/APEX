@@ -198,7 +198,7 @@ describe('APEX Retry Command Edge Cases', () => {
       const endTime = Date.now();
 
       // Verify it handled the slow responses appropriately
-      expect(endTime - startTime).toBeGreaterThan(800); // At least 500 + 300ms
+      expect(endTime - startTime).toBeGreaterThanOrEqual(800); // At least 500 + 300ms
       expect(mockOrchestrator.getTask).toHaveBeenCalledWith(taskId);
       expect(mockOrchestrator.updateTaskStatus).toHaveBeenCalledWith(taskId, 'pending');
       expect(mockApp.addMessage).toHaveBeenCalledWith({
