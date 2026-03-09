@@ -476,18 +476,18 @@ describe('handleServe Function - Comprehensive Test Suite', () => {
     it('should resolve API path correctly', async () => {
       await simulateHandleServe([], testContext);
 
-      expect(mockPathResolve).toHaveBeenCalledWith('__dirname', '../../api');
+      expect(mockResolve).toHaveBeenCalledWith('__dirname', '../../api');
     });
 
     it('should join API path with dist/index.js', async () => {
       await simulateHandleServe([], testContext);
 
-      expect(mockPathJoin).toHaveBeenCalledWith('/mock/api/path', 'dist/index.js');
+      expect(mockJoin).toHaveBeenCalledWith('/mock/api/path', 'dist/index.js');
     });
 
     it('should handle different resolved paths', async () => {
-      mockPathResolve.mockReturnValue('/different/path');
-      mockPathJoin.mockReturnValue('/different/path/dist/index.js');
+      mockResolve.mockReturnValue('/different/path');
+      mockJoin.mockReturnValue('/different/path/dist/index.js');
 
       await simulateHandleServe([], testContext);
 
@@ -527,7 +527,7 @@ describe('handleServe Function - Comprehensive Test Suite', () => {
     });
 
     it('should handle path resolution errors', async () => {
-      mockPathResolve.mockImplementation(() => {
+      mockResolve.mockImplementation(() => {
         throw new Error('Path resolution failed');
       });
 

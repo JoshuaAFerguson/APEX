@@ -51,7 +51,7 @@ describe('APEX Serve Process Management', () => {
   beforeEach(() => {
     mockChildProcess = new MockChildProcess();
     mockSpawn = vi.mocked(spawn);
-    mockSpawn.mockReturnValue(mockChildProcess as any);
+    mockSpawn.mockImplementation(() => mockChildProcess as any);
     vi.clearAllMocks();
   });
 
