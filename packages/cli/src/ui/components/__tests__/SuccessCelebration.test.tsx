@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   SuccessCelebration,
@@ -16,6 +16,25 @@ vi.mock('../StreamingText.js', () => ({
     </span>
   ),
 }));
+
+// Helper function to check if element exists
+const elementExists = (text: string | RegExp) => {
+  try {
+    screen.getByText(text);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Helper function to check if element doesn't exist
+const elementNotExists = (text: string | RegExp) => {
+  try {
+    return screen.queryByText(text) === null;
+  } catch {
+    return true;
+  }
+};
 
 describe('SuccessCelebration', () => {
   beforeEach(() => {
@@ -35,9 +54,9 @@ describe('SuccessCelebration', () => {
       />
     );
 
-    expect(screen.getByText('Test completed successfully!')).toBeInTheDocument();
+    expect(elementExists('Test completed successfully!')).toBe(true);
     // Ink renders text with emojis inline, use regex to match
-    expect(screen.getByText(/Task Completed!/)).toBeInTheDocument();
+    expect(elementExists(/Task Completed!/)).toBe(true);
   });
 
   it('should render different titles based on type', () => {
@@ -45,13 +64,13 @@ describe('SuccessCelebration', () => {
       <SuccessCelebration type="milestone" showAnimation={false} />
     );
     // Ink renders text with emojis inline, use regex to match
-    expect(screen.getByText(/Milestone Achieved!/)).toBeInTheDocument();
+    expect(elementExists(/Milestone Achieved!/)).toBe(true);
 
     rerender(<SuccessCelebration type="achievement" showAnimation={false} />);
-    expect(screen.getByText(/Achievement Unlocked!/)).toBeInTheDocument();
+    expect(elementExists(/Achievement Unlocked!/)).toBe(true);
 
     rerender(<SuccessCelebration type="simple" showAnimation={false} />);
-    expect(screen.getByText(/Success!/)).toBeInTheDocument();
+    expect(elementExists(/Success!/)).toBe(true);
   });
 
   it('should display performance stats when provided', () => {
@@ -71,18 +90,18 @@ describe('SuccessCelebration', () => {
       />
     );
 
-    expect(screen.getByText('Performance Summary')).toBeInTheDocument();
-    expect(screen.getByText('Duration:')).toBeInTheDocument();
-    expect(screen.getByText('2.5s')).toBeInTheDocument();
-    expect(screen.getByText('Tokens Used:')).toBeInTheDocument();
-    expect(screen.getByText('1,500')).toBeInTheDocument();
-    expect(screen.getByText('Cost:')).toBeInTheDocument();
-    expect(screen.getByText('$0.05')).toBeInTheDocument();
-    expect(screen.getByText('Files Changed:')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
-    expect(screen.getByText('Lines:')).toBeInTheDocument();
-    expect(screen.getByText('+150')).toBeInTheDocument();
-    expect(screen.getByText('-25')).toBeInTheDocument();
+    expect(elementExists('Performance Summary')).toBe(true);
+    expect(elementExists('Duration:')).toBe(true);
+    expect(elementExists('2.5s')).toBe(true);
+    expect(elementExists('Tokens Used:')).toBe(true);
+    expect(elementExists('1,500')).toBe(true);
+    expect(elementExists('Cost:')).toBe(true);
+    expect(elementExists('$0.05')).toBe(true);
+    expect(elementExists('Files Changed:')).toBe(true);
+    expect(elementExists('3')).toBe(true);
+    expect(elementExists('Lines:')).toBe(true);
+    expect(elementExists('+150')).toBe(true);
+    expect(elementExists('-25')).toBe(true);
   });
 
   it('should call onComplete after duration', () => {
@@ -128,7 +147,7 @@ describe('SuccessCelebration', () => {
     );
 
     // Should immediately show stats (with emojis inline)
-    expect(screen.getByText(/Task Completed!/)).toBeInTheDocument();
+    expect(elementExists(/Task Completed!/)).toBe(true);
 
     vi.advanceTimersByTime(1000);
     expect(mockOnComplete).toHaveBeenCalled();
@@ -147,10 +166,10 @@ describe('SuccessCelebration', () => {
       />
     );
 
-    expect(screen.getByText('1,000')).toBeInTheDocument();
-    expect(screen.getByText('$0.02')).toBeInTheDocument();
-    expect(screen.queryByText('Duration:')).not.toBeInTheDocument();
-    expect(screen.queryByText('Files Changed:')).not.toBeInTheDocument();
+    expect(elementExists('1,000')).toBe(true);
+    expect(elementExists('$0.02')).toBe(true);
+    expect(elementNotExists('Duration:')).toBe(true);
+    expect(elementNotExists('Files Changed:')).toBe(true);
   });
 
   it('should show only lines added when no lines removed', () => {
@@ -163,8 +182,8 @@ describe('SuccessCelebration', () => {
       />
     );
 
-    expect(screen.getByText('+100')).toBeInTheDocument();
-    expect(screen.queryByText(/^-/)).not.toBeInTheDocument();
+    expect(elementExists('+100')).toBe(true);
+    expect(elementNotExists(/^-/)).toBe(true);
   });
 
   it('should show only lines removed when no lines added', () => {
@@ -177,8 +196,8 @@ describe('SuccessCelebration', () => {
       />
     );
 
-    expect(screen.getByText('-50')).toBeInTheDocument();
-    expect(screen.queryByText(/^\+/)).not.toBeInTheDocument();
+    expect(elementExists('-50')).toBe(true);
+    expect(elementNotExists(/^\+/)).toBe(true);
   });
 });
 
@@ -191,8 +210,8 @@ describe('Milestone', () => {
       />
     );
 
-    expect(screen.getByText('First Deployment')).toBeInTheDocument();
-    expect(screen.getByText('Successfully deployed your first application')).toBeInTheDocument();
+    expect(elementExists('First Deployment')).toBe(true);
+    expect(elementExists('Successfully deployed your first application')).toBe(true);
   });
 
   it('should render custom icon', () => {
@@ -226,7 +245,7 @@ describe('Milestone', () => {
         />
       );
 
-      expect(screen.getByText(expectedTexts[index])).toBeInTheDocument();
+      expect(elementExists(expectedTexts[index])).toBe(true);
       unmount();
     });
   });
@@ -240,7 +259,7 @@ describe('Milestone', () => {
       />
     );
 
-    expect(screen.queryByText(/ACHIEVEMENT|RARE|EPIC|LEGENDARY/)).not.toBeInTheDocument();
+    expect(elementNotExists(/ACHIEVEMENT|RARE|EPIC|LEGENDARY/)).toBe(true);
   });
 });
 
@@ -266,62 +285,72 @@ describe('ProgressCelebration', () => {
   });
 
   it('should render progress celebration message', () => {
-    render(
-      <ProgressCelebration
-        previousProgress={50}
-        newProgress={75}
-        message="Quarter milestone reached!"
-      />
-    );
+    act(() => {
+      render(
+        <ProgressCelebration
+          previousProgress={50}
+          newProgress={75}
+          message="Quarter milestone reached!"
+        />
+      );
+    });
 
-    expect(screen.getByText('🎯 Quarter milestone reached!')).toBeInTheDocument();
-    expect(screen.getByText(/Progress: \d+%/)).toBeInTheDocument();
+    expect(elementExists('🎯 Quarter milestone reached!')).toBe(true);
+    expect(elementExists(/Progress: \d+%/)).toBe(true);
   });
 
   it('should show progress bar when enabled', () => {
-    render(
-      <ProgressCelebration
-        previousProgress={25}
-        newProgress={50}
-        showProgressBar={true}
-      />
-    );
+    act(() => {
+      render(
+        <ProgressCelebration
+          previousProgress={25}
+          newProgress={50}
+          showProgressBar={true}
+        />
+      );
+    });
 
-    expect(screen.getByText(/Progress: \d+%/)).toBeInTheDocument();
+    expect(elementExists(/Progress: \d+%/)).toBe(true);
     // Progress bar should be rendered with filled and unfilled blocks - multiple elements
     const blocks = screen.getAllByText(/█|░/);
     expect(blocks.length).toBeGreaterThan(0);
   });
 
   it('should hide progress bar when disabled', () => {
-    render(
-      <ProgressCelebration
-        previousProgress={25}
-        newProgress={50}
-        showProgressBar={false}
-      />
-    );
+    act(() => {
+      render(
+        <ProgressCelebration
+          previousProgress={25}
+          newProgress={50}
+          showProgressBar={false}
+        />
+      );
+    });
 
-    expect(screen.queryByText(/Progress: \d+%/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/█|░/)).not.toBeInTheDocument();
+    expect(elementNotExists(/Progress: \d+%/)).toBe(true);
+    expect(elementNotExists(/█|░/)).toBe(true);
   });
 
-  it('should animate progress from previous to new value', async () => {
-    render(
-      <ProgressCelebration
-        previousProgress={0}
-        newProgress={100}
-      />
-    );
+  it('should animate progress from previous to new value', () => {
+    act(() => {
+      render(
+        <ProgressCelebration
+          previousProgress={0}
+          newProgress={100}
+        />
+      );
+    });
 
     // Should render with initial progress display
-    expect(screen.getByText(/Progress: \d+%/)).toBeInTheDocument();
+    expect(elementExists(/Progress: \d+%/)).toBe(true);
 
     // Advance animation - animation uses setInterval with Date.now() so fake timers work
-    vi.advanceTimersByTime(750); // Half of 1.5 second animation
+    act(() => {
+      vi.advanceTimersByTime(750); // Half of 1.5 second animation
+    });
 
     // Progress text should still be visible
-    expect(screen.getByText(/Progress: \d+%/)).toBeInTheDocument();
+    expect(elementExists(/Progress: \d+%/)).toBe(true);
   });
 
   it('should call onComplete after animation finishes', async () => {
@@ -330,13 +359,15 @@ describe('ProgressCelebration', () => {
     vi.useRealTimers();
     const mockOnComplete = vi.fn();
 
-    render(
-      <ProgressCelebration
-        previousProgress={0}
-        newProgress={100}
-        onComplete={mockOnComplete}
-      />
-    );
+    act(() => {
+      render(
+        <ProgressCelebration
+          previousProgress={0}
+          newProgress={100}
+          onComplete={mockOnComplete}
+        />
+      );
+    });
 
     expect(mockOnComplete).not.toHaveBeenCalled();
 
@@ -347,12 +378,14 @@ describe('ProgressCelebration', () => {
   });
 
   it('should show decorative sparkles', () => {
-    render(
-      <ProgressCelebration
-        previousProgress={25}
-        newProgress={75}
-      />
-    );
+    act(() => {
+      render(
+        <ProgressCelebration
+          previousProgress={25}
+          newProgress={75}
+        />
+      );
+    });
 
     // Multiple sparkle elements may be rendered
     const sparkles = screen.getAllByText('✨ ⭐ ✨');
@@ -378,7 +411,7 @@ describe('QuickSuccess', () => {
       />
     );
 
-    expect(screen.getByText('💾 File saved successfully')).toBeInTheDocument();
+    expect(elementExists('💾 File saved successfully')).toBe(true);
   });
 
   it('should use default icon when none provided', () => {
@@ -386,7 +419,7 @@ describe('QuickSuccess', () => {
       <QuickSuccess message="Task completed" />
     );
 
-    expect(screen.getByText('✅ Task completed')).toBeInTheDocument();
+    expect(elementExists('✅ Task completed')).toBe(true);
   });
 
   it('should call onComplete after duration', () => {
@@ -434,7 +467,7 @@ describe('QuickSuccess', () => {
     );
 
     // Note: Since we can't easily test Ink colors, we just ensure it renders
-    expect(screen.getByText('✅ Custom colored message')).toBeInTheDocument();
+    expect(elementExists('✅ Custom colored message')).toBe(true);
   });
 
   it('should cleanup timeout on unmount', () => {

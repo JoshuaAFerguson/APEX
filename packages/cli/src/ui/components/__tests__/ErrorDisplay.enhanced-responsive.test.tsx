@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ErrorDisplay, ErrorSummary, ValidationError } from '../ErrorDisplay';
+import { useStdoutDimensions } from '../../hooks/index.js';
 
 // Mock the useStdoutDimensions hook
 vi.mock('../../hooks/index.js', () => ({
@@ -17,7 +18,6 @@ vi.mock('../../hooks/index.js', () => ({
   })),
 }));
 
-const { useStdoutDimensions } = await import('../../hooks/index.js');
 const mockUseStdoutDimensions = vi.mocked(useStdoutDimensions);
 
 describe('ErrorDisplay Components - Enhanced Responsive Width Behavior', () => {
