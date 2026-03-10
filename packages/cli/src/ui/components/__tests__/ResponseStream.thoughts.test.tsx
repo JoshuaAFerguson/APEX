@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '../__tests__/test-utils';
+import { render, screen } from '../../__tests__/test-utils';
 import { ResponseStream } from '../ResponseStream';
 
 describe('ResponseStream Thoughts Rendering', () => {
@@ -435,7 +435,8 @@ Regular content continues here.
       expect(screen.getByText('Test response')).toBeInTheDocument();
       expect(screen.getByText('[developer]')).toBeInTheDocument();
       expect(screen.getByText(/⚙/)).toBeInTheDocument(); // Tool icon
-      expect(screen.getByText(/(tool)/)).toBeInTheDocument(); // Verbose mode type info
+      // In verbose mode, both (tool) in header and [tool] in content are shown
+      expect(screen.getAllByText(/tool/).length).toBeGreaterThanOrEqual(2); // Verbose mode shows type info multiple times
     });
   });
 });

@@ -123,9 +123,12 @@ describe('Subtask Parent-Child Integration Tests', () => {
         { description: 'Auto-complete subtask 3' },
       ]);
 
+      // Set parent task to in-progress so completion logic can work
+      await (orchestrator as any).updateTaskStatus(parentTask.id, 'in-progress');
+
       // Initially parent should not be complete
       let parentStatus = await orchestrator.getTask(parentTask.id);
-      expect(parentStatus?.status).not.toBe('completed');
+      expect(parentStatus?.status).toBe('in-progress');
 
       const usageData = {
         inputTokens: 100,
@@ -137,23 +140,24 @@ describe('Subtask Parent-Child Integration Tests', () => {
       };
 
       // Complete first two subtasks
-      await (orchestrator as any).store.updateTask(subtasks[0].id, { status: 'completed', usage: usageData });
-      await (orchestrator as any).store.updateTask(subtasks[1].id, { status: 'completed', usage: usageData });
+      await (orchestrator as any).updateTaskStatus(subtasks[0].id, 'completed');
+      await (orchestrator as any).store.updateTask(subtasks[0].id, { usage: usageData });
+      await (orchestrator as any).updateTaskStatus(subtasks[1].id, 'completed');
+      await (orchestrator as any).store.updateTask(subtasks[1].id, { usage: usageData });
 
       // Parent should still not be complete (third subtask still pending)
       const partialResult = await (orchestrator as any).aggregateSubtaskResults(parentTask.id);
       expect(partialResult).toBe(false);
 
       // Complete last subtask
-      await (orchestrator as any).store.updateTask(subtasks[2].id, { status: 'completed', usage: usageData });
+      await (orchestrator as any).updateTaskStatus(subtasks[2].id, 'completed');
+      await (orchestrator as any).store.updateTask(subtasks[2].id, { usage: usageData });
 
       // Now all subtasks are complete
       const finalResult = await (orchestrator as any).aggregateSubtaskResults(parentTask.id);
       expect(finalResult).toBe(true);
 
-      // Manually trigger parent completion check
-      await (orchestrator as any).checkAndCompleteParentTask(parentTask.id);
-
+      // Parent should now be completed automatically (no manual trigger needed)
       // Verify parent is now completed
       parentStatus = await orchestrator.getTask(parentTask.id);
       expect(parentStatus?.status).toBe('completed');
@@ -171,8 +175,8 @@ describe('Subtask Parent-Child Integration Tests', () => {
       ]);
 
       // Complete successful subtasks with proper usage to avoid ghost completion
+      await (orchestrator as any).updateTaskStatus(subtasks[0].id, 'completed');
       await (orchestrator as any).store.updateTask(subtasks[0].id, {
-        status: 'completed',
         usage: {
           inputTokens: 100,
           outputTokens: 50,
@@ -182,8 +186,8 @@ describe('Subtask Parent-Child Integration Tests', () => {
           executionTimeMs: 1000,
         }
       });
+      await (orchestrator as any).updateTaskStatus(subtasks[2].id, 'completed');
       await (orchestrator as any).store.updateTask(subtasks[2].id, {
-        status: 'completed',
         usage: {
           inputTokens: 100,
           outputTokens: 50,
@@ -195,7 +199,7 @@ describe('Subtask Parent-Child Integration Tests', () => {
       });
 
       // Fail one subtask
-      await (orchestrator as any).store.updateTask(subtasks[1].id, { status: 'failed' });
+      await (orchestrator as any).updateTaskStatus(subtasks[1].id, 'failed');
 
       // Parent should not be complete due to failed subtask
       const result = await (orchestrator as any).aggregateSubtaskResults(parentTask.id);

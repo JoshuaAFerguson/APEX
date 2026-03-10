@@ -5211,12 +5211,24 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       } : {}),
     });
 
-    // Propagate in-progress status up the ancestor chain
+    // Propagate status up the ancestor chain
     if (status === 'in-progress') {
       const task = await this.store.getTask(taskId);
       if (task?.parentTaskId) {
         try {
           await this.checkAndResumeParent(task.parentTaskId);
+        } catch (err) {
+          // Don't fail the status update if propagation fails
+        }
+      }
+    }
+
+    // When a subtask completes, check if parent should also complete
+    if (status === 'completed') {
+      const task = await this.store.getTask(taskId);
+      if (task?.parentTaskId) {
+        try {
+          await this.checkAndCompleteParentTask(task.parentTaskId);
         } catch (err) {
           // Don't fail the status update if propagation fails
         }
@@ -7982,21 +7994,25 @@ Parent: ${parentTask.description}`;
       return [];
     }
 
+    // Atomically add to decomposing set to prevent race conditions
+    this.decomposingTaskIds.add(parentTaskId);
+
+    // Now check if task exists and has no subtasks
     const parentTask = await this.store.getTask(parentTaskId);
     if (!parentTask) {
+      this.decomposingTaskIds.delete(parentTaskId);
       throw new Error(`Parent task not found: ${parentTaskId}`);
     }
 
     // If subtasks already exist, skip decomposition entirely
     if (parentTask.subtaskIds && parentTask.subtaskIds.length > 0) {
+      this.decomposingTaskIds.delete(parentTaskId);
       await this.store.addLog(parentTaskId, {
         level: 'warn',
         message: `Skipping decomposition — task already has ${parentTask.subtaskIds.length} subtasks (race condition prevented)`,
       });
       return [];
     }
-
-    this.decomposingTaskIds.add(parentTaskId);
     try {
       return await this._decomposeTaskInner(parentTaskId, parentTask, subtaskDefinitions, strategy);
     } finally {
@@ -8501,7 +8517,7 @@ Parent: ${parentTask.description}`;
       updatedAt: new Date(),
     });
 
-    if (pendingCount > 0) {
+    if (pendingCount > 0 || failedCount > 0) {
       await this.store.addLog(parentTaskId, {
         level: 'warn',
         message: `Subtask execution incomplete: ${pendingCount} pending, ${failedCount} failed\n${subtaskSummaries.join('\n')}`,

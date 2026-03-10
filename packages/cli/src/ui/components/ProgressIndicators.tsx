@@ -140,16 +140,7 @@ export function ProgressBar({
         <Text color={progressColor}>{filled}</Text>
         <Text color={backgroundColor}>{empty}</Text>
         {showPercentage && (
-          <Text
-            color={progressColor}
-            {...(ariaLabel && { 'aria-label': ariaLabel })}
-            {...(announceChanges && {
-              role: 'progressbar',
-              'aria-valuenow': Math.round(clampedProgress),
-              'aria-valuemin': 0,
-              'aria-valuemax': 100
-            })}
-          >
+          <Text color={progressColor}>
             {Math.round(clampedProgress)}%
           </Text>
         )}
@@ -455,7 +446,8 @@ export function StepProgress({
     }
   };
 
-  const containerProps = ariaLabel ? { 'aria-label': ariaLabel } : {};
+  // Note: Ink doesn't support ARIA attributes directly - they need to be handled at the terminal/screen reader level
+  const containerProps = {};
 
   if (orientation === 'horizontal') {
     return (

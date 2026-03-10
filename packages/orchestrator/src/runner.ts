@@ -1894,7 +1894,7 @@ export class DaemonRunner {
         let needsRepair = false;
         let repairReason = '';
 
-        // Check 1: Parent task with pending subtasks that's stuck
+        // Check 1: Parent task with subtasks that's stuck
         if (task.subtaskIds && task.subtaskIds.length > 0 && timeSinceUpdate > stuckThresholdMs) {
           if (!this.runningTasks.has(task.id)) {
             // Query subtask statuses directly instead of loading all tasks
@@ -1902,25 +1902,60 @@ export class DaemonRunner {
             const pendingCount = subtaskStatuses.filter(s => s.status === 'pending').length;
             const inProgressCount = subtaskStatuses.filter(s => s.status === 'in-progress').length;
             const failedCount = subtaskStatuses.filter(s => s.status === 'failed').length;
+            const completedCount = subtaskStatuses.filter(s => s.status === 'completed').length;
 
-            if (pendingCount > 0 && inProgressCount === 0) {
+            if (completedCount === subtaskStatuses.length) {
+              // All subtasks completed — mark parent as completed too
+              this.log('info', `[AutoTriage] All ${completedCount} subtasks of ${task.id} completed, marking parent as completed`);
+              await this.store.updateTask(task.id, {
+                status: 'completed',
+                error: undefined,
+                completedAt: new Date(),
+                updatedAt: new Date(),
+              });
+              repairedCount++;
+              continue;
+            } else if (failedCount > 0 && inProgressCount === 0 && pendingCount === 0) {
+              // Some subtasks failed, none pending or in-progress — parent should fail
+              this.log('warn', `[AutoTriage] Task ${task.id} has ${failedCount} failed subtask(s) with none remaining, marking as failed`);
+              await this.store.updateTask(task.id, {
+                status: 'failed',
+                error: `${failedCount} subtask(s) failed`,
+                updatedAt: new Date(),
+              });
+              repairedCount++;
+              continue;
+            } else if (pendingCount > 0 && inProgressCount === 0) {
               needsRepair = true;
               repairReason = `Parent task stuck with ${pendingCount} pending subtasks (${failedCount} failed)`;
             }
+            // If subtasks are in-progress, do nothing — let them finish
           }
         }
 
         // Check 2: Task stuck in checkpoint resume loop — mark as failed to break the cycle
+        // Skip if the task has subtasks still in-progress (they may just need more time)
         if (!needsRepair && task.resumeAttempts && task.resumeAttempts >= 3) {
           if (timeSinceUpdate > stuckThresholdMs && !this.runningTasks.has(task.id)) {
-            this.log('warn', `[AutoTriage] Task ${task.id} hit max resume attempts (${task.resumeAttempts}), marking as failed`);
-            await this.store.updateTask(task.id, {
-              status: 'failed',
-              error: `AutoTriage: Task stuck after ${task.resumeAttempts} resume/repair attempts. Last error: ${(task.error ?? 'none').substring(0, 200)}`,
-              updatedAt: new Date(),
-            });
-            repairedCount++;
-            continue;
+            // Don't fail parent tasks that have in-progress or pending subtasks
+            let hasActiveSubtasks = false;
+            if (task.subtaskIds && task.subtaskIds.length > 0) {
+              const subtaskStatuses = this.store.getSubtaskStatuses(task.subtaskIds);
+              hasActiveSubtasks = subtaskStatuses.some(s => s.status === 'in-progress' || s.status === 'pending');
+            }
+
+            if (hasActiveSubtasks) {
+              this.log('info', `[AutoTriage] Task ${task.id} has ${task.resumeAttempts} resume attempts but still has active subtasks, skipping failure`);
+            } else {
+              this.log('warn', `[AutoTriage] Task ${task.id} hit max resume attempts (${task.resumeAttempts}), marking as failed`);
+              await this.store.updateTask(task.id, {
+                status: 'failed',
+                error: `AutoTriage: Task stuck after ${task.resumeAttempts} resume/repair attempts. Last error: ${(task.error ?? 'none').substring(0, 200)}`,
+                updatedAt: new Date(),
+              });
+              repairedCount++;
+              continue;
+            }
           }
         }
 

@@ -283,7 +283,7 @@ export function TaskProgress({
         {tokens && (
           <Text>
             <Text color="gray">tokens:</Text>
-            <Text color="cyan">{formatTokens(tokens.input, tokens.output)}</Text>
+            <Text color="cyan">{formatTokens(tokens.input, tokens.output)}k</Text>
           </Text>
         )}
         {cost !== undefined && (
