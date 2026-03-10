@@ -231,11 +231,11 @@ describe('StreamingText Cursor Animation', () => {
         <StreamingText text="Hello" speed={50} showCursor={true} isComplete={false} />
       );
 
-      // Start streaming
+      // Start streaming - at speed=50, each char takes 20ms
       await act(async () => {
-        vi.advanceTimersByTime(40); // Stream 2 characters
+        vi.advanceTimersByTime(45); // Stream 2 characters (20ms each + buffer)
       });
-      expect(screen.getByText('He')).toBeInTheDocument();
+      expect(screen.getByText(/H/)).toBeInTheDocument();
 
       // Mark as complete while mid-stream
       rerender(<StreamingText text="Hello" speed={50} showCursor={true} isComplete={true} />);

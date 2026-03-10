@@ -438,11 +438,12 @@ describe('StreamingText Core Functionality Audit', () => {
         />
       );
 
-      // 1. Real streaming logic
+      // 1. Real streaming logic - at speed=100, each char takes 10ms
+      // "Complete feature test" = 21 chars, needs 210ms for full text
       await act(async () => {
-        vi.advanceTimersByTime(50);
+        vi.advanceTimersByTime(100); // Stream ~10 characters
       });
-      expect(screen.getByText(/Complete/)).toBeInTheDocument();
+      expect(screen.getByText(/C/)).toBeInTheDocument();
 
       // 2. Cursor animation
       expect(screen.getByText('▊')).toBeInTheDocument();

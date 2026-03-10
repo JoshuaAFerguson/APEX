@@ -6,6 +6,7 @@
  */
 
 import { setupGlobalTestEnvironment } from '../../../../test-setup.js';
+import '@testing-library/jest-dom';
 
 // Initialize global test environment
 setupGlobalTestEnvironment();

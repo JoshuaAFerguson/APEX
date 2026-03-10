@@ -4,10 +4,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ErrorDisplay, ErrorSummary, ValidationError } from '../ErrorDisplay';
 
 // Mock the useStdoutDimensions hook
-const mockUseStdoutDimensions = vi.fn();
-vi.mock('../hooks/index.js', () => ({
-  useStdoutDimensions: mockUseStdoutDimensions,
+vi.mock('../../hooks/index.js', () => ({
+  useStdoutDimensions: vi.fn(() => ({
+    width: 80,
+    height: 24,
+    breakpoint: 'normal',
+    isNarrow: false,
+    isCompact: false,
+    isNormal: true,
+    isWide: false,
+    isAvailable: true,
+  })),
 }));
+
+const { useStdoutDimensions } = await import('../../hooks/index.js');
+const mockUseStdoutDimensions = vi.mocked(useStdoutDimensions);
 
 describe('ErrorDisplay Components - Enhanced Responsive Width Behavior', () => {
   beforeEach(() => {
