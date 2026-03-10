@@ -15,10 +15,14 @@ import {
   RenderOptions,
   RenderResult,
 } from '@testing-library/react';
+import { vi } from 'vitest';
 import { ThemeProvider } from '../context/ThemeContext.js';
 
 // Import jest-dom matchers for toBeInTheDocument, etc.
 import '@testing-library/jest-dom';
+
+// Mock useInput from ink for testing
+const mockUseInput = vi.fn();
 
 /**
  * Test wrapper component that provides theme context
@@ -45,4 +49,4 @@ function render(
 export * from '@testing-library/react';
 
 // Override render with custom render
-export { render, screen, fireEvent, waitFor, act };
+export { render, screen, fireEvent, waitFor, act, mockUseInput };

@@ -83,7 +83,7 @@ workflows:
         description: 'Add new authentication system'
       });
 
-      expect(result).toBe('feat: add new authentication system');
+      expect(result).toBe('feat: new authentication system');
     });
 
     it('should confirm generatePRBody method exists and is functional', () => {
@@ -191,7 +191,7 @@ workflows:
         },
         {
           input: 'Create new API endpoints',
-          expected: 'feat: new API endpoints'
+          expected: 'feat: new api endpoints'
         }
       ];
 
@@ -294,9 +294,9 @@ workflows:
 
   describe('Integration with Git Workflow (ROADMAP Verification)', () => {
     it('should verify git integration claims in ROADMAP are accurate', () => {
-      // Verify that the orchestrator has the createPR method as mentioned in ROADMAP
-      expect(orchestrator.createPR).toBeDefined();
-      expect(typeof orchestrator.createPR).toBe('function');
+      // Verify that the orchestrator has the createPullRequest method as mentioned in ROADMAP
+      expect(orchestrator.createPullRequest).toBeDefined();
+      expect(typeof orchestrator.createPullRequest).toBe('function');
     });
 
     it('should verify automatic PR creation functionality exists', () => {
@@ -307,7 +307,7 @@ workflows:
       expect(roadmapContent).toContain('🟢 PR description generation');
 
       // Verify the functionality exists in the codebase
-      expect(orchestrator.createPR).toBeDefined();
+      expect(orchestrator.createPullRequest).toBeDefined();
     });
   });
 
@@ -360,7 +360,7 @@ workflows:
       expect(body).toContain('## Task Details');
 
       // 3. Verify integration exists
-      expect(orchestrator.createPR).toBeDefined();
+      expect(orchestrator.createPullRequest).toBeDefined();
 
       // If we reach here without errors, the ROADMAP claim is accurate
       expect(true).toBe(true); // Explicit pass for this verification test

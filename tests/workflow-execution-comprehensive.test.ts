@@ -12,7 +12,8 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
-import * as path from 'os';
+import * as path from 'path';
+import * as os from 'os';
 import { loadWorkflows } from '@apexcli/core';
 import type { WorkflowDefinition } from '@apexcli/core';
 
@@ -21,7 +22,7 @@ describe('Comprehensive Workflow Execution Tests', () => {
   let workflowsDir: string;
 
   beforeEach(async () => {
-    testDir = await fs.mkdtemp(path.join(path.tmpdir(), 'workflow-exec-test-'));
+    testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-exec-test-'));
     workflowsDir = path.join(testDir, '.apex', 'workflows');
     await fs.mkdir(workflowsDir, { recursive: true });
   });

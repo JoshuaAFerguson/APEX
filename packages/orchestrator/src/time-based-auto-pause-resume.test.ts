@@ -301,7 +301,7 @@ describe('Time-Based Auto-Pause and Auto-Resume Functionality', () => {
   describe('Time Window Calculation', () => {
     it('should correctly identify time windows and transitions', () => {
       // Test day mode
-      let timeWindow = scheduler.getCurrentTimeWindow();
+      let timeWindow = scheduler.getCurrentTimeWindow(new Date());
       expect(timeWindow.mode).toBe('day');
       expect(timeWindow.isActive).toBe(true);
 
@@ -309,7 +309,7 @@ describe('Time-Based Auto-Pause and Auto-Resume Functionality', () => {
       vi.setSystemTime(new Date('2024-01-02T23:00:00'));
       scheduler = new DaemonScheduler(baseConfig, baseLimits, mockUsageProvider);
 
-      timeWindow = scheduler.getCurrentTimeWindow();
+      timeWindow = scheduler.getCurrentTimeWindow(new Date());
       expect(timeWindow.mode).toBe('night');
       expect(timeWindow.isActive).toBe(true);
 
@@ -317,21 +317,21 @@ describe('Time-Based Auto-Pause and Auto-Resume Functionality', () => {
       vi.setSystemTime(new Date('2024-01-02T08:00:00'));
       scheduler = new DaemonScheduler(baseConfig, baseLimits, mockUsageProvider);
 
-      timeWindow = scheduler.getCurrentTimeWindow();
+      timeWindow = scheduler.getCurrentTimeWindow(new Date());
       expect(timeWindow.mode).toBe('off-hours');
       expect(timeWindow.isActive).toBe(false); // Off-hours are typically inactive
     });
 
     it('should calculate next transition time correctly', () => {
       // At 10:30 AM, next transition should be to night mode at 10 PM
-      let timeWindow = scheduler.getCurrentTimeWindow();
+      let timeWindow = scheduler.getCurrentTimeWindow(new Date());
       expect(timeWindow.nextTransition.getHours()).toBe(22);
 
       // At 11 PM, next transition should be to next day mode
       vi.setSystemTime(new Date('2024-01-02T23:00:00'));
       scheduler = new DaemonScheduler(baseConfig, baseLimits, mockUsageProvider);
 
-      timeWindow = scheduler.getCurrentTimeWindow();
+      timeWindow = scheduler.getCurrentTimeWindow(new Date());
       // Should transition to next mode (depends on configuration)
       expect(timeWindow.nextTransition).toBeInstanceOf(Date);
       expect(timeWindow.nextTransition.getTime()).toBeGreaterThan(new Date('2024-01-02T23:00:00').getTime());
@@ -342,8 +342,8 @@ describe('Time-Based Auto-Pause and Auto-Resume Functionality', () => {
     it('should calculate capacity correctly for different modes', () => {
       // Day mode with 70% budget used
       mockUsageProvider.setDailyCost(70.0);
-      let timeWindow = scheduler.getCurrentTimeWindow();
-      let capacity = scheduler.getCapacityInfo(timeWindow);
+      let timeWindow = scheduler.getCurrentTimeWindow(new Date());
+      let capacity = scheduler.getCapacityInfo(timeWindow, new Date());
 
       expect(capacity.currentPercentage).toBe(0.70);
       expect(capacity.threshold).toBe(0.70); // Day mode threshold
@@ -353,8 +353,8 @@ describe('Time-Based Auto-Pause and Auto-Resume Functionality', () => {
       vi.setSystemTime(new Date('2024-01-02T23:00:00'));
       scheduler = new DaemonScheduler(baseConfig, baseLimits, mockUsageProvider);
 
-      timeWindow = scheduler.getCurrentTimeWindow();
-      capacity = scheduler.getCapacityInfo(timeWindow);
+      timeWindow = scheduler.getCurrentTimeWindow(new Date());
+      capacity = scheduler.getCapacityInfo(timeWindow, new Date());
 
       expect(capacity.currentPercentage).toBe(0.70);
       expect(capacity.threshold).toBe(0.90); // Night mode threshold
@@ -366,8 +366,8 @@ describe('Time-Based Auto-Pause and Auto-Resume Functionality', () => {
       mockUsageProvider.setBudget(0);
       mockUsageProvider.setDailyCost(0);
 
-      let timeWindow = scheduler.getCurrentTimeWindow();
-      let capacity = scheduler.getCapacityInfo(timeWindow);
+      let timeWindow = scheduler.getCurrentTimeWindow(new Date());
+      let capacity = scheduler.getCapacityInfo(timeWindow, new Date());
 
       expect(capacity.currentPercentage).toBe(0);
       expect(capacity.shouldPause).toBe(false);
@@ -376,7 +376,7 @@ describe('Time-Based Auto-Pause and Auto-Resume Functionality', () => {
       mockUsageProvider.setBudget(100);
       mockUsageProvider.setDailyCost(150); // 150% of budget
 
-      capacity = scheduler.getCapacityInfo(timeWindow);
+      capacity = scheduler.getCapacityInfo(timeWindow, new Date());
 
       expect(capacity.currentPercentage).toBe(1.5);
       expect(capacity.shouldPause).toBe(true);

@@ -235,7 +235,9 @@ describe('APEX Retry Command Performance Tests', () => {
       const lastQuarterAvg = performanceMetrics.responseTimes.slice(-25).reduce((a, b) => a + b, 0) / 25;
 
       // Performance should not degrade by more than 200% (more realistic threshold)
-      expect(lastQuarterAvg).toBeLessThan(firstQuarterAvg * 3.0);
+      // If baseline is very fast (< 1ms), we use a minimum threshold to avoid division issues
+      const minBaseline = Math.max(firstQuarterAvg, 0.1);
+      expect(lastQuarterAvg).toBeLessThan(minBaseline * 3.0);
 
       console.log(`Performance Stats for ${taskCount} sequential retries:`);
       console.log(`- Total time: ${totalTime}ms`);

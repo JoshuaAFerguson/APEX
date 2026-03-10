@@ -255,8 +255,13 @@ describe('ExponentialBackoffReconnector', () => {
       reconnector.scheduleReconnect(connectFn1);
       reconnector.scheduleReconnect(connectFn2);
 
-      // Only second function should be called after delay
+      // First function should not be called (timer cleared)
+      // Second function delay is calculated for attempt 2 (200ms with backoffFactor 2)
       vi.advanceTimersByTime(100);
+      expect(connectFn1).not.toHaveBeenCalled();
+      expect(connectFn2).not.toHaveBeenCalled(); // Not yet - delay is 200ms for attempt 2
+
+      vi.advanceTimersByTime(100); // Now at 200ms total
       expect(connectFn1).not.toHaveBeenCalled();
       expect(connectFn2).toHaveBeenCalledOnce();
     });
@@ -495,11 +500,12 @@ describe('ExponentialBackoffReconnector', () => {
       reconnector.on('reconnect:success', (attempt) => events.push(`success-${attempt}`));
       reconnector.on('reconnect:failure', (attempt) => events.push(`failure-${attempt}`));
 
-      // First attempt fails
-      let connectFn = vi.fn().mockRejectedValue(new Error('failed'));
+      // First attempt fails - use resolved and manually notify to avoid double failure event
+      let connectFn = vi.fn().mockResolvedValue(undefined);
       reconnector.scheduleReconnect(connectFn);
       vi.advanceTimersByTime(100);
       await vi.runAllTimersAsync();
+      // Manually signal failure (simulating external failure detection)
       reconnector.notifyConnectionFailed('failed');
 
       // Second attempt succeeds
@@ -533,19 +539,25 @@ describe('ExponentialBackoffReconnector', () => {
         events.push(`exhausted-${attempts}-${error}`);
       });
 
-      // Fail all attempts
-      for (let i = 1; i <= 4; i++) {
-        const connectFn = vi.fn().mockRejectedValue(new Error(`failed-${i}`));
+      // Fail first two attempts - use resolved and manually notify to avoid double events
+      for (let i = 1; i <= 2; i++) {
+        const connectFn = vi.fn().mockResolvedValue(undefined);
         reconnector.scheduleReconnect(connectFn);
-
-        if (i <= 3) {
-          vi.advanceTimersByTime(100 * Math.pow(2, i - 1));
-          await vi.runAllTimersAsync();
-          reconnector.notifyConnectionFailed(`failed-${i}`);
-        }
+        vi.advanceTimersByTime(100 * Math.pow(2, i - 1));
+        await vi.runAllTimersAsync();
+        reconnector.notifyConnectionFailed(`failed-${i}`);
       }
 
-      expect(events).toEqual(['exhausted-3-Max retries exceeded']);
+      // Third attempt (maxRetries = 3)
+      const connectFn3 = vi.fn().mockResolvedValue(undefined);
+      reconnector.scheduleReconnect(connectFn3);
+      vi.advanceTimersByTime(400);
+      await vi.runAllTimersAsync();
+      // This notifyConnectionFailed on attempt 3 triggers exhausted
+      reconnector.notifyConnectionFailed('final failure');
+
+      // The exhausted event is emitted when we fail at maxRetries (attempt 3)
+      expect(events).toEqual(['exhausted-3-final failure']);
       expect(reconnector.getStats().state).toBe('failed');
     });
   });

@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { ActivityLog, type ActivityLogProps, type LogEntry } from '../ActivityLog.js';
 import type { DisplayMode } from '@apexcli/core';

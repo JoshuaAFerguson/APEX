@@ -403,7 +403,14 @@ export async function loadAgents(
  */
 export function parseAgentMarkdown(content: string): AgentDefinition | null {
   try {
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    // Remove UTF-8 BOM if present
+    const cleanContent = content.replace(/^\uFEFF/, '');
+
+    // Normalize line endings to \n for consistent parsing
+    const normalizedContent = cleanContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // More flexible frontmatter regex that handles whitespace around delimiters
+    const frontmatterMatch = normalizedContent.match(/^\s*---\s*\n([\s\S]*?)\n\s*---\s*\n([\s\S]*)$/);
 
     if (!frontmatterMatch) {
       return null;
@@ -428,13 +435,21 @@ export function parseAgentMarkdown(content: string): AgentDefinition | null {
     // Parse tools from comma-separated string if needed
     let tools = metadata.tools;
     if (typeof tools === 'string') {
-      tools = tools.split(',').map((t: string) => t.trim());
+      if (tools.trim() === '') {
+        tools = undefined;
+      } else {
+        tools = tools.split(',').map((t: string) => t.trim()).filter(Boolean);
+      }
     }
 
     // Parse skills from comma-separated string if needed
     let skills = metadata.skills;
     if (typeof skills === 'string') {
-      skills = skills.split(',').map((s: string) => s.trim());
+      if (skills.trim() === '') {
+        skills = undefined;
+      } else {
+        skills = skills.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
     }
 
     const agentDef = {

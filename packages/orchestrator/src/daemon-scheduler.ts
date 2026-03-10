@@ -126,9 +126,11 @@ export class DaemonScheduler {
 
     let reason: string | undefined;
     if (!timeWindow.isActive) {
-      reason = `Outside active time window (${timeWindow.mode} mode)`;
+      reason = `Currently in ${timeWindow.mode}`;
     } else if (capacity.shouldPause) {
       reason = capacity.reason;
+    } else {
+      reason = 'Tasks can proceed normally';
     }
 
     // Generate recommendations
@@ -149,12 +151,12 @@ export class DaemonScheduler {
    */
   getCurrentTimeWindow(now: Date): TimeWindow {
     if (!this.config.timeBasedUsage?.enabled) {
-      // When time-based usage is disabled, always be active (no time-based pausing)
+      // When time-based usage is disabled, treat as off-hours mode
       return {
-        mode: 'day', // Treat as always in day mode
+        mode: 'off-hours',
         startHour: 0,
         endHour: 23,
-        isActive: true, // Always active when time-based usage is disabled
+        isActive: true, // Still active but in off-hours mode for usage tracking
         nextTransition: this.getNextMidnight(now),
       };
     }
@@ -222,7 +224,9 @@ export class DaemonScheduler {
     let reason: string | undefined;
 
     if (shouldPause) {
-      reason = `Capacity threshold exceeded (${(currentPercentage * 100).toFixed(1)}% >= ${(threshold * 100).toFixed(1)}%)`;
+      const percentageStr = Math.round(currentPercentage * 100);
+      const thresholdStr = Math.round(threshold * 100);
+      reason = `Daily budget usage (${percentageStr}%) exceeds ${timeWindow.mode} mode threshold (${thresholdStr}%)`;
     }
 
     return {

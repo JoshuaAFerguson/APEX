@@ -111,3 +111,6 @@ export * from './symbol-resolver';
 // Test Setup Utilities
 // Note: test-setup-utils is not exported from the main package as it depends on vitest
 // Import directly from '@apex/core/test-setup-utils' or '@apex/core/src/test-setup-utils' for test files
+
+// Audit Tools
+export * from './audits/v020-documentation-auditor';

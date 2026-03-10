@@ -143,7 +143,7 @@ export function ActivityLog({
   const [filter, setFilter] = useState('');
   const [collapsedEntries, setCollapsedEntries] = useState(new Set<string>());
 
-  const levelOrder = { debug: 0, info: 1, warn: 2, error: 3, success: 1 };
+  const levelOrder = { debug: 0, info: 1, warn: 2, error: 3, success: 4 };
 
   // Determine effective filter level - auto-set to debug in verbose mode
   const effectiveFilterLevel = displayMode === 'verbose'
@@ -253,7 +253,7 @@ export function ActivityLog({
                 </Box>
 
                 {/* Expanded data */}
-                {((displayMode === 'verbose' && entry.data && Object.keys(entry.data).length > 0) || (!isCollapsed && entry.data && Object.keys(entry.data).length > 0)) && (
+                {(displayMode === 'verbose' ? (entry.data && Object.keys(entry.data).length > 0) : (!isCollapsed && entry.data && Object.keys(entry.data).length > 0)) && (
                   <Box marginLeft={showTimestamps ? 12 : 4} flexDirection="column">
                     {Object.entries(entry.data).map(([key, value]) => (
                       <Text key={key} color="gray" dimColor>

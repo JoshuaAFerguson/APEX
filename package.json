@@ -133,5 +133,8 @@
     "ci-cd"
   ],
   "author": "Joshua A. Ferguson",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "openai": "^6.27.0"
+  }
 }

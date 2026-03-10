@@ -98,7 +98,7 @@ describe('PR Description Generation - Implementation Audit', () => {
       // Verify comprehensive test cases
       expect(content).toContain('should generate correct prefixes for all supported workflows');
       expect(content).toContain('should include all required sections in PR body');
-      expect(content).toContain('should handle undefined or null values gracefully');
+      expect(content).toContain('should handle undefined values by throwing appropriate errors');
     });
 
     it('should verify roadmap verification test exists', () => {
