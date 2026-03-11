@@ -59,7 +59,7 @@ export class SessionManager extends EventEmitter<SessionManagerEvents> {
     const checkpoint: TaskCheckpoint = {
       taskId: task.id,
       checkpointId,
-      stage: task.currentStage,
+      stage: task.currentStage || 'unknown',
       stageIndex: this.getStageIndex(task),
       conversationState: conversationHistory,
       metadata: {
@@ -72,7 +72,7 @@ export class SessionManager extends EventEmitter<SessionManagerEvents> {
     };
 
     // Save checkpoint to file
-    const checkpointPath = join(this.checkpointDir, `${checkpointId}.json`);
+    const checkpointPath = join(this.checkpointDir, `${task.id}-${Date.now()}.json`);
     await fs.writeFile(checkpointPath, JSON.stringify(checkpoint, null, 2), 'utf-8');
 
     // Update task session data
@@ -278,9 +278,17 @@ export class SessionManager extends EventEmitter<SessionManagerEvents> {
     try {
       const files = await fs.readdir(this.checkpointDir);
       const taskCheckpoints = files
-        .filter(file => file.startsWith(taskId) && file.endsWith('.json'))
-        .sort()
-        .reverse(); // Most recent first
+        .filter(file => file.startsWith(taskId + '-') && file.endsWith('.json'))
+        .map(file => {
+          // Extract timestamp from filename: taskId-timestamp.json
+          const timestampMatch = file.match(/^.+-(\d+)\.json$/);
+          return {
+            file,
+            timestamp: timestampMatch ? parseInt(timestampMatch[1], 10) : 0
+          };
+        })
+        .sort((a, b) => b.timestamp - a.timestamp) // Most recent first
+        .map(item => item.file);
 
       if (taskCheckpoints.length === 0) {
         return null;
@@ -365,10 +373,8 @@ export class SessionManager extends EventEmitter<SessionManagerEvents> {
       return false;
     }
 
-    // Check if stage information is available
-    if (!checkpoint.stage) {
-      return false;
-    }
+    // Stage information is optional for basic resumption
+    // (more sophisticated workflow systems would require this)
 
     return true;
   }
