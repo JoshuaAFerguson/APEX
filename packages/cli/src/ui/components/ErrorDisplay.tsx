@@ -194,7 +194,7 @@ export function ErrorDisplay({
       {/* Error message */}
       <Box marginBottom={1}>
         <Text color="red" wrap="wrap">
-          {errorMessage}
+          {truncateMessage(errorMessage, messageMaxLength)}
         </Text>
       </Box>
 
