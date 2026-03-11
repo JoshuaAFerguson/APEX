@@ -4,16 +4,17 @@ import { render, screen } from '../../../__tests__/test-utils';
 import { SubtaskTree, SubtaskNode } from '../SubtaskTree';
 
 // Mock useInput from ink to simulate keyboard interactions
-const mockUseInput = vi.fn();
-
-// Mock the ink module
 vi.mock('ink', async () => {
   const actual = await vi.importActual('ink');
   return {
     ...actual,
-    useInput: mockUseInput,
+    useInput: vi.fn(),
   };
 });
+
+// Get the mocked useInput function
+import { useInput } from 'ink';
+const mockUseInput = vi.mocked(useInput);
 
 describe('SubtaskTree - Keyboard Navigation', () => {
   beforeEach(() => {

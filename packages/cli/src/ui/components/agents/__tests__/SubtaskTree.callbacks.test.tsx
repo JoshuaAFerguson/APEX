@@ -4,15 +4,17 @@ import { render, screen } from '../../../__tests__/test-utils';
 import { SubtaskTree, SubtaskNode } from '../SubtaskTree';
 
 // Mock useInput from ink
-const mockUseInput = vi.fn();
-
 vi.mock('ink', async () => {
   const actual = await vi.importActual('ink');
   return {
     ...actual,
-    useInput: mockUseInput,
+    useInput: vi.fn(),
   };
 });
+
+// Get the mocked useInput function
+import { useInput } from 'ink';
+const mockUseInput = vi.mocked(useInput);
 
 describe('SubtaskTree - Callback Interaction Tests', () => {
   beforeEach(() => {

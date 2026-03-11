@@ -7667,7 +7667,7 @@ Parent: ${parentTask.description}`;
    * passed to the SDK's query(), which kills the spawned claude subprocess
    * and its entire process tree (shell snapshots, npm test, vitest, etc.).
    */
-  private abortTaskProcess(taskId: string): void {
+  abortTaskProcess(taskId: string): void {
     const controller = this.taskAbortControllers.get(taskId);
     if (controller) {
       try {

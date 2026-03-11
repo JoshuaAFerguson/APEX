@@ -1907,6 +1907,7 @@ export class DaemonRunner {
             if (completedCount === subtaskStatuses.length) {
               // All subtasks completed — mark parent as completed too
               this.log('info', `[AutoTriage] All ${completedCount} subtasks of ${task.id} completed, marking parent as completed`);
+              this.orchestrator!.abortTaskProcess(task.id);
               await this.store.updateTask(task.id, {
                 status: 'completed',
                 error: undefined,
@@ -1918,6 +1919,7 @@ export class DaemonRunner {
             } else if (failedCount > 0 && inProgressCount === 0 && pendingCount === 0) {
               // Some subtasks failed, none pending or in-progress — parent should fail
               this.log('warn', `[AutoTriage] Task ${task.id} has ${failedCount} failed subtask(s) with none remaining, marking as failed`);
+              this.orchestrator!.abortTaskProcess(task.id);
               await this.store.updateTask(task.id, {
                 status: 'failed',
                 error: `${failedCount} subtask(s) failed`,
@@ -1948,6 +1950,7 @@ export class DaemonRunner {
               this.log('info', `[AutoTriage] Task ${task.id} has ${task.resumeAttempts} resume attempts but still has active subtasks, skipping failure`);
             } else {
               this.log('warn', `[AutoTriage] Task ${task.id} hit max resume attempts (${task.resumeAttempts}), marking as failed`);
+              this.orchestrator!.abortTaskProcess(task.id);
               await this.store.updateTask(task.id, {
                 status: 'failed',
                 error: `AutoTriage: Task stuck after ${task.resumeAttempts} resume/repair attempts. Last error: ${(task.error ?? 'none').substring(0, 200)}`,
@@ -1968,6 +1971,7 @@ export class DaemonRunner {
               // Task has been repaired multiple times but keeps ending up with checkpoint error.
               // Mark it as failed to break the infinite loop.
               this.log('warn', `[AutoTriage] Task ${task.id} stuck in checkpoint repair loop (${task.resumeAttempts} attempts), marking as failed`);
+              this.orchestrator!.abortTaskProcess(task.id);
               await this.store.updateTask(task.id, {
                 status: 'failed',
                 error: `AutoTriage: Task stuck in checkpoint resume loop after ${task.resumeAttempts} repair attempts. Original: ${task.error.substring(0, 200)}`,
@@ -2134,8 +2138,21 @@ export class DaemonRunner {
         }
 
         // Orphaned node processes referencing our project (not daemon, not MCP)
+        // On macOS, orphaned processes get reparented to PID 1 (launchd)
         if (info.ppid === 1 && args.includes('node') && args.includes(this.options.projectPath) &&
             !args.includes('daemon-entry') && !args.includes('mcp-server')) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned CLI processes (apex init, apex run, etc.) not descended from daemon
+        if (args.includes('/packages/cli/dist/index.js') && args.includes(this.options.projectPath)) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned tsc processes from build checks
+        if (args.includes('tsc') && args.includes(this.options.projectPath)) {
           killPids.push(pid);
           continue;
         }
