@@ -11016,6 +11016,9 @@ export type TestFrameworkInfo = z.infer<typeof TestFrameworkInfoSchema>;
  */
 export const ProjectContextSchema = z.object({
   /** Git repository status (if applicable) */
+  git: GitStatusSchema.optional(),
+
+  /** Git repository status (if applicable) - kept for backward compatibility */
   gitStatus: GitStatusSchema.optional(),
 
   /** Project directory structure */
