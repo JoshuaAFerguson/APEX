@@ -116,8 +116,7 @@ export {
 export {
   goto,
   waitForNavigation,
-  assertURL,
-  assertPageContent
+  assertURL
 } from '../navigation-helpers.js';
 
 export type {

@@ -266,6 +266,77 @@ export const HTTP_SERVER: MarketplaceEntry = {
 };
 
 // ============================================================================
+// Error Scenario Fixtures (moved before collections)
+// ============================================================================
+
+/**
+ * Server with conflicting configuration
+ */
+export const CONFLICTING_SERVER: MarketplaceEntry = {
+  name: 'conflicting',
+  description: 'Server with conflicting type and config',
+  version: '1.0.0',
+  verified: false,
+  serverConfig: {
+    name: 'conflicting',
+    type: 'http',
+    command: 'should-not-be-here-for-http', // Conflict: command with http type
+    url: 'http://localhost:3000',
+    autoStart: false,
+  },
+};
+
+/**
+ * Server with intentionally invalid config (empty name)
+ */
+export const INVALID_CONFIG_SERVER: MarketplaceEntry = {
+  name: 'invalid-config',
+  description: 'Server with intentionally invalid config',
+  version: '0.0.1',
+  verified: false,
+  category: 'test',
+  serverConfig: { name: '', type: 'stdio' as const }, // Empty name = invalid
+};
+
+/**
+ * Server requiring unavailable dependencies
+ */
+export const MISSING_DEPS_SERVER: MarketplaceEntry = {
+  name: 'missing-deps',
+  description: 'Server requiring unavailable dependencies',
+  version: '1.0.0',
+  verified: false,
+  category: 'test',
+  serverConfig: {
+    name: 'missing-deps',
+    type: 'stdio' as const,
+    command: '/nonexistent/binary',
+    args: ['--nonexistent-option'],
+    env: {},
+    autoStart: false,
+  },
+};
+
+/**
+ * Server with malformed configuration (for corrupt YAML testing)
+ */
+export const MALFORMED_CONFIG_SERVER: MarketplaceEntry = {
+  name: 'malformed-config',
+  description: 'Server designed to create malformed config',
+  version: '1.0.0',
+  verified: false,
+  category: 'test',
+  serverConfig: {
+    name: 'malformed\nconfig\ttab', // Invalid characters that will break YAML
+    type: 'stdio' as const,
+    command: 'echo',
+    args: ['test'],
+    env: {},
+    autoStart: false,
+  },
+};
+
+// ============================================================================
 // Predefined Collections
 // ============================================================================
 
@@ -526,7 +597,7 @@ export function createBaseApexConfig(mcpServers?: Record<string, ServerConfig>):
 }
 
 // ============================================================================
-// Error Scenario Fixtures
+// Additional Error Scenario Fixtures
 // ============================================================================
 
 /**
@@ -552,73 +623,6 @@ export const INVALID_CONFIG_NO_COMMAND: ServerConfig = {
   // command intentionally missing
   args: [],
   env: {},
-};
-
-/**
- * Server with conflicting configuration
- */
-export const CONFLICTING_SERVER: MarketplaceEntry = {
-  name: 'conflicting',
-  description: 'Server with conflicting type and config',
-  version: '1.0.0',
-  verified: false,
-  serverConfig: {
-    name: 'conflicting',
-    type: 'http',
-    command: 'should-not-be-here-for-http', // Conflict: command with http type
-    url: 'http://localhost:3000',
-    autoStart: false,
-  },
-};
-
-/**
- * Server with intentionally invalid config (empty name)
- */
-export const INVALID_CONFIG_SERVER: MarketplaceEntry = {
-  name: 'invalid-config',
-  description: 'Server with intentionally invalid config',
-  version: '0.0.1',
-  verified: false,
-  category: 'test',
-  serverConfig: { name: '', type: 'stdio' as const }, // Empty name = invalid
-};
-
-/**
- * Server requiring unavailable dependencies
- */
-export const MISSING_DEPS_SERVER: MarketplaceEntry = {
-  name: 'missing-deps',
-  description: 'Server requiring unavailable dependencies',
-  version: '1.0.0',
-  verified: false,
-  category: 'test',
-  serverConfig: {
-    name: 'missing-deps',
-    type: 'stdio' as const,
-    command: '/nonexistent/binary',
-    args: ['--nonexistent-option'],
-    env: {},
-    autoStart: false,
-  },
-};
-
-/**
- * Server with malformed configuration (for corrupt YAML testing)
- */
-export const MALFORMED_CONFIG_SERVER: MarketplaceEntry = {
-  name: 'malformed-config',
-  description: 'Server designed to create malformed config',
-  version: '1.0.0',
-  verified: false,
-  category: 'test',
-  serverConfig: {
-    name: 'malformed\nconfig\ttab', // Invalid characters that will break YAML
-    type: 'stdio' as const,
-    command: 'echo',
-    args: ['test'],
-    env: {},
-    autoStart: false,
-  },
 };
 
 // ============================================================================

@@ -41,7 +41,7 @@ describe('v0.6.0 Context & Memory Features Validation', () => {
   let analyzer: ProjectContextAnalyzer;
 
   beforeEach(() => {
-    analyzer = new ProjectContextAnalyzer();
+    analyzer = new ProjectContextAnalyzer(projectRoot);
     vi.clearAllMocks();
   });
 
@@ -573,15 +573,28 @@ describe('v0.6.0 Context & Memory Features Validation', () => {
       expect(() => GitStatusSchema.parse(testGitStatus)).not.toThrow();
 
       const testFramework: FrameworkDetection = {
-        name: 'Test Framework',
-        version: '1.0.0',
-        category: 'testing',
-        language: 'typescript',
+        frameworks: [
+          {
+            name: 'Test Framework',
+            version: '1.0.0',
+            category: 'testing',
+            language: 'typescript',
+            runtime: 'node',
+            packageManager: 'npm',
+            confidence: 'high',
+            detectionReasons: ['package.json dependency'],
+            configFiles: ['test.config.js'],
+          }
+        ],
+        languages: [
+          {
+            name: 'TypeScript',
+            extensions: ['.ts', '.tsx'],
+            percentage: 100,
+          }
+        ],
         runtime: 'node',
         packageManager: 'npm',
-        confidence: 'high',
-        detectionReasons: ['package.json dependency'],
-        configFiles: ['test.config.js'],
       };
 
       expect(() => FrameworkDetectionSchema.parse(testFramework)).not.toThrow();

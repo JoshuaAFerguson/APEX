@@ -56,15 +56,17 @@ export function ToolCall({
 
   const formatInput = (input: Record<string, unknown>): string => {
     // Show a brief summary of the input
-    const keys = Object.keys(input);
+    const keys = Object.keys(input).slice(0, 5); // Limit keys reviewed
     if (keys.length === 0) return '';
 
     const firstKey = keys[0];
+    // Sanitize key to prevent terminal injection
+    const sanitizedKey = firstKey.replace(/[^\w\-:]/g, '_').substring(0, 30);
     const firstValue = input[firstKey];
 
     if (typeof firstValue === 'string') {
       const truncated = firstValue.length > 50 ? firstValue.slice(0, 50) + '...' : firstValue;
-      return `${firstKey}: "${truncated}"`;
+      return `${sanitizedKey}: "${truncated}"`;
     }
 
     return `${keys.length} params`;

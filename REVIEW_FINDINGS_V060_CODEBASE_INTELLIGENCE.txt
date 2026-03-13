@@ -1,0 +1,170 @@
+CODE REVIEW FINDINGS - v0.6.0 Codebase Intelligence Features
+==============================================================
+Date: March 10, 2025
+Branch: apex/mlsaya99-implement-v060-features
+Build Status: PASSED ✅
+Test Status: 1 FAILED, 14 FAILED (15 failures / ~250 tests)
+
+=== CRITICAL FINDINGS ===
+
+[HIGH] semantic-search.ts:463 - Missing Strategy Parameter in Score Calculation
+├─ Type: Logic Error / Bug
+├─ Impact: Search results ignore user-provided strategy option
+├─ Tests Affected: 8+ failing tests showing empty search results
+├─ Code:
+│  private getScoreBreakdown(...): ScoreBreakdown {
+│    return this.calculateScore(symbol, queryTokens, includeDocumentation, 'semantic');
+│    ↑ Hardcoded strategy, should pass through from search() method
+│  }
+└─ Fix: Add strategy parameter and pass through call chain
+
+[MEDIUM] semantic-search.ts:514 - Null Reference Error in symbolToQuery()
+├─ Type: Null Reference / Runtime Error
+├─ Impact: Crashes when finding similar symbols
+├─ Error: TypeError: Cannot read properties of undefined (reading 'name')
+├─ Code:
+│  private symbolToQuery(symbol: CodeSymbol): string {
+│    const parts = [symbol.name, symbol.type];  // ← Crashes if symbol is undefined
+│  }
+└─ Fix: Add defensive guard clause before accessing symbol properties
+
+[MEDIUM] indexer.ts:382-390 - Inefficient File Discovery Pattern Matching
+├─ Type: Performance / Logic Error
+├─ Impact: Duplicate file entries, slow indexing
+├─ Tests Affected: 1 failing (glob pattern error handling)
+├─ Problem: Creates redundant patterns like "**/*.ts*.ts"
+├─ Evidence: Test expects 1 file but discovers 2
+└─ Fix: Simplify pattern generation to avoid double extensions
+
+=== MEDIUM SEVERITY ISSUES ===
+
+[MEDIUM] indexer.ts:550 - Missing Error Type Handling
+├─ Type: Error Handling / Type Safety
+├─ Issue: ExtractionError check on weakly-typed error variable
+├─ Location: Line 550-551 in processFile() method
+└─ Impact: Reduces error handling robustness
+
+=== LOW SEVERITY ISSUES ===
+
+[LOW] semantic-search.ts:728-735 - Stop Words Set Recreation
+├─ Type: Code Quality / Performance
+├─ Issue: New Set created on every isStopWord() call
+├─ Impact: Unnecessary memory allocations during searches
+└─ Fix: Move to class-level constant
+
+[LOW] symbol-resolver.ts:543 - Naive Glob Pattern Matching
+├─ Type: Code Quality / Completeness
+├─ Issue: Simple regex-based glob doesn't handle all patterns
+├─ Missing: ? (single char), [...] (ranges), negation patterns
+└─ Recommendation: Use minimatch library
+
+[LOW] type-awareness-analyzer.ts:629-656 - Over-Engineered Type Enrichment
+├─ Type: Code Quality / Complexity
+├─ Issue: Complex object rebuilding in enrichFileWithTypeInfo()
+├─ Impact: Memory overhead for large files
+└─ Recommendation: Use incremental enrichment
+
+=== BUILD & TEST RESULTS ===
+
+Build Status: ✅ PASSED
+All 7 packages compiled successfully:
+- @apexcli/browser: cache hit
+- @apex/test-utils: cache hit
+- @apexcli/orchestrator: cache hit
+- @apexcli/web-ui: cache hit
+- @apexcli/api: cache hit
+- @apexcli/cli: cache hit
+- @apexcli/core: cache hit
+
+Test Results:
+├─ packages/orchestrator/src/codebase-intelligence/__tests__/indexer.test.ts
+│  ├─ Passed: 23/24 tests (96%)
+│  └─ Failed: 1 test (glob pattern error handling)
+└─ packages/orchestrator/src/codebase-intelligence/__tests__/semantic-search.test.ts
+   ├─ Passed: 9/23 tests (39%)
+   └─ Failed: 14 tests
+      ├─ "should use different search strategies" - Issue #1
+      ├─ "should find symbols similar to a given symbol" - Issue #2
+      ├─ "should find similar functions with similar signatures" - Issue #2
+      ├─ "should find symbols matching code patterns" - Issue #1
+      ├─ "should extract patterns from class definitions" - Issue #1
+      ├─ "should handle async function patterns" - Issue #1
+      ├─ "should give higher scores for exact matches" - Issue #1
+      └─ "should provide detailed score breakdown" - Issue #1
+
+=== FILES MODIFIED ===
+
+Modified Files (7):
+1. TURBOREPO_AUDIT_TEST_REPORT.md
+2. docs/adr/ADR-048-agentpanel-audit-technical-design.md
+3. docs/audits/output-components-audit.md
+4. packages/cli/src/ui/components/__tests__/narrow-terminal-edge-cases.test.tsx
+5. packages/cli/src/ui/components/agents/__tests__/SubtaskTree.test.tsx
+6. packages/core/src/types.ts
+7. packages/orchestrator/src/codebase-intelligence/__tests__/indexer.test.ts
+8. packages/orchestrator/src/runner.ts
+9. undefined/apex.db (SQLite)
+10. undefined/apex.db-shm
+11. undefined/apex.db-wal
+
+=== IMPLEMENTATION VERIFICATION ===
+
+v0.6.0 Feature Checklist:
+✅ Repository Map Generation - Working with minor bugs
+✅ Multi-Language Indexing - Supports TypeScript, JavaScript, Python, Go, Java, Rust
+✅ Semantic Search - Implemented but non-functional due to bugs
+✅ Symbol Resolution - Working correctly
+✅ Tree-Sitter Integration - Successfully parsing multiple languages
+✅ Type Awareness Analysis - TypeScript type analysis implemented
+✅ Error Handling - Good with some edge cases missed
+
+=== SECURITY ASSESSMENT ===
+
+✅ No critical security vulnerabilities found
+✅ Input validation present
+✅ File size limits enforced
+✅ No hardcoded secrets or credentials
+✅ Proper error message handling
+
+=== RECOMMENDATIONS ===
+
+IMMEDIATE ACTIONS (Must fix before merge):
+1. Fix semantic-search.ts:463 - Add strategy parameter to getScoreBreakdown()
+   Effort: ~10 minutes | Impact: Fixes 8+ failing tests
+2. Fix semantic-search.ts:514 - Add null checks in symbolToQuery()
+   Effort: ~5 minutes | Impact: Prevents runtime crashes
+3. Fix indexer.ts:382-390 - Simplify glob pattern generation
+   Effort: ~15 minutes | Impact: Fixes file discovery test
+
+NEAR-TERM IMPROVEMENTS (Next sprint):
+4. Refactor stop words handling - Move Set to class constant
+5. Improve glob pattern matching - Consider minimatch library
+6. Optimize type enrichment - Use incremental approach
+
+=== MERGE RECOMMENDATION ===
+
+Status: 🔴 DO NOT MERGE
+
+Reason: Critical bugs (High severity issue #1) prevent core functionality from working.
+14 tests failing indicates incomplete feature implementation.
+
+Once the three immediate action items are completed, re-run tests and provide updated
+review. Expected outcome after fixes: 23/23 indexer tests passing, 23/23 semantic
+search tests passing.
+
+=== CODE QUALITY METRICS ===
+
+Architecture:        ⭐⭐⭐⭐  (Excellent modularity)
+Error Handling:      ⭐⭐⭐    (Good but with gaps)
+Testing:             ⭐⭐⭐    (Comprehensive but failing)
+Documentation:       ⭐⭐⭐⭐  (Excellent JSDoc)
+Type Safety:         ⭐⭐⭐    (Good with some gaps)
+Performance:         ⭐⭐⭐    (Good with optimization opportunities)
+Security:            ⭐⭐⭐⭐  (No issues found)
+
+Overall Assessment: Architecture is excellent, implementation has critical bugs
+that must be fixed. Once corrected, this feature will provide valuable codebase
+analysis capabilities.
+
+---
+Report completed: March 10, 2025, 23:45 UTC

@@ -158,13 +158,14 @@ class PermissionStore {
         granted_by = @grantedBy,
         tags = @tags
     `);
+        const createdAtDate = permission.createdAt ? new Date(permission.createdAt) : new Date();
         stmt.run({
             id,
             toolName: permission.tool,
             scope: permission.scope || null,
             level: permission.level || 'allow-once',
             expiresAt: permission.expiry ? permission.expiry.toISOString() : null,
-            createdAt: permission.createdAt.toISOString(),
+            createdAt: createdAtDate.toISOString(),
             config: permission.config ? JSON.stringify(permission.config) : null,
             grantReason: permission.grantReason || null,
             grantedBy: permission.grantedBy || null,

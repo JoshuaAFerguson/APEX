@@ -415,21 +415,11 @@ export function validateTestConfig(config: BrowserAutomationTestConfig): {
 }
 
 // ============================================================================
-// Exports
+// Re-export types for convenience
 // ============================================================================
 
 export type {
   BrowserAutomationTestConfig,
   BrowserPermissionSimulatorConfig,
   BrowserMockConfig,
-};
-
-export {
-  DEVELOPMENT_CONFIG,
-  CI_CONFIG,
-  PERFORMANCE_CONFIG,
-  PERMISSION_TESTING_CONFIG,
-  CROSS_BROWSER_CONFIGS,
-  PERMISSION_TEST_PRESETS,
-  BROWSER_MOCK_PRESETS,
 };

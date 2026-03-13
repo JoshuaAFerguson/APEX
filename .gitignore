@@ -69,3 +69,12 @@ docs/reports/
 # Temp directories
 temp/
 :memory:/
+
+# Errant database directories (created by undefined projectPath bug)
+undefined/
+
+# SQLite database files (should never be committed)
+*.db
+*.db-shm
+*.db-wal
+!packages/**/migrations/**/*.db

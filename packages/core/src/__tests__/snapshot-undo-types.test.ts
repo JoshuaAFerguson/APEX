@@ -17,7 +17,10 @@ describe('FileSnapshot', () => {
         id: 'snapshot-123',
         filePath: '/home/user/project/src/main.ts',
         content: 'console.log("Hello World");',
-        timestamp: new Date('2024-01-01T10:00:00.000Z'),
+        checksum: 'abc123hash',
+        fileSize: 27,
+        lastModified: new Date('2024-01-01T09:00:00.000Z'),
+        snapshotTime: new Date('2024-01-01T10:00:00.000Z'),
         existed: true,
       };
 
@@ -27,7 +30,7 @@ describe('FileSnapshot', () => {
         expect(result.data.id).toBe('snapshot-123');
         expect(result.data.filePath).toBe('/home/user/project/src/main.ts');
         expect(result.data.content).toBe('console.log("Hello World");');
-        expect(result.data.timestamp).toEqual(new Date('2024-01-01T10:00:00.000Z'));
+        expect(result.data.snapshotTime).toEqual(new Date('2024-01-01T10:00:00.000Z'));
         expect(result.data.existed).toBe(true);
       }
     });
@@ -37,7 +40,10 @@ describe('FileSnapshot', () => {
         id: 'snapshot-new-file',
         filePath: '/home/user/project/src/newfile.ts',
         content: '',
-        timestamp: new Date('2024-01-01T10:00:00.000Z'),
+        checksum: 'emptyhash',
+        fileSize: 0,
+        lastModified: new Date('2024-01-01T09:00:00.000Z'),
+        snapshotTime: new Date('2024-01-01T10:00:00.000Z'),
         existed: false,
       };
 
@@ -54,7 +60,10 @@ describe('FileSnapshot', () => {
         id: 'snapshot-default',
         filePath: '/home/user/project/src/main.ts',
         content: 'console.log("Hello World");',
-        timestamp: new Date('2024-01-01T10:00:00.000Z'),
+        checksum: 'abc123hash',
+        fileSize: 27,
+        lastModified: new Date('2024-01-01T09:00:00.000Z'),
+        snapshotTime: new Date('2024-01-01T10:00:00.000Z'),
       };
 
       const result = FileSnapshotSchema.safeParse(snapshotWithoutExisted);
@@ -69,7 +78,10 @@ describe('FileSnapshot', () => {
         id: 'snapshot-with-metadata',
         filePath: '/home/user/project/src/main.ts',
         content: 'console.log("Hello World");',
-        timestamp: new Date('2024-01-01T10:00:00.000Z'),
+        checksum: 'abc123hash',
+        fileSize: 27,
+        lastModified: new Date('2024-01-01T09:00:00.000Z'),
+        snapshotTime: new Date('2024-01-01T10:00:00.000Z'),
         existed: true,
         metadata: {
           size: 25,
@@ -96,7 +108,10 @@ describe('FileSnapshot', () => {
           data: {
             filePath: '/path/to/file',
             content: 'content',
-            timestamp: new Date(),
+            checksum: 'hash',
+            fileSize: 7,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
           },
         },
         {
@@ -105,7 +120,10 @@ describe('FileSnapshot', () => {
             id: '',
             filePath: '/path/to/file',
             content: 'content',
-            timestamp: new Date(),
+            checksum: 'hash',
+            fileSize: 7,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
           },
         },
         {
@@ -113,7 +131,10 @@ describe('FileSnapshot', () => {
           data: {
             id: 'snapshot-1',
             content: 'content',
-            timestamp: new Date(),
+            checksum: 'hash',
+            fileSize: 7,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
           },
         },
         {
@@ -122,7 +143,10 @@ describe('FileSnapshot', () => {
             id: 'snapshot-1',
             filePath: '',
             content: 'content',
-            timestamp: new Date(),
+            checksum: 'hash',
+            fileSize: 7,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
           },
         },
         {
@@ -130,24 +154,32 @@ describe('FileSnapshot', () => {
           data: {
             id: 'snapshot-1',
             filePath: '/path/to/file',
-            timestamp: new Date(),
+            checksum: 'hash',
+            fileSize: 7,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
           },
         },
         {
-          name: 'missing timestamp',
+          name: 'missing checksum',
           data: {
             id: 'snapshot-1',
             filePath: '/path/to/file',
             content: 'content',
+            fileSize: 7,
+            lastModified: new Date(),
+            snapshotTime: new Date(),
           },
         },
         {
-          name: 'invalid timestamp',
+          name: 'missing snapshotTime',
           data: {
             id: 'snapshot-1',
             filePath: '/path/to/file',
             content: 'content',
-            timestamp: 'invalid-date',
+            checksum: 'hash',
+            fileSize: 7,
+            lastModified: new Date(),
           },
         },
       ];
@@ -165,7 +197,10 @@ describe('FileSnapshot', () => {
         id: 'snapshot-123',
         filePath: '/path/to/file.ts',
         content: 'const x = 1;',
-        timestamp: new Date(),
+        checksum: 'abc123hash',
+        fileSize: 12,
+        lastModified: new Date(),
+        snapshotTime: new Date(),
         existed: true,
         metadata: { size: 100 },
       };
@@ -174,7 +209,7 @@ describe('FileSnapshot', () => {
       expect(typeof snapshot.id).toBe('string');
       expect(typeof snapshot.filePath).toBe('string');
       expect(typeof snapshot.content).toBe('string');
-      expect(snapshot.timestamp).toBeInstanceOf(Date);
+      expect(snapshot.snapshotTime).toBeInstanceOf(Date);
       expect(typeof snapshot.existed).toBe('boolean');
       expect(typeof snapshot.metadata).toBe('object');
     });
@@ -187,7 +222,10 @@ describe('ToolActionSnapshot', () => {
       id: 'file-snapshot-1',
       filePath: '/home/user/project/src/main.ts',
       content: 'console.log("Hello World");',
-      timestamp: new Date('2024-01-01T10:00:00.000Z'),
+      checksum: 'abc123hash',
+      fileSize: 27,
+      lastModified: new Date('2024-01-01T09:00:00.000Z'),
+      snapshotTime: new Date('2024-01-01T10:00:00.000Z'),
       existed: true,
     };
 
@@ -221,7 +259,10 @@ describe('ToolActionSnapshot', () => {
             id: 'file-snapshot-2',
             filePath: '/home/user/project/src/utils.ts',
             content: 'export function helper() {}',
-            timestamp: new Date('2024-01-01T10:01:00.000Z'),
+            checksum: 'def456hash',
+            fileSize: 27,
+            lastModified: new Date('2024-01-01T09:30:00.000Z'),
+            snapshotTime: new Date('2024-01-01T10:01:00.000Z'),
             existed: true,
           },
         ],

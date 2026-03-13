@@ -40,9 +40,10 @@ const getStackTraceConfig = (
     wide: { normal: 8, verbose: Infinity }, // Infinity = show all
   };
 
+  const breakpointConfig = config[breakpoint] ?? config.normal;
   const maxLines = verbose
-    ? config[breakpoint].verbose
-    : config[breakpoint].normal;
+    ? breakpointConfig.verbose
+    : breakpointConfig.normal;
 
   return {
     maxLines,

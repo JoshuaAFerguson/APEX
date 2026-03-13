@@ -2862,6 +2862,15 @@ export const DaemonConfigSchema = z.object({
     // Only restart root parent tasks, let orchestrator manage children
     restartParentOnly: z.boolean().optional().default(true),
   }).optional(),
+  // Process resource controls
+  processLimits: z.object({
+    /** Nice level for task subprocesses (0-19, higher = lower priority). Default 10. */
+    niceLevel: z.number().min(0).max(19).optional().default(10),
+    /** Nice level for integrated services (API, WebUI). Default 15. */
+    serviceNiceLevel: z.number().min(0).max(19).optional().default(15),
+    /** Interval in ms to renice daemon descendants. Default 30000 (30s). 0 to disable. */
+    reniceIntervalMs: z.number().min(0).optional().default(30000),
+  }).optional(),
 });
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
 
@@ -10303,6 +10312,8 @@ export const GitChangedFileSchema = z.object({
   path: z.string().min(1),
   /** Git status indicator for this file */
   status: GitFileStatusSchema,
+  /** Whether this file change is staged for commit */
+  staged: z.boolean(),
   /** Original path if the file was renamed (only present for renames) */
   oldPath: z.string().optional(),
 });
@@ -10324,6 +10335,21 @@ export const GitCommitSchema = z.object({
   authorEmail: z.string().optional(),
 });
 export type GitCommit = z.infer<typeof GitCommitSchema>;
+
+/**
+ * Remote tracking information for a git branch
+ */
+export const GitTrackingSchema = z.object({
+  /** Name of the remote (e.g., 'origin') */
+  remote: z.string().nullable(),
+  /** Full name of the remote branch (e.g., 'origin/main') */
+  remoteBranch: z.string().nullable(),
+  /** Number of commits ahead of the remote branch */
+  aheadCount: z.number().int().min(0).default(0),
+  /** Number of commits behind the remote branch */
+  behindCount: z.number().int().min(0).default(0),
+});
+export type GitTracking = z.infer<typeof GitTrackingSchema>;
 
 /**
  * Git repository status information
@@ -10356,44 +10382,73 @@ export const GitStatusSchema = z.object({
   /** Whether the path is a git repository */
   isRepository: z.boolean(),
 
-  /** Current branch name (null if in detached HEAD state) */
-  branch: z.string().nullable(),
+  /** Current branch name (empty string if not in a git repository or detached HEAD) */
+  branch: z.string(),
 
-  /** Remote tracking branch (if any) */
+  /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+  isClean: z.boolean(),
+
+  /** Whether there are uncommitted changes (modified or deleted files) */
+  hasUncommittedChanges: z.boolean(),
+
+  /** Whether there are untracked files */
+  hasUntrackedFiles: z.boolean(),
+
+  /** Whether there are staged changes ready for commit */
+  hasStagedChanges: z.boolean(),
+
+  /** All changed files (staged, unstaged, and untracked) with their status */
+  changedFiles: z.array(GitChangedFileSchema),
+
+  /** Total number of stashes */
+  stashCount: z.number().int().min(0),
+
+  /** Remote tracking information */
+  tracking: GitTrackingSchema.nullable(),
+
+  /** Information about the last commit */
+  lastCommit: z.object({
+    /** Short commit hash (usually 7 characters) */
+    hash: z.string(),
+    /** Commit message */
+    message: z.string(),
+    /** Timestamp when the commit was made */
+    timestamp: z.date(),
+  }).nullable(),
+
+  // Legacy fields for backward compatibility
+  /** @deprecated Use branch instead */
   remoteBranch: z.string().nullable().optional(),
 
-  /** Number of commits ahead of the remote tracking branch */
+  /** @deprecated Use tracking.aheadCount instead */
   ahead: z.number().int().min(0).optional().default(0),
 
-  /** Number of commits behind the remote tracking branch */
+  /** @deprecated Use tracking.behindCount instead */
   behind: z.number().int().min(0).optional().default(0),
 
-  /** Files staged for commit */
+  /** @deprecated Use changedFiles with staged=true instead */
   staged: z.array(GitChangedFileSchema).optional().default([]),
 
-  /** Files with unstaged changes */
+  /** @deprecated Use changedFiles with staged=false instead */
   unstaged: z.array(GitChangedFileSchema).optional().default([]),
 
-  /** Untracked files (paths relative to repository root) */
+  /** @deprecated Use changedFiles with status='?' instead */
   untracked: z.array(z.string()).optional().default([]),
+
+  /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+  isDirty: z.boolean().optional().default(false),
+
+  /** @deprecated Use lastCommit.hash instead */
+  lastCommitHash: z.string().optional(),
+
+  /** @deprecated Use lastCommit.message instead */
+  lastCommitMessage: z.string().optional(),
+
+  /** @deprecated Use lastCommit.timestamp instead */
+  lastCommitTimestamp: z.date().optional(),
 
   /** Whether there are merge conflicts */
   hasConflicts: z.boolean().optional().default(false),
-
-  /** Whether the working directory has any changes (staged, unstaged, or untracked) */
-  isDirty: z.boolean().optional().default(false),
-
-  /** Hash of the last commit (short SHA) */
-  lastCommitHash: z.string().optional(),
-
-  /** Message of the last commit */
-  lastCommitMessage: z.string().optional(),
-
-  /** Timestamp of the last commit */
-  lastCommitTimestamp: z.date().optional(),
-
-  /** Total number of stashes */
-  stashCount: z.number().int().min(0).optional().default(0),
 
   /** List of configured remotes */
   remotes: z.array(z.object({
@@ -10419,6 +10474,21 @@ export type ProjectEntryType = z.infer<typeof ProjectEntryTypeSchema>;
 /**
  * Represents a single entry (file or directory) in the project structure
  */
+export interface ProjectEntry {
+  /** Name of the file or directory */
+  name: string;
+  /** Relative path from project root */
+  path: string;
+  /** Whether this is a file or directory */
+  type: ProjectEntryType;
+  /** Size in bytes (for files only) */
+  size?: number;
+  /** Last modified timestamp */
+  modifiedAt?: Date;
+  /** Child entries (for directories only) */
+  children?: ProjectEntry[];
+}
+
 export const ProjectEntrySchema = z.object({
   /** Name of the file or directory */
   name: z.string().min(1),
@@ -10432,8 +10502,7 @@ export const ProjectEntrySchema = z.object({
   modifiedAt: z.date().optional(),
   /** Child entries (for directories only) */
   children: z.lazy(() => z.array(ProjectEntrySchema)).optional(),
-});
-export type ProjectEntry = z.infer<typeof ProjectEntrySchema>;
+}) as z.ZodType<ProjectEntry>;
 
 /**
  * Project structure information

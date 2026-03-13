@@ -18,6 +18,7 @@ import {
   parseConventionalCommit,
   createConventionalCommit,
   safeJsonParse,
+  safeSerialize,
   deepMerge,
   truncate,
   truncateToolOutput,
@@ -1458,5 +1459,232 @@ describe('truncateToolOutput', () => {
       originalLength: 0,
       truncatedLength: 0
     });
+  });
+});
+
+// ============================================================================
+// SAFE JSON SERIALIZATION TESTS
+// ============================================================================
+
+describe('safeSerialize', () => {
+  it('should serialize simple objects', () => {
+    const obj = { name: 'test', value: 42 };
+    const result = safeSerialize(obj);
+    expect(result).toBe(JSON.stringify(obj));
+  });
+
+  it('should serialize arrays', () => {
+    const arr = [1, 2, { nested: 'value' }];
+    const result = safeSerialize(arr);
+    expect(result).toBe(JSON.stringify(arr));
+  });
+
+  it('should serialize primitives', () => {
+    expect(safeSerialize('string')).toBe('"string"');
+    expect(safeSerialize(123)).toBe('123');
+    expect(safeSerialize(true)).toBe('true');
+    expect(safeSerialize(null)).toBe('null');
+  });
+
+  it('should handle circular references by replacing with [Circular]', () => {
+    const obj: any = { name: 'test' };
+    obj.self = obj; // Creates circular reference
+
+    const result = safeSerialize(obj);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.name).toBe('test');
+    expect(parsed.self).toBe('[Circular]');
+  });
+
+  it('should handle multiple circular references', () => {
+    const objA: any = { name: 'A' };
+    const objB: any = { name: 'B' };
+    objA.ref = objB;
+    objB.ref = objA; // Circular reference
+
+    const container = { a: objA, b: objB };
+    const result = safeSerialize(container);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.a.name).toBe('A');
+    expect(parsed.a.ref.name).toBe('B');
+    expect(parsed.a.ref.ref).toBe('[Circular]');
+    // Since objB was already serialized as part of objA.ref,
+    // it should be marked as circular when encountered again
+    expect(parsed.b).toBe('[Circular]');
+  });
+
+  it('should handle deep circular references', () => {
+    const obj: any = {
+      level1: {
+        level2: {
+          level3: {}
+        }
+      }
+    };
+    obj.level1.level2.level3.backToRoot = obj; // Deep circular reference
+
+    const result = safeSerialize(obj);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.level1.level2.level3.backToRoot).toBe('[Circular]');
+  });
+
+  it('should handle self-referencing arrays', () => {
+    const arr: any = [1, 2, 3];
+    arr.push(arr); // Self-reference
+
+    const result = safeSerialize(arr);
+    const parsed = JSON.parse(result);
+
+    expect(parsed[0]).toBe(1);
+    expect(parsed[1]).toBe(2);
+    expect(parsed[2]).toBe(3);
+    expect(parsed[3]).toBe('[Circular]');
+  });
+
+  it('should preserve proper indentation with space parameter', () => {
+    const obj = { name: 'test', nested: { value: 42 } };
+    const result = safeSerialize(obj, 2);
+
+    expect(result).toContain('  '); // Should have 2-space indentation
+    expect(result).toContain('\n'); // Should have newlines
+  });
+
+  it('should handle circular references with indentation', () => {
+    const obj: any = { name: 'test' };
+    obj.self = obj;
+
+    const result = safeSerialize(obj, 2);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.self).toBe('[Circular]');
+    expect(result).toContain('  '); // Should still format properly
+  });
+
+  it('should handle complex nested objects with mixed circular references', () => {
+    const parent: any = { type: 'parent', children: [] };
+    const child1: any = { type: 'child1', parent: parent };
+    const child2: any = { type: 'child2', parent: parent };
+
+    parent.children.push(child1, child2);
+    child1.sibling = child2;
+    child2.sibling = child1;
+
+    const result = safeSerialize(parent);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.type).toBe('parent');
+    expect(parsed.children[0].type).toBe('child1');
+    // child2 object is first encountered as child1.sibling, so when it appears
+    // again in children[1], it's correctly marked as [Circular]
+    expect(parsed.children[1]).toBe('[Circular]');
+    expect(parsed.children[0].parent).toBe('[Circular]');
+    expect(parsed.children[0].sibling.type).toBe('child2');
+    expect(parsed.children[0].sibling.parent).toBe('[Circular]');
+    // Since child1 was already seen, child2.sibling is marked as [Circular]
+    expect(parsed.children[0].sibling.sibling).toBe('[Circular]');
+  });
+
+  it('should handle Date objects', () => {
+    const obj = { date: new Date('2024-01-01'), timestamp: Date.now() };
+    const result = safeSerialize(obj);
+    const parsed = JSON.parse(result);
+
+    expect(typeof parsed.date).toBe('string'); // Date serialized to ISO string
+    expect(typeof parsed.timestamp).toBe('number');
+  });
+
+  it('should handle objects with functions (functions are omitted)', () => {
+    const obj = {
+      name: 'test',
+      getValue: () => 'value', // Function will be omitted
+      data: 42
+    };
+
+    const result = safeSerialize(obj);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.name).toBe('test');
+    expect(parsed.data).toBe(42);
+    expect(parsed.getValue).toBeUndefined(); // Function omitted
+  });
+
+  it('should handle Error objects', () => {
+    const error = new Error('Test error');
+    const obj = { error: error, message: 'wrapper' };
+
+    const result = safeSerialize(obj);
+
+    // Should not throw and should produce valid JSON
+    expect(() => JSON.parse(result)).not.toThrow();
+  });
+
+  it('should handle fallback when serialization fails completely', () => {
+    // Create an object that might cause serialization issues
+    const problematic = {
+      toJSON: () => {
+        throw new Error('Serialization error');
+      }
+    };
+
+    const result = safeSerialize(problematic);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.error).toBe('Serialization failed');
+    expect(parsed.message).toBe('Serialization error');
+  });
+
+  it('should handle empty objects and arrays', () => {
+    expect(safeSerialize({})).toBe('{}');
+    expect(safeSerialize([])).toBe('[]');
+  });
+
+  it('should handle undefined values (omitted in JSON)', () => {
+    const obj = { defined: 'value', undefined: undefined };
+    const result = safeSerialize(obj);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.defined).toBe('value');
+    expect('undefined' in parsed).toBe(false); // undefined is omitted
+  });
+
+  it('should work with WebSocket event-like objects', () => {
+    // Simulate a typical WebSocket event that might have circular references
+    const event: any = {
+      type: 'task.update',
+      taskId: 'task_123',
+      data: {
+        status: 'running',
+        progress: 0.5
+      },
+      timestamp: Date.now()
+    };
+
+    // Add a circular reference that might happen in real WebSocket events
+    event.originalEvent = event;
+
+    const result = safeSerialize(event);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.type).toBe('task.update');
+    expect(parsed.taskId).toBe('task_123');
+    expect(parsed.data.status).toBe('running');
+    expect(parsed.data.progress).toBe(0.5);
+    expect(parsed.originalEvent).toBe('[Circular]');
+  });
+
+  it('should maintain reference tracking per serialization call', () => {
+    const obj: any = { value: 'test' };
+    obj.self = obj;
+
+    // Multiple calls should work independently
+    const result1 = safeSerialize(obj);
+    const result2 = safeSerialize(obj);
+
+    expect(result1).toBe(result2);
+    expect(JSON.parse(result1).self).toBe('[Circular]');
+    expect(JSON.parse(result2).self).toBe('[Circular]');
   });
 });

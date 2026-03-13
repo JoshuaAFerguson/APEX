@@ -17,7 +17,7 @@
  * @module tests/e2e/fixtures/marketplace-data
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SELECTION_VALIDATION_CASES = exports.SELECTION_TEST_CASES = exports.CATEGORY_FILTER_CASES = exports.SEARCH_TEST_CASES = exports.MALFORMED_CONFIG_SERVER = exports.MISSING_DEPS_SERVER = exports.INVALID_CONFIG_SERVER = exports.CONFLICTING_SERVER = exports.INVALID_CONFIG_NO_COMMAND = exports.INVALID_ENTRY_MISSING_NAME = exports.EXPECTED_MULTI_SERVER_CONFIG = exports.EXPECTED_FILESYSTEM_CONFIG = exports.STANDARD_CATEGORIES = exports.AUTO_START_ENTRIES = exports.ENV_REQUIRING_ENTRIES = exports.VERIFIED_ENTRIES = exports.ERROR_TEST_ENTRIES = exports.ALL_MARKETPLACE_ENTRIES = exports.HTTP_SERVER = exports.COMMUNITY_SERVER = exports.BRAVE_SEARCH_SERVER = exports.POSTGRES_SERVER = exports.GITHUB_SERVER = exports.FETCH_SERVER = exports.MEMORY_SERVER = exports.FILESYSTEM_SERVER = void 0;
+exports.SELECTION_VALIDATION_CASES = exports.SELECTION_TEST_CASES = exports.CATEGORY_FILTER_CASES = exports.SEARCH_TEST_CASES = exports.INVALID_CONFIG_NO_COMMAND = exports.INVALID_ENTRY_MISSING_NAME = exports.EXPECTED_MULTI_SERVER_CONFIG = exports.EXPECTED_FILESYSTEM_CONFIG = exports.STANDARD_CATEGORIES = exports.AUTO_START_ENTRIES = exports.ENV_REQUIRING_ENTRIES = exports.VERIFIED_ENTRIES = exports.ERROR_TEST_ENTRIES = exports.ALL_MARKETPLACE_ENTRIES = exports.MALFORMED_CONFIG_SERVER = exports.MISSING_DEPS_SERVER = exports.INVALID_CONFIG_SERVER = exports.CONFLICTING_SERVER = exports.HTTP_SERVER = exports.COMMUNITY_SERVER = exports.BRAVE_SEARCH_SERVER = exports.POSTGRES_SERVER = exports.GITHUB_SERVER = exports.FETCH_SERVER = exports.MEMORY_SERVER = exports.FILESYSTEM_SERVER = void 0;
 exports.createTestCatalog = createTestCatalog;
 exports.createMinimalCatalog = createMinimalCatalog;
 exports.createVerifiedOnlyCatalog = createVerifiedOnlyCatalog;
@@ -202,6 +202,72 @@ exports.HTTP_SERVER = {
         headers: {
             Authorization: 'Bearer ${API_TOKEN}',
         },
+        autoStart: false,
+    },
+};
+// ============================================================================
+// Error Scenario Fixtures (moved before collections)
+// ============================================================================
+/**
+ * Server with conflicting configuration
+ */
+exports.CONFLICTING_SERVER = {
+    name: 'conflicting',
+    description: 'Server with conflicting type and config',
+    version: '1.0.0',
+    verified: false,
+    serverConfig: {
+        name: 'conflicting',
+        type: 'http',
+        command: 'should-not-be-here-for-http', // Conflict: command with http type
+        url: 'http://localhost:3000',
+        autoStart: false,
+    },
+};
+/**
+ * Server with intentionally invalid config (empty name)
+ */
+exports.INVALID_CONFIG_SERVER = {
+    name: 'invalid-config',
+    description: 'Server with intentionally invalid config',
+    version: '0.0.1',
+    verified: false,
+    category: 'test',
+    serverConfig: { name: '', type: 'stdio' }, // Empty name = invalid
+};
+/**
+ * Server requiring unavailable dependencies
+ */
+exports.MISSING_DEPS_SERVER = {
+    name: 'missing-deps',
+    description: 'Server requiring unavailable dependencies',
+    version: '1.0.0',
+    verified: false,
+    category: 'test',
+    serverConfig: {
+        name: 'missing-deps',
+        type: 'stdio',
+        command: '/nonexistent/binary',
+        args: ['--nonexistent-option'],
+        env: {},
+        autoStart: false,
+    },
+};
+/**
+ * Server with malformed configuration (for corrupt YAML testing)
+ */
+exports.MALFORMED_CONFIG_SERVER = {
+    name: 'malformed-config',
+    description: 'Server designed to create malformed config',
+    version: '1.0.0',
+    verified: false,
+    category: 'test',
+    serverConfig: {
+        name: 'malformed\nconfig\ttab', // Invalid characters that will break YAML
+        type: 'stdio',
+        command: 'echo',
+        args: ['test'],
+        env: {},
         autoStart: false,
     },
 };
@@ -434,7 +500,7 @@ function createBaseApexConfig(mcpServers) {
     };
 }
 // ============================================================================
-// Error Scenario Fixtures
+// Additional Error Scenario Fixtures
 // ============================================================================
 /**
  * Invalid marketplace entry (missing required fields)
@@ -458,69 +524,6 @@ exports.INVALID_CONFIG_NO_COMMAND = {
     // command intentionally missing
     args: [],
     env: {},
-};
-/**
- * Server with conflicting configuration
- */
-exports.CONFLICTING_SERVER = {
-    name: 'conflicting',
-    description: 'Server with conflicting type and config',
-    version: '1.0.0',
-    verified: false,
-    serverConfig: {
-        name: 'conflicting',
-        type: 'http',
-        command: 'should-not-be-here-for-http', // Conflict: command with http type
-        url: 'http://localhost:3000',
-        autoStart: false,
-    },
-};
-/**
- * Server with intentionally invalid config (empty name)
- */
-exports.INVALID_CONFIG_SERVER = {
-    name: 'invalid-config',
-    description: 'Server with intentionally invalid config',
-    version: '0.0.1',
-    verified: false,
-    category: 'test',
-    serverConfig: { name: '', type: 'stdio' }, // Empty name = invalid
-};
-/**
- * Server requiring unavailable dependencies
- */
-exports.MISSING_DEPS_SERVER = {
-    name: 'missing-deps',
-    description: 'Server requiring unavailable dependencies',
-    version: '1.0.0',
-    verified: false,
-    category: 'test',
-    serverConfig: {
-        name: 'missing-deps',
-        type: 'stdio',
-        command: '/nonexistent/binary',
-        args: ['--nonexistent-option'],
-        env: {},
-        autoStart: false,
-    },
-};
-/**
- * Server with malformed configuration (for corrupt YAML testing)
- */
-exports.MALFORMED_CONFIG_SERVER = {
-    name: 'malformed-config',
-    description: 'Server designed to create malformed config',
-    version: '1.0.0',
-    verified: false,
-    category: 'test',
-    serverConfig: {
-        name: 'malformed\nconfig\ttab', // Invalid characters that will break YAML
-        type: 'stdio',
-        command: 'echo',
-        args: ['test'],
-        env: {},
-        autoStart: false,
-    },
 };
 // ============================================================================
 // Search Test Data

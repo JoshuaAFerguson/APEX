@@ -2416,6 +2416,15 @@ exports.DaemonConfigSchema = zod_1.z.object({
         // Only restart root parent tasks, let orchestrator manage children
         restartParentOnly: zod_1.z.boolean().optional().default(true),
     }).optional(),
+    // Process resource controls
+    processLimits: zod_1.z.object({
+        /** Nice level for task subprocesses (0-19, higher = lower priority). Default 10. */
+        niceLevel: zod_1.z.number().min(0).max(19).optional().default(10),
+        /** Nice level for integrated services (API, WebUI). Default 15. */
+        serviceNiceLevel: zod_1.z.number().min(0).max(19).optional().default(15),
+        /** Interval in ms to renice daemon descendants. Default 30000 (30s). 0 to disable. */
+        reniceIntervalMs: zod_1.z.number().min(0).optional().default(30000),
+    }).optional(),
 });
 // ============================================================================
 // Logging Configuration (v0.6.0)

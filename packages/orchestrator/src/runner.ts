@@ -1,6 +1,7 @@
 import { createWriteStream, WriteStream, promises as fs } from 'fs';
 import { join } from 'path';
 import { spawn, execFileSync, ChildProcess } from 'child_process';
+import * as os from 'os';
 import { ApexOrchestrator, TaskSessionResumedEvent } from './index';
 import { TaskStore } from './store';
 import { loadConfig, getEffectiveConfig, ApexConfig, Task, TaskStatus, DaemonConfig, TaskSessionData } from '@apexcli/core';
@@ -127,6 +128,48 @@ export interface DaemonLogEntry {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Capacity information for the daemon state.
+ * Tracks usage limits and pause/resume status.
+ */
+export interface CapacityInfo {
+  mode: string;
+  capacityThreshold: number;
+  currentUsagePercent: number;
+  isAutoPaused: boolean;
+  pauseReason: string | null;
+  nextModeSwitch: string;
+  timeBasedUsageEnabled: boolean;
+}
+
+/**
+ * Health information for the daemon state.
+ * Tracks uptime, memory usage, and restart history.
+ */
+export interface HealthInfo {
+  uptime: number;
+  memoryUsage: {
+    heapUsed: number;
+    heapTotal: number;
+    rss: number;
+  };
+  taskCounts: {
+    processed: number;
+    succeeded: number;
+    failed: number;
+    active: number;
+  };
+  lastHealthCheck: string;
+  healthChecksPassed: number;
+  healthChecksFailed: number;
+  restartHistory: Array<{
+    timestamp: string;
+    reason: string;
+    exitCode?: number;
+    triggeredByWatchdog: boolean;
+  }>;
+}
+
 // ============================================================================
 // DaemonRunner Implementation
 // ============================================================================
@@ -230,6 +273,12 @@ export class DaemonRunner {
   private static readonly MAX_SERVICE_RESTARTS = 3;
 
   constructor(options: DaemonRunnerOptions) {
+    if (!options.projectPath || options.projectPath === 'undefined') {
+      throw new Error(
+        'DaemonRunner requires a valid projectPath. Received: ' +
+        JSON.stringify(options.projectPath)
+      );
+    }
     // Store the raw options - we'll resolve defaults in start() after loading config
     this.options = {
       projectPath: options.projectPath,
@@ -1185,7 +1234,7 @@ export class DaemonRunner {
     const stateFilePath = join(this.options.projectPath, '.apex', 'daemon-state.json');
 
     try {
-      let capacityInfo: any = undefined;
+      let capacityInfo: CapacityInfo | undefined = undefined;
 
       // Get capacity information if daemon is running and scheduler is available
       if (running && this.daemonScheduler) {
@@ -1203,7 +1252,7 @@ export class DaemonRunner {
       }
 
       // Get health information if daemon is running and healthMonitor is available
-      let healthInfo: any = undefined;
+      let healthInfo: HealthInfo | undefined = undefined;
       if (running && this.healthMonitor) {
         try {
           const healthReport = this.healthMonitor.getHealthReport(this);
@@ -1325,7 +1374,11 @@ export class DaemonRunner {
         // @ts-ignore - __dirname is available at runtime in CommonJS
         const apiPath = join(__dirname, '..', '..', 'api', 'dist', 'index.js');
 
-        this.apiProcess = spawn('node', [apiPath], {
+        const serviceNice = daemonConfig.processLimits?.serviceNiceLevel ?? 15;
+        const useNice = process.platform !== 'win32' && serviceNice > 0;
+        const apiCmd = useNice ? 'nice' : 'node';
+        const apiArgs = useNice ? ['-n', String(serviceNice), 'node', apiPath] : [apiPath];
+        this.apiProcess = spawn(apiCmd, apiArgs, {
           cwd: this.options.projectPath,
           env: {
             ...process.env,
@@ -1384,7 +1437,13 @@ export class DaemonRunner {
         const webuiPath = join(__dirname, '..', '..', 'web-ui');
 
         // Use npm exec with -- separator for command arguments
-        this.webuiProcess = spawn('npm', ['exec', '--', 'next', 'start', '-p', String(webuiPort), '-H', webuiHost], {
+        const webuiNice = daemonConfig.processLimits?.serviceNiceLevel ?? 15;
+        const useWebuiNice = process.platform !== 'win32' && webuiNice > 0;
+        const webuiCmd = useWebuiNice ? 'nice' : 'npm';
+        const webuiArgs = useWebuiNice
+          ? ['-n', String(webuiNice), 'npm', 'exec', '--', 'next', 'start', '-p', String(webuiPort), '-H', webuiHost]
+          : ['exec', '--', 'next', 'start', '-p', String(webuiPort), '-H', webuiHost];
+        this.webuiProcess = spawn(webuiCmd, webuiArgs, {
           cwd: webuiPath,
           env: {
             ...process.env,
@@ -2156,6 +2215,12 @@ export class DaemonRunner {
           killPids.push(pid);
           continue;
         }
+
+        // Orphaned Playwright Chromium instances (spawned by browser tests)
+        if (args.includes('ms-playwright') && (args.includes('Google Chrome for Testing') || args.includes('chrome-headless-shell'))) {
+          killPids.push(pid);
+          continue;
+        }
       }
 
       if (killPids.length > 0) {
@@ -2174,13 +2239,90 @@ export class DaemonRunner {
   }
 
   /**
-   * Start periodic cleanup of orphaned OS processes.
+   * Renice all daemon-descendant processes to reduce CPU priority.
+   *
+   * Since the Claude Agent SDK spawns subprocesses internally (and those
+   * spawn bash → npm → vitest → worker forks), we can't set nice levels
+   * at spawn time. Instead we periodically renice the entire process tree.
+   */
+  private reniceDaemonDescendants(): void {
+    if (process.platform === 'win32') return;
+
+    const daemonConfig = this.config?.daemon;
+    const niceLevel = daemonConfig?.processLimits?.niceLevel ?? 10;
+    if (niceLevel === 0) return;
+
+    try {
+      const result = execFileSync('ps', ['-eo', 'pid,ppid,nice'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+
+      const daemonPid = process.pid;
+      const lines = result.split('\n');
+
+      // Parse processes
+      const procMap = new Map<number, { ppid: number; nice: number }>();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const parts = trimmed.split(/\s+/);
+        const pid = parseInt(parts[0], 10);
+        const ppid = parseInt(parts[1], 10);
+        const nice = parseInt(parts[2], 10);
+        if (isNaN(pid) || isNaN(ppid) || isNaN(nice)) continue;
+        procMap.set(pid, { ppid, nice });
+      }
+
+      // Find all daemon descendants
+      const descendants = new Set<number>();
+      descendants.add(daemonPid);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const [pid, info] of procMap) {
+          if (!descendants.has(pid) && descendants.has(info.ppid)) {
+            descendants.add(pid);
+            changed = true;
+          }
+        }
+      }
+
+      // Renice descendants that have lower nice values than our target
+      let renicedCount = 0;
+      for (const pid of descendants) {
+        if (pid === daemonPid) continue; // Don't renice ourselves
+        const info = procMap.get(pid);
+        if (info && info.nice < niceLevel) {
+          try {
+            os.setPriority(pid, niceLevel);
+            renicedCount++;
+          } catch {
+            // Process may have exited or we lack permissions
+          }
+        }
+      }
+
+      if (renicedCount > 0) {
+        this.log('debug', `[ProcessLimits] Reniced ${renicedCount} descendant process(es) to nice=${niceLevel}`);
+      }
+    } catch (error) {
+      this.log('debug', `[ProcessLimits] Renice error: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Start periodic cleanup of orphaned OS processes and renice of descendants.
    * Runs every 30 seconds — vitest workers at ~80% CPU each cause rapid resource exhaustion.
    */
   private startProcessCleanupInterval(): void {
     this.processCleanupInterval = setInterval(() => {
       if (!this.isRunning || this.isShuttingDown) return;
       this.cleanupOrphanedProcesses();
+      this.reniceDaemonDescendants();
     }, 30_000);
+
+    // Run renice immediately on startup
+    this.reniceDaemonDescendants();
   }
 }

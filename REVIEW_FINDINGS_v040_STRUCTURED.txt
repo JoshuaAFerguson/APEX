@@ -1,0 +1,414 @@
+================================================================================
+CODE REVIEW FINDINGS - v0.4.0 Task Interaction Commands
+================================================================================
+Review Date: March 13, 2026
+Branch: apex/mlsaya99-implement-v060-features
+Status: FAILED - Critical Issues Block Approval
+
+================================================================================
+SUMMARY STATISTICS
+================================================================================
+Total Files Reviewed: 8+
+Total Issues Found: 18
+  - HIGH SEVERITY: 4
+  - MEDIUM SEVERITY: 9
+  - LOW SEVERITY: 5
+
+Test Status: FAILED (Multiple tests cannot execute)
+Build Status: FAILED (Compilation errors)
+================================================================================
+
+================================================================================
+CRITICAL BLOCKING ISSUES
+================================================================================
+
+1. packages/orchestrator/src/store.ts:3000 - DUPLICATE METHOD DEFINITION
+   Severity: HIGH
+   Type: Code Quality/Duplication
+   Lines: 3000 and 3095
+
+   Issue:
+   Method getAllTemplates() is defined twice:
+   - Line 3000: async getAllTemplates(): Promise<TaskTemplate[]>
+   - Line 3095: async getAllTemplates(): Promise<TaskTemplate[]>
+
+   Both definitions are identical.
+
+   Vite Warning:
+   Duplicate member "getAllTemplates" in class body
+   File: /Users/s0v3r1gn/APEX/packages/orchestrator/src/store.ts:3095
+
+   Impact: TypeScript compilation warnings, potential runtime issues
+
+   Fix: Remove one of the duplicate method definitions
+   Priority: IMMEDIATE
+
+---
+
+2. packages/orchestrator/dist/index.js:9794 - SYNTAX ERROR IN COMPILED CODE
+   Severity: HIGH
+   Type: Compilation Error
+   Runtime Error:
+
+   Error:
+   SyntaxError: await is only valid in async functions and the top level bodies of modules
+
+   Stack:
+   at wrapSafe (node:internal/modules/cjs_loader:1638:18)
+   at Module._compile (node:internal/modules/cjs_loader:1680:20)
+
+   Impact:
+   - Tests cannot run
+   - Cannot load orchestrator module
+   - All dependent tests fail to execute
+
+   Cause: Method compiled without async keyword despite having await statements
+
+   Fix: Rebuild with correct TypeScript configuration
+   Priority: IMMEDIATE (Blocks all testing)
+
+---
+
+3. tests/e2e/mocks/mock-marketplace-server.ts - EVENT TYPE MISMATCHES
+   Severity: HIGH
+   Type: Type Safety
+   Lines: Multiple (189, 195, 203, 204, 216, 222, 278, 354, 364, 698, 699, 700, 718)
+
+   Issues:
+   1. Line 189: this.emit('state:change', ...)
+      Error: "state:change" is not assignable to keyof BackgroundTaskManagerEvents
+
+   2. Line 195: this.emit('state:change', ...) with 2 args
+      Error: Expected 3 arguments but got 2
+
+   3. Line 204: this.emit('started', 'server:started')
+      Error: "started" is not valid event name
+
+   4. Line 223: this.emit('stopped', 'server:stopped')
+      Error: "stopped" is not valid event name
+
+   5. Line 278: this.emit('disconnected')
+      Error: "disconnected" not valid event
+
+   6. Line 354: this.emit('tools:changed')
+      Error: "tools:changed" not valid event
+
+   Pattern: Custom event names don't match BackgroundTaskManagerEvents interface
+
+   Impact: Test mocks fail type checking, cannot properly simulate server events
+
+   Fix: Align event names and signatures with BackgroundTaskManagerEvents type
+   Priority: IMMEDIATE
+
+---
+
+4. packages/core/src/types.ts:10431-10443 - MISSING TYPE ANNOTATIONS
+   Severity: HIGH
+   Type: Type Safety
+   Lines: 10431, 10443
+
+   Errors:
+   1. TS7022: 'ProjectEntrySchema' implicitly has type 'any' because it does
+      not have a type annotation and is referenced directly or indirectly in
+      its own initializer
+
+   2. TS7024: Function implicitly has return type 'any' because it does not
+      have a return type annotation and is referenced directly or indirectly
+      in one of its return expressions
+
+   Impact: Type safety compromised, potential runtime errors
+
+   Fix: Add explicit type annotations to ProjectEntrySchema and function
+   Priority: IMMEDIATE
+
+---
+
+5. tests/test-utils/tsconfig.json - ROOTDIR MISCONFIGURATION
+   Severity: HIGH
+   Type: Build Configuration
+
+   Issue:
+   'rootDir' is set to '/Users/s0v3r1gn/APEX/tests/test-utils' but files
+   are being imported from '../../../packages/core/src/...' which are outside
+   this directory.
+
+   Error Pattern:
+   File '...packages/core/src/path-utils.ts' is not under 'rootDir'
+   'rootDir' is expected to contain all source files.
+
+   Impact: Build fails for test-utils package
+
+   Fix: Either:
+   - Adjust rootDir to include parent directories
+   - Use composite project references
+   - Move test utilities into monorepo packages
+   Priority: IMMEDIATE
+
+================================================================================
+MEDIUM SEVERITY ISSUES
+================================================================================
+
+6. packages/orchestrator/src/permission-store.ts:122 - REDUNDANT COALESCING
+   Severity: MEDIUM
+   Type: Code Quality/Clarity
+
+   Code:
+   const id = this.generatePermissionId(permission.tool, permission.scope ?? undefined);
+
+   Issue:
+   The expression 'permission.scope ?? undefined' is semantically confusing.
+   It means "use permission.scope, or if falsy, use undefined", which is
+   the same as just using 'permission.scope'.
+
+   Method signature at line 348:
+   private generatePermissionId(tool: string, scope?: string): string
+
+   Recommendation: Remove the ?? undefined coalescing
+   Fix: const id = this.generatePermissionId(permission.tool, permission.scope);
+
+   Impact: Low risk, but confusing for maintainers
+   Priority: FIX IN NEXT COMMIT
+
+---
+
+7. packages/orchestrator/src/permission-store.ts - SCOPE VALIDATION MISSING
+   Severity: MEDIUM
+   Type: Security/Input Validation
+   Lines: 348-350
+
+   Code:
+   private generatePermissionId(tool: string, scope?: string): string {
+     const scopePart = scope ? `-${scope}` : '';
+     const hash = Buffer.from(`${tool}${scopePart}`).toString('base64url');
+
+   Issues:
+   1. No validation of scope format before hashing
+   2. Scope contains user input directly concatenated into hash
+   3. base64url hashing provides no cryptographic security
+   4. Special characters in scope could cause hash collisions
+
+   Risk: Permission bypass if scope validation is inadequate
+
+   Recommendations:
+   1. Validate scope format (alphanumeric, limited special chars)
+   2. Use cryptographic hash (SHA256) instead of base64url
+   3. Document scope format requirements
+   4. Add unit tests for scope edge cases
+
+   Fix Example:
+   ```typescript
+   if (scope && !/^[a-zA-Z0-9._-]+$/.test(scope)) {
+     throw new Error(`Invalid scope format: ${scope}`);
+   }
+   const hash = crypto.createHash('sha256')
+     .update(`${tool}${scopePart}`)
+     .digest('hex');
+   ```
+   Priority: MEDIUM
+
+---
+
+8. packages/orchestrator/src/permission-manager.ts:13 - TYPE COMPATIBILITY
+   Severity: MEDIUM
+   Type: Type Safety
+
+   Issue:
+   Importing PermissionStore which has undefined/string scope handling
+   but not properly accounting for null values in some operations.
+
+   Impact: Potential runtime errors when comparing permissions
+   Priority: FIX IN NEXT COMMIT
+
+---
+
+9. tests/e2e/helpers/mcp-e2e-helpers.ts - GLOBALTHIS TYPE SAFETY
+   Severity: MEDIUM
+   Type: Type Safety
+   Lines: 239, 240
+
+   Error:
+   TS7017: Element implicitly has an 'any' type because type 'typeof globalThis'
+   has no index signature.
+
+   Code: Element implicitly has an 'any' type because type 'typeof globalThis'
+         has no index signature.
+
+   Issue: Using globalThis without proper type guards/augmentation
+
+   Fix: Either:
+   1. Use proper TypeScript module augmentation for globalThis
+   2. Define an interface for custom global properties
+   3. Use a Map instead of globalThis for state storage
+
+   Priority: MEDIUM
+
+---
+
+10. packages/orchestrator/src/tools/browser-tool.ts - CROSS-PACKAGE IMPORTS
+    Severity: MEDIUM
+    Type: Configuration/Architecture
+
+    Issue:
+    File is importing from outside its configured rootDir:
+    ../../packages/orchestrator/src/permission-manager.ts
+    ../../packages/orchestrator/src/browser-console-stream.ts
+
+    Impact: May cause issues with tree-shaking, module resolution
+    Priority: REVIEW AND REFACTOR
+
+---
+
+11-13. Various Test Files with Type Errors
+    Severity: MEDIUM
+    Type: Test Infrastructure
+
+    Files:
+    - tests/e2e/mocks/mock-marketplace-server.ts (duplicate function definitions)
+    - tests/e2e/utils/mcp-test-utils.ts (type incompatibilities)
+    - autonomy-test-helpers.ts (missing exports)
+
+    Pattern: Test infrastructure not properly typed
+    Fix: Update test file imports and type definitions
+    Priority: MEDIUM
+
+================================================================================
+LOW SEVERITY ISSUES
+================================================================================
+
+14. Code Documentation - Missing Edge Case Documentation
+    Severity: LOW
+    Type: Documentation
+
+    Issue:
+    Most methods have JSDoc, but edge cases (null scopes, invalid tool names)
+    are not documented.
+
+    Fix: Add @throws JSDoc for error conditions
+    Priority: NICE TO HAVE
+
+---
+
+15-18. Minor Type Inference Issues
+    Severity: LOW
+    Type: Type Safety
+
+    Issues in test files where return types could be more explicit.
+    No runtime impact but improves code clarity.
+
+    Priority: NICE TO HAVE
+
+================================================================================
+TEST EXECUTION STATUS
+================================================================================
+
+Tests Unable to Run:
+- packages/cli/src/commands/mcp.test.ts (28 tests, ALL FAILED)
+- packages/api/src/__tests__/*.test.ts (Multiple files, ALL FAILED)
+- tests/concurrent-task-execution-audit.test.ts (20 tests, ALL FAILED)
+- tests/v060-stack-documentation-verification.test.ts (24 tests, ALL FAILED)
+- tests/apex-pr-command-audit.test.ts (8 tests FAILED, 17 PASSED)
+
+Root Cause: Cannot import orchestrator module due to compilation error
+
+Tests That Pass:
+- v060-repl-edge-cases-testing.test.ts (partial success)
+- Some basic unit tests not depending on orchestrator
+
+================================================================================
+BUILD STATUS
+================================================================================
+
+Build Command: npm run build
+
+Result: FAILS WITH ERRORS (but "echo ok" masks failures)
+
+Errors Summary:
+- TypeScript compilation errors in 5+ packages
+- 60+ type errors across files
+- Vite esbuild warnings about duplicate members
+
+Key Errors:
+1. TS6059: Files not under rootDir
+2. TS2345: Type mismatches in function arguments
+3. TS2322: Assignment type mismatches
+4. TS2484: Export declaration conflicts
+5. TS2554: Argument count mismatches
+6. TS1434: Unexpected keywords in compiled output
+
+================================================================================
+RECOMMENDATIONS
+================================================================================
+
+IMMEDIATE ACTIONS (Must Complete Before Next Review):
+1. Remove duplicate getAllTemplates() method from store.ts
+2. Fix TypeScript rootDir configuration in test-utils
+3. Align event names and types in mock-marketplace-server.ts
+4. Add type annotations to ProjectEntrySchema
+5. Run: npm run build (must have NO errors)
+6. Run: npm test (tests must LOAD and EXECUTE)
+7. Create pull request with fixes for verification
+
+SHORT-TERM ACTIONS (Before Merge):
+1. Fix permission scope validation and hashing
+2. Update globalThis type handling in e2e helpers
+3. Add comprehensive JSDoc for new methods
+4. Add security review checklist for permission logic
+5. Set up pre-commit TypeScript checking
+
+LONG-TERM IMPROVEMENTS:
+1. Implement strict TypeScript mode project-wide
+2. Add test fixtures management system
+3. Create security validation framework
+4. Establish type safety guidelines
+5. Add automated compliance checks to CI/CD
+
+================================================================================
+FILES NEEDING UPDATES
+================================================================================
+
+CRITICAL (Fix Before Next Review):
+- packages/orchestrator/src/store.ts
+- tests/test-utils/tsconfig.json
+- tests/e2e/mocks/mock-marketplace-server.ts
+- packages/core/src/types.ts
+
+HIGH PRIORITY (Next Commit):
+- packages/orchestrator/src/permission-store.ts
+- packages/orchestrator/src/permission-manager.ts
+- packages/orchestrator/src/index.ts
+
+MEDIUM PRIORITY (Before Merge):
+- tests/e2e/helpers/mcp-e2e-helpers.ts
+- Multiple test files with type mismatches
+
+================================================================================
+VERIFICATION CHECKLIST
+================================================================================
+
+Before Resubmitting:
+☐ npm run build exits with code 0
+☐ npm test loads all test files
+☐ npx tsc --noEmit shows 0 errors
+☐ No TS compilation warnings in build output
+☐ All .tsx component files render without type errors
+☐ Permission methods validate input correctly
+☐ Mock server events match interface types
+
+================================================================================
+REVIEW SIGN-OFF
+================================================================================
+
+Status: FAILED ❌
+Severity: BLOCKING
+Reason: Multiple critical compilation and type safety issues
+
+Next Step:
+- Developer must fix all HIGH severity issues
+- Resubmit for review once build passes
+- All tests must load and execute before approval
+
+Code Review Agent
+March 13, 2026
+Branch: apex/mlsaya99-implement-v060-features
+
+================================================================================

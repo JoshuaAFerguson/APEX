@@ -40,6 +40,15 @@ export default mergeConfig(
         'tests/test-utils/**/*e2e*.test.ts',   // Test utilities E2E tests
       ],
 
+      // Exclude browser tests from default run — they spawn Playwright Chromium
+      // instances and must be run separately via packages/browser/vitest.config.ts
+      exclude: [
+        '**/node_modules/**',
+        '**/dist/**',
+        'packages/browser/src/**/*.test.ts',
+        'packages/browser/src/**/*.test.tsx',
+      ],
+
       // Monorepo-specific coverage configuration
       coverage: {
         include: ['packages/*/src/**/*.ts', 'packages/*/src/**/*.tsx'],

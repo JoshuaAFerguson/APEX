@@ -22,6 +22,7 @@ import {
   ApprovalDeniedEventData,
   AutoFixEvent,
   MCPInstallation,
+  safeSerialize,
 } from '@apexcli/core';
 import {
   ApexOrchestrator,
@@ -2003,7 +2004,7 @@ function broadcast(taskId: string, event: ApexEvent): void {
   const taskClients = clients.get(taskId);
   if (!taskClients) return;
 
-  const message = JSON.stringify(event);
+  const message = safeSerialize(event);
   for (const client of taskClients) {
     // Check if client has event filters and if this event should be sent
     if (client.eventFilters && !client.eventFilters.has(event.type)) {

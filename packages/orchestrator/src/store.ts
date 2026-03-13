@@ -93,6 +93,13 @@ export class TaskStore {
    * @param projectPath - The path to the project directory
    */
   constructor(projectPath: string) {
+    if (!projectPath || projectPath === 'undefined') {
+      throw new Error(
+        'TaskStore requires a valid projectPath. Received: ' +
+        JSON.stringify(projectPath) +
+        '. Ensure the orchestrator/runner is initialized with a valid project directory.'
+      );
+    }
     this.projectPath = projectPath;
 
     // Check for APEX_HOME environment variable

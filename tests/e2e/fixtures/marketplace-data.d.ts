@@ -103,6 +103,22 @@ export declare const COMMUNITY_SERVER: MarketplaceEntry;
  */
 export declare const HTTP_SERVER: MarketplaceEntry;
 /**
+ * Server with conflicting configuration
+ */
+export declare const CONFLICTING_SERVER: MarketplaceEntry;
+/**
+ * Server with intentionally invalid config (empty name)
+ */
+export declare const INVALID_CONFIG_SERVER: MarketplaceEntry;
+/**
+ * Server requiring unavailable dependencies
+ */
+export declare const MISSING_DEPS_SERVER: MarketplaceEntry;
+/**
+ * Server with malformed configuration (for corrupt YAML testing)
+ */
+export declare const MALFORMED_CONFIG_SERVER: MarketplaceEntry;
+/**
  * All static marketplace entries for use in test catalogs
  */
 export declare const ALL_MARKETPLACE_ENTRIES: MarketplaceEntry[];
@@ -209,22 +225,6 @@ export declare const INVALID_ENTRY_MISSING_NAME: Partial<MarketplaceEntry>;
  * Invalid server config (missing command for stdio type)
  */
 export declare const INVALID_CONFIG_NO_COMMAND: ServerConfig;
-/**
- * Server with conflicting configuration
- */
-export declare const CONFLICTING_SERVER: MarketplaceEntry;
-/**
- * Server with intentionally invalid config (empty name)
- */
-export declare const INVALID_CONFIG_SERVER: MarketplaceEntry;
-/**
- * Server requiring unavailable dependencies
- */
-export declare const MISSING_DEPS_SERVER: MarketplaceEntry;
-/**
- * Server with malformed configuration (for corrupt YAML testing)
- */
-export declare const MALFORMED_CONFIG_SERVER: MarketplaceEntry;
 /**
  * Search queries and expected results for testing marketplace search
  */

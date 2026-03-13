@@ -4,7 +4,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { MCPRegistry, MCPCatalogLoadError, MCPCatalogValidationError } from '../mcp/mcp-registry.js';
+import {
+  MCPRegistry,
+  MCPCatalogLoadError,
+  MCPCatalogValidationError,
+  MCPCatalogErrorCode,
+  DEFAULT_EMPTY_CATALOG,
+  type ValidationErrorDetail
+} from '../mcp/mcp-registry.js';
 import type { MCPMarketplaceEntry, MCPServerConfig } from '../types.js';
 import fs from 'fs';
 

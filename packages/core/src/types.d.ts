@@ -9473,6 +9473,22 @@ export declare const DaemonConfigSchema: z.ZodObject<{
     }, {
         restartParentOnly?: boolean | undefined;
     }>>;
+    processLimits: z.ZodOptional<z.ZodObject<{
+        /** Nice level for task subprocesses (0-19, higher = lower priority). Default 10. */
+        niceLevel: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Nice level for integrated services (API, WebUI). Default 15. */
+        serviceNiceLevel: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Interval in ms to renice daemon descendants. Default 30000 (30s). 0 to disable. */
+        reniceIntervalMs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        niceLevel: number;
+        serviceNiceLevel: number;
+        reniceIntervalMs: number;
+    }, {
+        niceLevel?: number | undefined;
+        serviceNiceLevel?: number | undefined;
+        reniceIntervalMs?: number | undefined;
+    }>>;
 }, "strip", z.ZodTypeAny, {
     pollInterval: number;
     autoStart: boolean;
@@ -9555,6 +9571,11 @@ export declare const DaemonConfigSchema: z.ZodObject<{
     taskRestart?: {
         restartParentOnly: boolean;
     } | undefined;
+    processLimits?: {
+        niceLevel: number;
+        serviceNiceLevel: number;
+        reniceIntervalMs: number;
+    } | undefined;
 }, {
     pollInterval?: number | undefined;
     autoStart?: boolean | undefined;
@@ -9636,6 +9657,11 @@ export declare const DaemonConfigSchema: z.ZodObject<{
     } | undefined;
     taskRestart?: {
         restartParentOnly?: boolean | undefined;
+    } | undefined;
+    processLimits?: {
+        niceLevel?: number | undefined;
+        serviceNiceLevel?: number | undefined;
+        reniceIntervalMs?: number | undefined;
     } | undefined;
 }>;
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
@@ -24924,6 +24950,22 @@ export declare const ApexConfigSchema: z.ZodObject<{
         }, {
             restartParentOnly?: boolean | undefined;
         }>>;
+        processLimits: z.ZodOptional<z.ZodObject<{
+            /** Nice level for task subprocesses (0-19, higher = lower priority). Default 10. */
+            niceLevel: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+            /** Nice level for integrated services (API, WebUI). Default 15. */
+            serviceNiceLevel: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+            /** Interval in ms to renice daemon descendants. Default 30000 (30s). 0 to disable. */
+            reniceIntervalMs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        }, "strip", z.ZodTypeAny, {
+            niceLevel: number;
+            serviceNiceLevel: number;
+            reniceIntervalMs: number;
+        }, {
+            niceLevel?: number | undefined;
+            serviceNiceLevel?: number | undefined;
+            reniceIntervalMs?: number | undefined;
+        }>>;
     }, "strip", z.ZodTypeAny, {
         pollInterval: number;
         autoStart: boolean;
@@ -25006,6 +25048,11 @@ export declare const ApexConfigSchema: z.ZodObject<{
         taskRestart?: {
             restartParentOnly: boolean;
         } | undefined;
+        processLimits?: {
+            niceLevel: number;
+            serviceNiceLevel: number;
+            reniceIntervalMs: number;
+        } | undefined;
     }, {
         pollInterval?: number | undefined;
         autoStart?: boolean | undefined;
@@ -25087,6 +25134,11 @@ export declare const ApexConfigSchema: z.ZodObject<{
         } | undefined;
         taskRestart?: {
             restartParentOnly?: boolean | undefined;
+        } | undefined;
+        processLimits?: {
+            niceLevel?: number | undefined;
+            serviceNiceLevel?: number | undefined;
+            reniceIntervalMs?: number | undefined;
         } | undefined;
     }>>;
     /** Logging configuration for structured logging across all packages (v0.6.0) */
@@ -29250,6 +29302,11 @@ export declare const ApexConfigSchema: z.ZodObject<{
         taskRestart?: {
             restartParentOnly: boolean;
         } | undefined;
+        processLimits?: {
+            niceLevel: number;
+            serviceNiceLevel: number;
+            reniceIntervalMs: number;
+        } | undefined;
     } | undefined;
     mcp?: {
         enabled: boolean;
@@ -30128,6 +30185,11 @@ export declare const ApexConfigSchema: z.ZodObject<{
         } | undefined;
         taskRestart?: {
             restartParentOnly?: boolean | undefined;
+        } | undefined;
+        processLimits?: {
+            niceLevel?: number | undefined;
+            serviceNiceLevel?: number | undefined;
+            reniceIntervalMs?: number | undefined;
         } | undefined;
     } | undefined;
     mcp?: {

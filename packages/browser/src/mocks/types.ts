@@ -256,6 +256,8 @@ export interface MockUrlBehavior {
   withTitle(title: string): MockUrlBehavior;
   /** Return to scenario builder */
   and(): MockScenarioBuilder;
+  /** Build the final scenario configuration */
+  build(): MockScenarioConfig;
 }
 
 /**
@@ -274,6 +276,8 @@ export interface MockElementBehavior {
   withValue(value: string): MockElementBehavior;
   /** Return to scenario builder */
   and(): MockScenarioBuilder;
+  /** Build the final scenario configuration */
+  build(): MockScenarioConfig;
 }
 
 /**

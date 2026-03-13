@@ -1432,6 +1432,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   constructor(private options: OrchestratorOptions) {
     super();
+    if (!options.projectPath || options.projectPath === 'undefined') {
+      throw new Error(
+        'ApexOrchestrator requires a valid projectPath. Received: ' +
+        JSON.stringify(options.projectPath)
+      );
+    }
     this.projectPath = options.projectPath;
     this.apiUrl = options.apiUrl || 'http://localhost:3000';
     this.policyEngine = options.policyEngine;  // Store the optional PolicyEngine
@@ -12581,6 +12587,8 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     this.initialized = false;
   }
 }
+
+// Note: All methods are properly defined within the ApexOrchestrator class above.
 
 export { TaskStore, ToolActionStore } from './store';
 export { PermissionStore } from './permission-store';

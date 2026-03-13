@@ -565,6 +565,11 @@ export class DocsAnalyzer extends BaseAnalyzer {
   private processIncompleteApiDocs(apiCompleteness: APICompleteness, candidates: TaskCandidate[]): void {
     const { percentage, details } = apiCompleteness;
 
+    // Guard against missing details (defensive coding for incomplete test data)
+    if (!details) {
+      return;
+    }
+
     // Priority 1: Critical API coverage (< 30%)
     if (percentage < 30) {
       const effort = this.estimateEffortForApiItems(details.undocumentedItems.length);

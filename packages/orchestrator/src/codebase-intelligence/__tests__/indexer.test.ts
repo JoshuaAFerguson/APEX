@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, MockedFunction } from 'vitest';
-import { promises as fs } from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { glob } from 'glob';
@@ -35,11 +35,9 @@ import {
 } from '../extractors/types.js';
 
 // Mock external dependencies
-vi.mock('fs', () => ({
-  promises: {
-    stat: vi.fn(),
-    readFile: vi.fn(),
-  },
+vi.mock('fs/promises', () => ({
+  stat: vi.fn(),
+  readFile: vi.fn(),
 }));
 
 vi.mock('glob', () => ({
@@ -164,9 +162,15 @@ describe('CodebaseIndexer', () => {
 
       mockedFsStat
         .mockResolvedValueOnce({ isDirectory: () => true } as any) // Root directory stat
-        .mockResolvedValueOnce({ size: 1024, mtime: new Date('2024-01-15') } as any); // File stat
+        .mockResolvedValue({ size: 1024, mtime: new Date('2024-01-15') } as any); // File stats (for any subsequent calls)
 
-      mockedGlob.mockResolvedValue(['src/index.ts']);
+      // Mock glob to return files for any pattern that contains .ts
+      mockedGlob.mockImplementation(async (pattern: string) => {
+        if (typeof pattern === 'string' && pattern.includes('.ts')) {
+          return ['src/index.ts'];
+        }
+        return [];
+      });
       mockedFsReadFile.mockResolvedValue('export function hello() { return "world"; }');
 
       // Mock extractor
@@ -496,7 +500,7 @@ describe('CodebaseIndexer', () => {
 
       const result = await indexer.indexDirectory(rootPath, options);
 
-      expect(result.files[0].hasParseErrors).toBe(true);
+      expect(result.files[0].hasErrors).toBe(true);
       expect(result.files[0].errors).toHaveLength(1);
       expect(result.files[0].errors[0].message).toBe('Parse error');
     });
@@ -556,7 +560,7 @@ describe('CodebaseIndexer', () => {
 
       const result = await indexer.indexDirectory(rootPath);
 
-      expect(result.files[0].hasParseErrors).toBe(true);
+      expect(result.files[0].hasErrors).toBe(true);
       expect(result.files[0].errors).toEqual([
         {
           message: 'Unexpected token',
@@ -613,7 +617,8 @@ describe('CodebaseIndexer', () => {
             ],
             hasErrors: false,
             errors: []
-          });
+          })
+      };
       mockedGetExtractorForLanguage.mockReturnValue(mockExtractor as any);
 
       const result = await indexer.indexDirectory(rootPath);

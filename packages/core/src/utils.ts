@@ -1924,3 +1924,66 @@ export function truncateToolOutput(output: string, options: TruncateOptions = {}
     truncatedLength: finalOutput.length,
   };
 }
+
+// ============================================================================
+// Safe JSON Serialization
+// ============================================================================
+
+/**
+ * Safely serialize objects to JSON, handling circular references with a WeakSet-based replacer.
+ * Circular references are replaced with '[Circular]' markers to prevent JSON.stringify errors.
+ *
+ * @param obj - The object to serialize
+ * @param space - Optional spacing for pretty-printing (passed to JSON.stringify)
+ * @returns JSON string with circular references replaced by '[Circular]' markers
+ *
+ * @example
+ * ```typescript
+ * const obj = { name: 'test' };
+ * obj.self = obj; // Creates circular reference
+ *
+ * const result = safeSerialize(obj);
+ * console.log(result); // '{"name":"test","self":"[Circular]"}'
+ *
+ * // With pretty printing
+ * const prettyResult = safeSerialize(obj, 2);
+ * // {
+ * //   "name": "test",
+ * //   "self": "[Circular]"
+ * // }
+ * ```
+ */
+export function safeSerialize(obj: any, space?: string | number): string {
+  const seen = new WeakSet();
+
+  try {
+    return JSON.stringify(obj, function(key, value) {
+      // Handle null and non-object values
+      if (value === null || typeof value !== 'object') {
+        return value;
+      }
+
+      // Special handling for the root object
+      if (key === '' && !seen.has(value)) {
+        seen.add(value);
+        return value;
+      }
+
+      // Check for circular reference
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+
+      // Add to seen set for future reference
+      seen.add(value);
+
+      return value;
+    }, space);
+  } catch (error) {
+    // Fallback for any unexpected serialization errors
+    return JSON.stringify({
+      error: 'Serialization failed',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+}

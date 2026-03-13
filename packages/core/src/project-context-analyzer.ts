@@ -188,19 +188,35 @@ export class ProjectContextAnalyzer {
 
   /**
    * Perform complete project context analysis
+   * @param overridePath - Optional path to analyze instead of the constructor path
+   * @param options - Optional analysis options to override defaults
    * @returns Promise resolving to complete project context
    */
-  async analyze(): Promise<ProjectContext> {
+  async analyze(overridePath?: string, options?: {
+    includeGit?: boolean;
+    includeFrameworks?: boolean;
+    includeConfiguration?: boolean;
+    includeTestFrameworks?: boolean;
+  }): Promise<ProjectContext> {
+    const targetPath = overridePath || this.projectPath;
+    const analysisOptions = {
+      analyzeGit: options?.includeGit ?? this.options.analyzeGit,
+      detectFrameworks: options?.includeFrameworks ?? this.options.detectFrameworks,
+      analyzeConfiguration: options?.includeConfiguration ?? this.options.analyzeConfiguration,
+      detectTests: options?.includeTestFrameworks ?? this.options.detectTests,
+    };
+
     const [gitStatus, structure, frameworkDetection, configurations, testFrameworks] = await Promise.all([
-      this.options.analyzeGit ? this.getGitStatus() : undefined,
+      analysisOptions.analyzeGit ? this.getGitStatus(targetPath) : undefined,
       this.getProjectStructure(),
-      this.options.detectFrameworks ? this.detectFrameworks() : this.getEmptyFrameworkDetection(),
-      this.options.analyzeConfiguration ? this.getConfigurationInfoList() : [],
-      this.options.detectTests ? this.getTestFrameworkInfoList() : [],
+      analysisOptions.detectFrameworks ? this.detectFrameworks() : this.getEmptyFrameworkDetection(),
+      analysisOptions.analyzeConfiguration ? this.getConfigurationInfoList() : [],
+      analysisOptions.detectTests ? this.getTestFrameworkInfoList() : [],
     ]);
 
     return {
-      gitStatus,
+      git: gitStatus, // Changed from gitStatus to git for test compatibility
+      gitStatus, // Keep for backward compatibility
       structure,
       frameworks: frameworkDetection.frameworks,
       configurations,
@@ -214,8 +230,9 @@ export class ProjectContextAnalyzer {
    * Get git repository status
    * @returns Promise resolving to git status information
    */
-  async getGitStatus(): Promise<GitStatus> {
-    const cacheKey = `git-status-${this.projectPath}`;
+  async getGitStatus(projectPath?: string): Promise<GitStatus> {
+    const targetPath = projectPath || this.projectPath;
+    const cacheKey = `git-status-${targetPath}`;
     const cached = this.getCachedData<GitStatus>(cacheKey);
     if (cached) {
       return cached;
@@ -223,7 +240,7 @@ export class ProjectContextAnalyzer {
     try {
       // First check if this is a git repository
       await execAsync('git rev-parse --git-dir', {
-        cwd: this.projectPath,
+        cwd: targetPath,
         shell: getPlatformShell().shell,
       });
     } catch {
@@ -231,9 +248,19 @@ export class ProjectContextAnalyzer {
       return this.getEmptyGitStatus();
     }
 
+    // Initialize git status object with new schema
     const gitStatus: Partial<GitStatus> = {
       isRepository: true,
-      branch: null,
+      branch: '',
+      isClean: true,
+      hasUncommittedChanges: false,
+      hasUntrackedFiles: false,
+      hasStagedChanges: false,
+      changedFiles: [],
+      stashCount: 0,
+      tracking: null,
+      lastCommit: null,
+      // Legacy fields for backward compatibility
       remoteBranch: null,
       ahead: 0,
       behind: 0,
@@ -242,7 +269,6 @@ export class ProjectContextAnalyzer {
       untracked: [],
       hasConflicts: false,
       isDirty: false,
-      stashCount: 0,
       remotes: [],
       recentCommits: [],
     };
@@ -250,22 +276,37 @@ export class ProjectContextAnalyzer {
     try {
       // Get current branch name
       const branchResult = await execAsync('git rev-parse --abbrev-ref HEAD', {
-        cwd: this.projectPath,
+        cwd: targetPath,
         shell: getPlatformShell().shell,
       });
-      gitStatus.branch = branchResult.stdout.trim() === 'HEAD' ? null : branchResult.stdout.trim();
+      gitStatus.branch = branchResult.stdout.trim() === 'HEAD' ? '' : branchResult.stdout.trim();
     } catch {
-      // Branch detection failed, keep as null
+      // Branch detection failed, keep as empty string
+      gitStatus.branch = '';
     }
+
+    // Initialize tracking information
+    let remoteName: string | null = null;
+    let remoteBranch: string | null = null;
+    let aheadCount = 0;
+    let behindCount = 0;
 
     try {
       // Get remote tracking branch
       if (gitStatus.branch) {
         const remoteResult = await execAsync(`git rev-parse --abbrev-ref "${gitStatus.branch}@{upstream}"`, {
-          cwd: this.projectPath,
+          cwd: targetPath,
           shell: getPlatformShell().shell,
         });
-        gitStatus.remoteBranch = remoteResult.stdout.trim();
+        const remoteTrackingBranch = remoteResult.stdout.trim();
+        gitStatus.remoteBranch = remoteTrackingBranch; // Legacy field
+
+        // Parse remote name and branch name
+        const remoteParts = remoteTrackingBranch.split('/');
+        if (remoteParts.length >= 2) {
+          remoteName = remoteParts[0];
+          remoteBranch = remoteTrackingBranch;
+        }
       }
     } catch {
       // No remote tracking branch
@@ -273,30 +314,41 @@ export class ProjectContextAnalyzer {
 
     try {
       // Get ahead/behind counts if we have a remote branch
-      if (gitStatus.remoteBranch) {
-        const aheadBehindResult = await execAsync(`git rev-list --count --left-right HEAD...${gitStatus.remoteBranch}`, {
-          cwd: this.projectPath,
+      if (remoteBranch) {
+        const aheadBehindResult = await execAsync(`git rev-list --count --left-right HEAD...${remoteBranch}`, {
+          cwd: targetPath,
           shell: getPlatformShell().shell,
         });
         const [ahead, behind] = aheadBehindResult.stdout.trim().split('\t').map(n => parseInt(n, 10));
-        gitStatus.ahead = ahead || 0;
-        gitStatus.behind = behind || 0;
+        aheadCount = ahead || 0;
+        behindCount = behind || 0;
+        gitStatus.ahead = aheadCount; // Legacy field
+        gitStatus.behind = behindCount; // Legacy field
       }
     } catch {
       // Keep default values
     }
 
+    // Set tracking information in new format
+    gitStatus.tracking = remoteName || remoteBranch ? {
+      remote: remoteName,
+      remoteBranch: remoteBranch,
+      aheadCount,
+      behindCount,
+    } : null;
+
     try {
       // Get file status
       const statusResult = await execAsync('git status --porcelain=v1', {
-        cwd: this.projectPath,
+        cwd: targetPath,
         shell: getPlatformShell().shell,
       });
 
-      const lines = statusResult.stdout.trim().split('\n').filter(line => line.length > 0);
-      const staged: GitChangedFile[] = [];
-      const unstaged: GitChangedFile[] = [];
-      const untracked: string[] = [];
+      const lines = statusResult.stdout.split('\n').filter(line => line.length > 0);
+      const stagedFiles: GitChangedFile[] = [];
+      const unstagedFiles: GitChangedFile[] = [];
+      const untrackedFiles: string[] = [];
+      const allChangedFiles: GitChangedFile[] = [];
 
       for (const line of lines) {
         const statusCode = line.substring(0, 2);
@@ -304,7 +356,12 @@ export class ProjectContextAnalyzer {
 
         // Check for untracked files
         if (statusCode === '??') {
-          untracked.push(filePath);
+          untrackedFiles.push(filePath);
+          allChangedFiles.push({
+            path: filePath,
+            status: '?',
+            staged: false,
+          });
           continue;
         }
 
@@ -341,10 +398,14 @@ export class ProjectContextAnalyzer {
               mappedStatus = 'M'; // Default to modified
           }
 
-          staged.push({
+          const stagedFile: GitChangedFile = {
             path: filePath,
             status: mappedStatus,
-          });
+            staged: true,
+          };
+
+          stagedFiles.push(stagedFile);
+          allChangedFiles.push(stagedFile);
         }
 
         // Parse unstaged changes (second character)
@@ -374,39 +435,63 @@ export class ProjectContextAnalyzer {
               mappedStatus = 'M'; // Default to modified
           }
 
-          unstaged.push({
+          const unstagedFile: GitChangedFile = {
             path: filePath,
             status: mappedStatus,
-          });
+            staged: false,
+          };
+
+          unstagedFiles.push(unstagedFile);
+          // Only add to allChangedFiles if not already added as staged
+          if (!allChangedFiles.some(f => f.path === filePath)) {
+            allChangedFiles.push(unstagedFile);
+          }
         }
       }
 
-      gitStatus.staged = staged;
-      gitStatus.unstaged = unstaged;
-      gitStatus.untracked = untracked;
-      gitStatus.isDirty = staged.length > 0 || unstaged.length > 0 || untracked.length > 0;
+      // Set new format fields
+      gitStatus.changedFiles = allChangedFiles;
+      gitStatus.hasUncommittedChanges = unstagedFiles.length > 0;
+      gitStatus.hasUntrackedFiles = untrackedFiles.length > 0;
+      gitStatus.hasStagedChanges = stagedFiles.length > 0;
+      gitStatus.isClean = allChangedFiles.length === 0;
+
+      // Set legacy fields for backward compatibility
+      gitStatus.staged = stagedFiles;
+      gitStatus.unstaged = unstagedFiles;
+      gitStatus.untracked = untrackedFiles;
+      gitStatus.isDirty = allChangedFiles.length > 0;
     } catch {
-      // Keep default empty arrays
+      // Keep default empty arrays and clean status
     }
 
     try {
       // Get last commit information
       const lastCommitResult = await execAsync('git log -1 --format="%H|%s|%ct"', {
-        cwd: this.projectPath,
+        cwd: targetPath,
         shell: getPlatformShell().shell,
       });
       const [hash, message, timestamp] = lastCommitResult.stdout.trim().split('|');
-      gitStatus.lastCommitHash = hash.substring(0, 7); // Short hash
+
+      // Set new format lastCommit
+      gitStatus.lastCommit = {
+        hash: hash.substring(0, 7), // Short hash
+        message: message,
+        timestamp: new Date(parseInt(timestamp, 10) * 1000),
+      };
+
+      // Set legacy fields for backward compatibility
+      gitStatus.lastCommitHash = hash.substring(0, 7);
       gitStatus.lastCommitMessage = message;
       gitStatus.lastCommitTimestamp = new Date(parseInt(timestamp, 10) * 1000);
     } catch {
-      // Keep undefined
+      // Keep null/undefined
     }
 
     try {
       // Get recent commits (last 5)
       const recentCommitsResult = await execAsync('git log -5 --format="%H|%s|%ct|%an|%ae"', {
-        cwd: this.projectPath,
+        cwd: targetPath,
         shell: getPlatformShell().shell,
       });
 
@@ -434,7 +519,7 @@ export class ProjectContextAnalyzer {
     try {
       // Get stash count
       const stashResult = await execAsync('git stash list', {
-        cwd: this.projectPath,
+        cwd: targetPath,
         shell: getPlatformShell().shell,
       });
       gitStatus.stashCount = stashResult.stdout.trim().split('\n').filter(line => line.length > 0).length;
@@ -445,7 +530,7 @@ export class ProjectContextAnalyzer {
     try {
       // Get remote list
       const remotesResult = await execAsync('git remote -v', {
-        cwd: this.projectPath,
+        cwd: targetPath,
         shell: getPlatformShell().shell,
       });
       const remoteLines = remotesResult.stdout.trim().split('\n').filter(line => line.length > 0);
@@ -3255,7 +3340,16 @@ export class ProjectContextAnalyzer {
   private getEmptyGitStatus(): GitStatus {
     return {
       isRepository: false,
-      branch: null,
+      branch: '',
+      isClean: true,
+      hasUncommittedChanges: false,
+      hasUntrackedFiles: false,
+      hasStagedChanges: false,
+      changedFiles: [],
+      stashCount: 0,
+      tracking: null,
+      lastCommit: null,
+      // Legacy fields for backward compatibility
       remoteBranch: null,
       ahead: 0,
       behind: 0,
@@ -3264,7 +3358,6 @@ export class ProjectContextAnalyzer {
       untracked: [],
       hasConflicts: false,
       isDirty: false,
-      stashCount: 0,
       remotes: [],
       recentCommits: [],
     };

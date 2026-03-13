@@ -42,11 +42,13 @@ class PermissionManager {
         // First check session cache for 'allow-once' permissions
         if (this.sessionCache.has(cacheKey)) {
             const cachedLevel = this.sessionCache.get(cacheKey);
-            // If it's an 'allow-once' permission, consume it from the cache
-            if (cachedLevel === 'allow-once') {
-                this.sessionCache.delete(cacheKey);
+            if (cachedLevel !== undefined) {
+                // If it's an 'allow-once' permission, consume it from the cache
+                if (cachedLevel === 'allow-once') {
+                    this.sessionCache.delete(cacheKey);
+                }
+                return cachedLevel;
             }
-            return cachedLevel;
         }
         // Fall back to persistent store
         const permission = await this.store.getPermission({ tool, scope });
@@ -59,7 +61,7 @@ class PermissionManager {
             this.sessionCache.set(cacheKey, permission.level);
             await this.store.clearPermission({ tool, scope });
         }
-        return permission.level;
+        return permission.level ?? null;
     }
     /**
      * Grant a permission for a specific tool and scope combination
