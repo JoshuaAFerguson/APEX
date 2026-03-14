@@ -66,17 +66,24 @@ This document outlines the planned development roadmap for APEX. Our goal is to 
 - 🟢 Unit test suite (>80% coverage) - *560 tests, 89% coverage*
 - 🟢 Integration tests
 - 🟢 End-to-end tests - *21 CLI E2E tests*
-- 🟡 Performance benchmarks - *Package-specific benchmarks for @apexcli/browser and @apexcli/core*
-- 🟡 Load testing - *SQLite and domain-specific stress tests implemented*
+- 🟢 Performance benchmarks - *Package-specific benchmarks for @apexcli/browser and @apexcli/core*
+- 🟢 Load testing - *SQLite and domain-specific stress tests implemented*
 
-> **Verification Note (2026-03-09):** Performance benchmark tests exist in:
+> **Verification Note (2026-03-14):** Performance benchmark tests exist in:
 > - `packages/browser/src/__tests__/performance-benchmark.test.ts` (screenshot utility benchmarks with concurrent vs sequential analysis)
 > - `packages/core/src/test-fixtures/__tests__/error-page-fixture-benchmarks.test.ts` (fixture performance and memory usage benchmarks)
 > - Multiple package-specific performance tests across the codebase (41+ benchmark files)
 >
-> Load testing coverage includes SQLite bulk operations (`packages/orchestrator/src/__tests__/sqlite-performance-load.test.ts`)
-> with concurrent access tests, memory optimization validation, and 161+ stress test files across packages.
-> Comprehensive system-wide unified load testing framework with coordinated benchmarks across all components remains to be implemented.
+> Load testing coverage includes:
+> - SQLite bulk operations (`packages/orchestrator/src/__tests__/sqlite-performance-load.test.ts`)
+> - Priority-based dequeuing (`packages/orchestrator/src/priority-based-dequeuing-load.integration.test.ts`)
+> - Workflow performance (`tests/workflow-performance.test.ts`)
+>
+> **See [Load Testing Results](/docs/load-testing-results.md) for comprehensive documentation including:**
+> - Test methodology and baseline measurements
+> - Performance thresholds with justifications
+> - v0.2.0 target comparison and gap analysis
+> - Recommendations for production deployments
 
 ### CLI Enhancements
 
