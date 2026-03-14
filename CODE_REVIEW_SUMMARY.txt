@@ -1,140 +1,140 @@
 ================================================================================
-CODE REVIEW SUMMARY - v0.6.0 Brownfield Codebase Analysis Implementation
+CODE REVIEW SUMMARY - TIMING CONSISTENCY TEST SUITE
 ================================================================================
 
-REVIEW STAGE: Complete
-TIMESTAMP: 2026-03-14T01:55:00Z
+REVIEWED FILES:
+- packages/orchestrator/src/tool-execution-timing.test.ts
+- tests/timing-consistency-advanced.test.ts
+- tests/timing-consistency-focused.test.ts
+
+REVIEW DATE: 2026-03-14
 REVIEWER: Code Quality Agent
 
 ================================================================================
-FILES REVIEWED
+CRITICAL FINDINGS
 ================================================================================
 
-Core Analyzer Implementations:
-✓ packages/orchestrator/src/codebase-analyzer/analyzers/stack-analyzer.ts (480 lines)
-✓ packages/orchestrator/src/codebase-analyzer/analyzers/testing-analyzer.ts (614 lines)
-✓ packages/orchestrator/src/codebase-analyzer/analyzers/architecture-analyzer.ts (636 lines)
-✓ packages/orchestrator/src/codebase-analyzer/analyzers/debt-analyzer.ts (665 lines)
-✓ packages/orchestrator/src/codebase-analyzer/analyzers/integration-analyzer.ts (713 lines)
-
-Orchestration & Integration:
-✓ packages/orchestrator/src/codebase-analyzer/orchestrator.ts (partial)
-✓ packages/orchestrator/src/codebase-mapper.ts (250+ lines)
-
-Build Status:
-✓ npm run build - PASSED (all packages compiled successfully)
+1. BUILD ARTIFACT CORRUPTION [FIXED]
+   - File: packages/core/dist/types.js:7589
+   - Issue: SyntaxError: Unexpected token '*'
+   - Status: ✅ RESOLVED (rebuilt dist successfully)
 
 ================================================================================
-CRITICAL FINDINGS (MUST FIX)
+HIGH PRIORITY ISSUES (Must Fix Before Merge)
 ================================================================================
 
-[CRITICAL-1] Direct Source File Import
-File: packages/orchestrator/src/codebase-analyzer/analyzers/integration-analyzer.ts:21
-Severity: HIGH
-Issue: import { compareVersions } from '@apexcli/core/src/utils.js';
-Problem:
-  - Imports from internal source file instead of public API
-  - Will break in production builds where src/ is not distributed
-  - Violates module boundaries
-Fix: Export compareVersions from @apexcli/core main package
+2. FLAKY TIMING ASSERTIONS [SEVERITY: HIGH]
+   Files: 
+   - packages/orchestrator/src/tool-execution-timing.test.ts:520-523
+   - tests/timing-consistency-advanced.test.ts:377-378
+   
+   Problem: Timing tolerances are too strict for CI environments
+   Example: 100ms tolerance set with 10ms base = 10x overhead assumption
+   Impact: Tests will fail intermittently on slower systems
+   Fix Required: Use tolerance ratios instead of fixed milliseconds
 
-[CRITICAL-2] Unsafe Type Assertions with 'any'
-File: packages/orchestrator/src/codebase-mapper.ts:185-188
-Severity: HIGH
-Code:
-  stack: {} as any,
-  architecture: {} as any,
-  conventions: {} as any,
-Problem:
-  - Loses type safety for core analysis results
-  - Makes debugging ineffective
-  - Violates TypeScript best practices
-Fix: Create proper type definitions for analyzer outputs
+3. MISSING TEST TIMEOUT CONFIGURATION [SEVERITY: HIGH]
+   Files: All timing test files
+   Problem: No explicit timeout configuration for timing-dependent tests
+   Impact: Default 5000ms timeout may be exceeded
+   Fix Required: Add explicit vi.setConfig({ testTimeout: 15000 })
 
-================================================================================
-HIGH PRIORITY ISSUES
-================================================================================
-
-[HIGH-1] Inconsistent Module Usage
-Location: integration-analyzer.ts:494
-Code: extensions.has(require('path').extname(entry.name))
-Issue: Dynamic require in loop; 'path' already imported at module top
-Fix: Use imported extname function
-
-[HIGH-2] Incomplete Implementation
-Location: testing-analyzer.ts:546-551
-Issue: Returns object with all undefined properties
-Fix: Either implement coverage parsing or return undefined
-
-[HIGH-3] Error Visibility
-Locations: Multiple catch blocks silently ignore errors
-Issue: No logging or debugging information
-Fix: Add debug logging and error tracking
+4. EVENT LISTENER CLEANUP NOT GUARANTEED [SEVERITY: MEDIUM]
+   File: tests/timing-consistency-focused.test.ts:395
+   Problem: removeAllListeners() not called in finally block
+   Impact: Test pollution - listeners accumulate if assertions fail
+   Fix Required: Move cleanup to afterEach() or use try/finally
 
 ================================================================================
-COMPILATION & BUILD
+MEDIUM PRIORITY ISSUES (Should Fix)
 ================================================================================
 
-Command: npm run build
-Result: ✓ PASSED
-Time: 719ms
-Details: All packages compiled successfully, Turbo cache utilized
+5. REDUNDANT TIMESTAMP FIELDS [SEVERITY: MEDIUM]
+   Issue: Both startTime and timestamp set to same value
+   Impact: API confusion, unclear semantics
+   Fix Required: Remove one field and document clearly
+
+6. INCOMPLETE DURATION ASSERTIONS [SEVERITY: MEDIUM]
+   Issue: Loose upper bounds (10x expected duration)
+   Impact: Doesn't catch performance regressions
+   Fix Required: Use tighter tolerance ratios
+
+7. COMPLEX MOCK IMPLEMENTATION [SEVERITY: MEDIUM]
+   Issue: 45-line child_process mock is hard to maintain
+   Impact: Fragile test dependencies on Node internals
+   Fix Required: Extract to utility or simplify
+
+8. CONCURRENT TIMING ISOLATION NOT VERIFIED [SEVERITY: MEDIUM]
+   Issue: Test doesn't verify timing data consistency during concurrent execution
+   Impact: May mask race conditions
+   Fix Required: Add isolation verification
 
 ================================================================================
-TEST STATUS
+LOW PRIORITY ISSUES (Nice to Have)
 ================================================================================
 
-Command: npm run test
-Status: RUNNING (vitest processes active)
-Expected: Tests should complete soon
+9. Duration calculation doesn't verify against real elapsed time
+10. No test for event listener error handling
+11. No input validation on event data before emission
+
+================================================================================
+SUMMARY BY SEVERITY
+================================================================================
+
+CRITICAL:     1 (FIXED)
+HIGH:         3 (MUST FIX)
+MEDIUM:       5 (SHOULD FIX)
+LOW:          3 (OPTIONAL)
+
+================================================================================
+BUILD STATUS
+================================================================================
+
+Build: ✅ PASSING
+- Tasks: 7 successful, 7 total
+- All packages compiled without errors
+- Distribution files regenerated and valid
+
+Tests: ⏳ RUNNING
+- Test suite in progress
+- Will verify after completion
 
 ================================================================================
 RECOMMENDATIONS
 ================================================================================
 
-CRITICAL (Must Fix):
-  1. Fix compareVersions import to use public API
-  2. Replace 'any' type assertions with proper types
+MUST DO:
+1. Fix timing tolerance inconsistencies
+2. Add explicit test timeouts
+3. Fix event listener cleanup
+4. Run full test suite and monitor for failures
 
-HIGH (Before Release):
-  3. Add proper error logging
-  4. Make analyzer limits configurable
-  5. Complete or remove coverage implementation
+SHOULD DO:
+1. Clarify/remove redundant timestamp field
+2. Improve duration assertions
+3. Extract mock utilities
+4. Add concurrent isolation verification
 
-MEDIUM (Code Quality):
-  6. Remove console.warn, use proper logging
-  7. Extract hardcoded thresholds to config
-  8. Improve error visibility
-
-================================================================================
-CODE QUALITY SUMMARY
-================================================================================
-
-Strengths:
-✓ Comprehensive documentation (good JSDoc)
-✓ Good separation of concerns
-✓ Event-driven architecture
-✓ Consistent file walking patterns
-✓ Type safe implementations (mostly)
-
-Weaknesses:
-✗ Type assertions with 'any'
-✗ Silent error handling
-✗ Hardcoded limits and thresholds
-✗ Direct source file imports
-✗ No logging/debugging support
+NICE TO HAVE:
+1. Add event listener error tests
+2. Add input validation
+3. Improve duration verification
 
 ================================================================================
-FINAL ASSESSMENT
+FILES CREATED
 ================================================================================
 
-The v0.6.0 implementation is largely well-structured with 5 analyzers,
-orchestration layer, and parallel agent support. Build passes successfully.
+1. TIMING_TESTS_REVIEW.md - Detailed technical review with code examples
+2. REVIEW_FINDINGS_TIMING_TESTS.md - Executive summary and actionable items
+3. CODE_REVIEW_SUMMARY.txt - This file
 
-However, 2 critical issues must be fixed before merge:
-1. compareVersions import from source files
-2. Type assertions bypassing TypeScript safety
+================================================================================
+NEXT STEPS
+================================================================================
 
-Recommendation: Approve pending fixes for critical issues 1 & 2
+1. Wait for test results
+2. Address HIGH priority issues before merge
+3. Create follow-up tickets for MEDIUM priority items
+4. Monitor tests on CI for flaky timing assertions
 
 ================================================================================

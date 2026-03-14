@@ -11346,7 +11346,7 @@ export type TechnicalDebtAnalysis = z.infer<typeof TechnicalDebtAnalysisSchema>;
  *   testCount: 150,
  *   coverage: { overall: 85, statements: 87, branches: 83, functions: 90 },
  *   patterns: {
- *     unit: { count: 120, locations: ['src/__tests__', 'src/**/*.test.ts'] },
+ *     unit: { count: 120, locations: ['src/__tests__', 'src/\*\*/\*.test.ts'] },
  *     integration: { count: 25, locations: ['tests/integration'] },
  *     e2e: { count: 5, locations: ['tests/e2e'] }
  *   },
