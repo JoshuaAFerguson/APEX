@@ -66,17 +66,16 @@ This document outlines the planned development roadmap for APEX. Our goal is to 
 - 🟢 Unit test suite (>80% coverage) - *560 tests, 89% coverage*
 - 🟢 Integration tests
 - 🟢 End-to-end tests - *21 CLI E2E tests*
-- 🟡 Performance benchmarks - *Package-specific benchmarks for @apexcli/browser and @apexcli/core*
-- 🟡 Load testing - *SQLite and domain-specific stress tests implemented*
+- 🟢 Performance benchmarks - *Package-specific benchmarks for @apexcli/browser, @apexcli/core, and @apexcli/orchestrator*
+- 🟢 Load testing - *Comprehensive load testing with 10k+ scale tests, documented baselines, and threshold framework*
 
-> **Verification Note (2026-03-09):** Performance benchmark tests exist in:
-> - `packages/browser/src/__tests__/performance-benchmark.test.ts` (screenshot utility benchmarks with concurrent vs sequential analysis)
-> - `packages/core/src/test-fixtures/__tests__/error-page-fixture-benchmarks.test.ts` (fixture performance and memory usage benchmarks)
-> - Multiple package-specific performance tests across the codebase (41+ benchmark files)
->
-> Load testing coverage includes SQLite bulk operations (`packages/orchestrator/src/__tests__/sqlite-performance-load.test.ts`)
-> with concurrent access tests, memory optimization validation, and 161+ stress test files across packages.
-> Comprehensive system-wide unified load testing framework with coordinated benchmarks across all components remains to be implemented.
+> **Verification Note (2026-03-14):** Performance and load testing is now complete with:
+> - **Centralized Threshold Framework**: `benchmarks/shared/thresholds.ts` with P95/P99 percentiles and throughput metrics
+> - **SQLite Load Tests**: `sqlite-performance-load.test.ts` and `sqlite-large-volume-load.test.ts` (10k+ task scale)
+> - **Workflow Performance**: `workflow-performance.test.ts` (5000-stage workflows, 200+ bulk loading)
+> - **Threshold Validation**: `benchmark-thresholds-load-testing-integration.test.ts`
+> - **Documentation**: `docs/load-testing-results.md` with methodology, baselines, and recommendations
+> - **Package Coverage**: 41+ benchmark files, 161+ stress test files across all packages
 
 ### CLI Enhancements
 
