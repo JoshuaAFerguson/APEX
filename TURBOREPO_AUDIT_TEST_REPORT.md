@@ -1,6 +1,6 @@
 # Turborepo Audit Test Report
 
-**Generated:** 2026-03-14T15:28:03.220Z
+**Generated:** 2026-03-14T15:54:12.168Z
 **Completeness Score:** 100/100
 
 ## Executive Summary
@@ -11,7 +11,7 @@ This report documents the comprehensive testing and validation of the APEX Turbo
 
 ## Test Results Summary
 
-✅ All audit tests passed
+❌ Some audit tests failed
 
 - **Total Tests:** 35
 - **Passed:** 35

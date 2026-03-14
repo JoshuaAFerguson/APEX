@@ -6,8 +6,8 @@ import { ApexOrchestrator, ToolCallStartEvent, ToolCallCompleteEvent } from './i
 import { ToolExecution } from '@apexcli/core';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
-// Mock the claude-agent-sdk (using import() syntax for Vitest 4)
-vi.mock(import('@anthropic-ai/claude-agent-sdk'), async (importOriginal) => {
+// Mock the claude-agent-sdk
+vi.mock('@anthropic-ai/claude-agent-sdk', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
@@ -15,8 +15,8 @@ vi.mock(import('@anthropic-ai/claude-agent-sdk'), async (importOriginal) => {
   };
 });
 
-// Mock child_process for git/gh commands (using import() syntax for Vitest 4)
-vi.mock(import('child_process'), async (importOriginal) => {
+// Mock child_process for git/gh commands
+vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal();
 
   // Create promisifiable mock function (inline to avoid hoisting issues)
