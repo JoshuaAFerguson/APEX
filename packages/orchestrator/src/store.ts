@@ -480,7 +480,9 @@ export class TaskStore {
         last_checkpoint TEXT,
         -- Task lifecycle (trash/archive) support
         trashed_at TEXT,
-        archived_at TEXT
+        archived_at TEXT,
+        -- v0.5.0 policy check support
+        policy_check_result TEXT
       );
 
       CREATE TABLE IF NOT EXISTS task_logs (
@@ -4608,6 +4610,7 @@ export class TaskStore {
     const stmt = this.db.prepare('DELETE FROM mcp_installations WHERE id = ?');
     stmt.run(id);
   }
+
 
   /**
    * Clear all tasks from the database

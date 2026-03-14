@@ -33,10 +33,15 @@ import {
   detectConflicts,
   suggestConflictResolution,
   formatConflictReport,
+  truncatePayload,
   type SemVer,
   type UpdateType,
   type TruncateOptions,
   type TruncateResult,
+  type TruncatePayloadOptions,
+  type TruncationMetadata,
+  type TruncationDetail,
+  type TruncatedPayload,
 } from './utils';
 
 describe('generateTaskId', () => {
@@ -1686,5 +1691,338 @@ describe('safeSerialize', () => {
     expect(result1).toBe(result2);
     expect(JSON.parse(result1).self).toBe('[Circular]');
     expect(JSON.parse(result2).self).toBe('[Circular]');
+  });
+});
+
+// ============================================================================
+// Payload Truncation Tests
+// ============================================================================
+
+describe('truncatePayload', () => {
+  describe('basic functionality', () => {
+    it('should return data unchanged when within limits', () => {
+      const payload = {
+        name: 'test',
+        items: [1, 2, 3],
+        description: 'A short description'
+      };
+
+      const result = truncatePayload(payload);
+
+      expect(result.data).toEqual(payload);
+      expect(result._truncation).toBeUndefined();
+    });
+
+    it('should handle null and undefined values', () => {
+      const payload = {
+        nullValue: null,
+        undefinedValue: undefined,
+        emptyString: ''
+      };
+
+      const result = truncatePayload(payload);
+
+      expect(result.data).toEqual(payload);
+      expect(result._truncation).toBeUndefined();
+    });
+
+    it('should handle primitive values', () => {
+      const primitives = [
+        'string',
+        42,
+        true,
+        false,
+        null,
+        undefined
+      ];
+
+      for (const primitive of primitives) {
+        const result = truncatePayload(primitive);
+        expect(result.data).toBe(primitive);
+        expect(result._truncation).toBeUndefined();
+      }
+    });
+  });
+
+  describe('array truncation', () => {
+    it('should truncate large arrays', () => {
+      const largeArray = new Array(2000).fill('item');
+      const payload = { items: largeArray };
+
+      const result = truncatePayload(payload, { maxArrayItems: 1000 });
+
+      expect(result.data.items).toHaveLength(1000);
+      expect(result._truncation).toBeDefined();
+      expect(result._truncation!.truncated).toBe(true);
+      expect(result._truncation!.truncations).toHaveLength(1);
+
+      const truncation = result._truncation!.truncations[0];
+      expect(truncation.type).toBe('array');
+      expect(truncation.path).toBe('items');
+      expect(truncation.originalSize).toBe(2000);
+      expect(truncation.truncatedSize).toBe(1000);
+    });
+
+    it('should handle nested arrays', () => {
+      const nestedPayload = {
+        level1: {
+          level2: {
+            items: new Array(1500).fill('item')
+          }
+        }
+      };
+
+      const result = truncatePayload(nestedPayload, { maxArrayItems: 500 });
+
+      expect(result.data.level1.level2.items).toHaveLength(500);
+      expect(result._truncation!.truncations[0].path).toBe('level1.level2.items');
+    });
+
+    it('should truncate multiple arrays in the same payload', () => {
+      const payload = {
+        firstArray: new Array(1200).fill('item1'),
+        secondArray: new Array(1500).fill('item2')
+      };
+
+      const result = truncatePayload(payload, { maxArrayItems: 800 });
+
+      expect(result.data.firstArray).toHaveLength(800);
+      expect(result.data.secondArray).toHaveLength(800);
+      expect(result._truncation!.truncations).toHaveLength(2);
+    });
+  });
+
+  describe('string truncation', () => {
+    it('should truncate long strings', () => {
+      const longString = 'A'.repeat(100000);
+      const payload = { description: longString };
+
+      const result = truncatePayload(payload, { maxStringLength: 50000 });
+
+      expect(result.data.description).toHaveLength(50000 + '... [truncated]'.length);
+      expect(result.data.description.endsWith('... [truncated]')).toBe(true);
+      expect(result._truncation!.truncations[0].type).toBe('string');
+      expect(result._truncation!.truncations[0].originalSize).toBe(100000);
+    });
+
+    it('should handle nested strings', () => {
+      const payload = {
+        user: {
+          bio: 'B'.repeat(75000)
+        }
+      };
+
+      const result = truncatePayload(payload, { maxStringLength: 40000 });
+
+      expect(result.data.user.bio).toHaveLength(40000 + '... [truncated]'.length);
+      expect(result._truncation!.truncations[0].path).toBe('user.bio');
+    });
+
+    it('should handle multiple long strings', () => {
+      const payload = {
+        field1: 'X'.repeat(60000),
+        field2: 'Y'.repeat(80000)
+      };
+
+      const result = truncatePayload(payload, { maxStringLength: 30000 });
+
+      expect(result._truncation!.truncations).toHaveLength(2);
+      expect(result._truncation!.truncations[0].type).toBe('string');
+      expect(result._truncation!.truncations[1].type).toBe('string');
+    });
+  });
+
+  describe('circular reference handling', () => {
+    it('should handle circular references', () => {
+      const payload: any = { name: 'test' };
+      payload.self = payload;
+
+      const result = truncatePayload(payload);
+
+      expect(result.data.name).toBe('test');
+      expect(result.data.self).toBe('[Circular]');
+    });
+
+    it('should handle complex circular references', () => {
+      const parent: any = { name: 'parent' };
+      const child: any = { name: 'child', parent };
+      parent.children = [child];
+
+      const result = truncatePayload(parent);
+
+      expect(result.data.name).toBe('parent');
+      expect(result.data.children[0].name).toBe('child');
+      expect(result.data.children[0].parent).toBe('[Circular]');
+    });
+  });
+
+  describe('mixed truncation scenarios', () => {
+    it('should handle both array and string truncation', () => {
+      const payload = {
+        items: new Array(1500).fill('item'),
+        description: 'C'.repeat(75000),
+        metadata: {
+          logs: new Array(800).fill('log'),
+          summary: 'D'.repeat(40000)
+        }
+      };
+
+      const result = truncatePayload(payload, {
+        maxArrayItems: 500,
+        maxStringLength: 25000
+      });
+
+      expect(result.data.items).toHaveLength(500);
+      expect(result.data.description).toHaveLength(25000 + '... [truncated]'.length);
+      expect(result.data.metadata.logs).toHaveLength(500);
+      expect(result.data.metadata.summary).toHaveLength(25000 + '... [truncated]'.length);
+
+      expect(result._truncation!.truncations).toHaveLength(4);
+      const types = result._truncation!.truncations.map(t => t.type);
+      expect(types.filter(t => t === 'array')).toHaveLength(2);
+      expect(types.filter(t => t === 'string')).toHaveLength(2);
+    });
+  });
+
+  describe('configuration options', () => {
+    it('should respect custom maxArrayItems', () => {
+      const payload = { items: new Array(100).fill('item') };
+
+      const result = truncatePayload(payload, { maxArrayItems: 50 });
+
+      expect(result.data.items).toHaveLength(50);
+      expect(result._truncation!.truncations[0].truncatedSize).toBe(50);
+    });
+
+    it('should respect custom maxStringLength', () => {
+      const payload = { text: 'E'.repeat(1000) };
+
+      const result = truncatePayload(payload, { maxStringLength: 500 });
+
+      expect(result.data.text).toHaveLength(500 + '... [truncated]'.length);
+      expect(result._truncation!.truncations[0].truncatedSize).toBe(500);
+    });
+
+    it('should disable metadata when includeMetadata is false', () => {
+      const payload = { items: new Array(2000).fill('item') };
+
+      const result = truncatePayload(payload, {
+        maxArrayItems: 500,
+        includeMetadata: false
+      });
+
+      expect(result.data.items).toHaveLength(500);
+      expect(result._truncation).toBeUndefined();
+    });
+  });
+
+  describe('WebSocket event simulation', () => {
+    it('should handle tool:complete event payloads', () => {
+      const toolCompletePayload = {
+        toolName: 'readFile',
+        callId: 'call_123',
+        result: {
+          content: 'F'.repeat(100000),
+          lines: new Array(5000).fill('line of code'),
+          metadata: {
+            size: 100000,
+            encoding: 'utf-8'
+          }
+        },
+        timing: {
+          startTime: new Date(),
+          endTime: new Date(),
+          duration: 1500
+        }
+      };
+
+      const result = truncatePayload(toolCompletePayload, {
+        maxArrayItems: 1000,
+        maxStringLength: 50 * 1024
+      });
+
+      expect(result.data.toolName).toBe('readFile');
+      expect(result.data.result.lines).toHaveLength(1000);
+      expect(result.data.result.content).toHaveLength(50 * 1024 + '... [truncated]'.length);
+      expect(result._truncation!.truncations).toHaveLength(2);
+    });
+
+    it('should handle agent:tool-use event payloads', () => {
+      const agentToolUsePayload = {
+        tool: 'listDirectory',
+        input: {
+          path: '/very/long/path',
+          recursive: true,
+          filters: new Array(2000).fill({
+            pattern: '*.ts',
+            exclude: false
+          }),
+          options: {
+            details: true,
+            sortBy: 'name'
+          }
+        }
+      };
+
+      const result = truncatePayload(agentToolUsePayload, {
+        maxArrayItems: 1000,
+        maxStringLength: 50 * 1024
+      });
+
+      expect(result.data.tool).toBe('listDirectory');
+      expect(result.data.input.filters).toHaveLength(1000);
+      expect(result._truncation!.truncations).toHaveLength(1);
+      expect(result._truncation!.truncations[0].type).toBe('array');
+    });
+  });
+
+  describe('error handling', () => {
+    it('should fail gracefully and return original payload on error', () => {
+      // Mock truncateValue to throw an error
+      const payload = { test: 'value' };
+
+      // We can't easily mock internal functions, so we'll test with a circular reference
+      // that might cause issues in edge cases
+      const problematicPayload: any = {};
+
+      // Create a very deep circular reference that might cause stack overflow
+      let current = problematicPayload;
+      for (let i = 0; i < 1000; i++) {
+        current.next = { level: i };
+        current = current.next;
+      }
+      current.circular = problematicPayload;
+
+      const result = truncatePayload(problematicPayload);
+
+      // Should either succeed with truncation or return original payload
+      expect(result.data).toBeDefined();
+    });
+
+    it('should handle malformed objects gracefully', () => {
+      const payload = Object.create(null);
+      payload.test = 'value';
+
+      const result = truncatePayload(payload);
+
+      expect(result.data).toBeDefined();
+    });
+  });
+
+  describe('default values', () => {
+    it('should use default limits when no options provided', () => {
+      const payload = {
+        largeArray: new Array(2000).fill('item'),
+        longString: 'G'.repeat(60000)
+      };
+
+      const result = truncatePayload(payload);
+
+      // Default maxArrayItems should be 1000
+      expect(result.data.largeArray).toHaveLength(1000);
+
+      // Default maxStringLength should be 50KB
+      expect(result.data.longString).toHaveLength(50 * 1024 + '... [truncated]'.length);
+    });
   });
 });

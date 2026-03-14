@@ -31,7 +31,13 @@ vi.mock('child_process', () => ({
 }));
 
 // Mock fs for file system operations
-vi.mock('fs/promises');
+vi.mock('fs/promises', () => ({
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
+  access: vi.fn(),
+  stat: vi.fn(),
+  readdir: vi.fn(),
+}));
 
 describe('apex doctor Command Integration', () => {
   const projectRoot = path.resolve(__dirname, '..');
@@ -129,7 +135,7 @@ describe('apex doctor Command Integration', () => {
 
     it('should validate TypeScript toolchain per package', async () => {
       // Mock package.json files for monorepo packages
-      const mockFs = vi.mocked(fs);
+      const mockReadFile = vi.mocked(fs.readFile);
       const packageJsons = [
         { name: '@apexcli/core', devDependencies: { typescript: '^5.3.0' } },
         { name: '@apexcli/cli', devDependencies: { typescript: '^5.3.0' } },
@@ -139,7 +145,7 @@ describe('apex doctor Command Integration', () => {
         { name: '@apexcli/web-ui', devDependencies: { typescript: '^5.3.0' } },
       ];
 
-      mockFs.readFile.mockImplementation((filePath: string) => {
+      mockReadFile.mockImplementation((filePath: string) => {
         const fileName = path.basename(filePath as string);
         if (fileName === 'package.json') {
           const packageName = path.basename(path.dirname(filePath as string));

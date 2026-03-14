@@ -90,6 +90,11 @@
     "audit:turborepo": "node scripts/run-turborepo-audit.js",
     "audit:agents": "npx tsx scripts/audit-agent-definitions.ts",
     "test:turborepo": "vitest run --config vitest.turborepo-audit.config.ts",
+    "benchmark": "vitest bench --config benchmarks/vitest.benchmark.config.ts",
+    "benchmark:browser": "vitest bench --config packages/browser/benchmarks/vitest.config.ts",
+    "benchmark:core": "vitest bench --config packages/core/benchmarks/vitest.config.ts",
+    "benchmark:orchestrator": "vitest bench --config packages/orchestrator/benchmarks/vitest.config.ts",
+    "benchmark:check": "node benchmarks/shared/check-thresholds.js",
     "apex": "node packages/cli/dist/index.js"
   },
   "devDependencies": {

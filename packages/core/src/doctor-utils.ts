@@ -2,50 +2,103 @@ import { z } from 'zod';
 import { compareVersions, parseSemver } from './utils';
 import type { DoctorCheckResult, HealthReport, CheckStatus, ToolchainCheck } from './types';
 
-// Use Node.js built-in fetch if available (Node 18+), otherwise use undici
-const fetchImpl = (() => {
-  try {
-    // Try to use Node.js built-in fetch (available in Node 18+)
-    return globalThis.fetch;
-  } catch {
-    try {
-      // Fallback to undici for older Node versions
-      const { fetch } = require('undici');
-      return fetch;
-    } catch {
-      // If undici is not available, return null (will be handled in queryNpmRegistry)
-      return null;
-    }
-  }
-})();
+// Fetch is used via globalThis.fetch at call time (not module load time)
+// This allows tests to mock fetch using vi.stubGlobal('fetch', mockFetch)
 
 // ============================================================================
 // Version Comparison Utilities
 // ============================================================================
 
 /**
- * Check if a version satisfies a minimum version requirement
- * Leverages existing semver utilities for robust version comparison
+ * Check if a version satisfies a version range requirement
+ * Supports semver range operators: >=, >, <=, <, ^, ~, and exact match
  *
- * @param current - Current version string (e.g., "18.17.0", "v2.1.0")
- * @param required - Required minimum version (e.g., "16.0.0")
- * @returns true if current >= required, false otherwise
+ * @param range - Version range string (e.g., ">=18.0.0", "^1.0.0", "~1.0.0", "1.0.0")
+ * @param version - Version string to check (e.g., "18.17.0", "v2.1.0")
+ * @returns true if version satisfies the range, false otherwise
  *
  * @example
  * ```typescript
- * console.log(satisfiesVersion('18.17.0', '16.0.0')); // true
- * console.log(satisfiesVersion('14.15.0', '16.0.0')); // false
- * console.log(satisfiesVersion('v2.1.0', '2.0.0')); // true (handles v prefix)
- * console.log(satisfiesVersion('invalid', '1.0.0')); // false (graceful handling)
+ * // Exact match
+ * console.log(satisfiesVersion('1.0.0', '1.0.0')); // true
+ * console.log(satisfiesVersion('1.0.0', '1.0.1')); // false
+ *
+ * // Greater than or equal
+ * console.log(satisfiesVersion('>=18.0.0', '18.0.0')); // true
+ * console.log(satisfiesVersion('>=18.0.0', '19.0.0')); // true
+ * console.log(satisfiesVersion('>=18.0.0', '17.0.0')); // false
+ *
+ * // Caret ranges (compatible with major)
+ * console.log(satisfiesVersion('^1.0.0', '1.0.0')); // true
+ * console.log(satisfiesVersion('^1.0.0', '1.5.0')); // true
+ * console.log(satisfiesVersion('^1.0.0', '2.0.0')); // false
+ *
+ * // Tilde ranges (compatible with minor)
+ * console.log(satisfiesVersion('~1.0.0', '1.0.0')); // true
+ * console.log(satisfiesVersion('~1.0.0', '1.0.5')); // true
+ * console.log(satisfiesVersion('~1.0.0', '1.1.0')); // false
  * ```
  */
-export function satisfiesVersion(current: string, required: string): boolean {
-  if (!current || !required) {
+export function satisfiesVersion(range: string, version: string): boolean {
+  if (!range || !version) {
     return false;
   }
 
-  const comparison = compareVersions(current, required);
-  return comparison >= 0; // current >= required
+  // Parse range operator and base version
+  let operator = '';
+  let rangeVersion = range;
+
+  if (range.startsWith('>=')) {
+    operator = '>=';
+    rangeVersion = range.slice(2);
+  } else if (range.startsWith('>') && !range.startsWith('>=')) {
+    operator = '>';
+    rangeVersion = range.slice(1);
+  } else if (range.startsWith('<=')) {
+    operator = '<=';
+    rangeVersion = range.slice(2);
+  } else if (range.startsWith('<') && !range.startsWith('<=')) {
+    operator = '<';
+    rangeVersion = range.slice(1);
+  } else if (range.startsWith('^')) {
+    operator = '^';
+    rangeVersion = range.slice(1);
+  } else if (range.startsWith('~')) {
+    operator = '~';
+    rangeVersion = range.slice(1);
+  }
+
+  const parsedRange = parseSemver(rangeVersion);
+  const parsedVersion = parseSemver(version);
+
+  // Return false for invalid versions
+  if (!parsedRange || !parsedVersion) {
+    return false;
+  }
+
+  const comparison = compareVersions(parsedVersion, parsedRange);
+
+  switch (operator) {
+    case '>=':
+      return comparison >= 0;
+    case '>':
+      return comparison > 0;
+    case '<=':
+      return comparison <= 0;
+    case '<':
+      return comparison < 0;
+    case '^':
+      // Compatible with major version (same major, version >= range)
+      return parsedVersion.major === parsedRange.major && comparison >= 0;
+    case '~':
+      // Compatible with minor version (same major.minor, version >= range)
+      return parsedVersion.major === parsedRange.major &&
+             parsedVersion.minor === parsedRange.minor &&
+             comparison >= 0;
+    default:
+      // Exact match (ignoring build metadata per semver spec)
+      return comparison === 0;
+  }
 }
 
 /**
@@ -82,6 +135,7 @@ export function compareVersionStrings(a: string, b: string): -1 | 0 | 1 {
  * console.log(parseVersionOutput('npm version 8.19.2')); // "8.19.2"
  * console.log(parseVersionOutput('git version 2.34.1')); // "2.34.1"
  * console.log(parseVersionOutput('Node.js v16.14.0')); // "16.14.0"
+ * console.log(parseVersionOutput('Version: 1.2.3-beta.1+build.123')); // "1.2.3-beta.1+build.123"
  * console.log(parseVersionOutput('invalid output')); // null
  * ```
  */
@@ -90,14 +144,22 @@ export function parseVersionOutput(output: string): string | null {
     return null;
   }
 
-  // Common patterns for version output
+  // Common patterns for version output - updated to capture full semver with build metadata
+  // The pattern captures: major.minor.patch followed by optional prerelease (-xxx) and build metadata (+xxx)
+  // Order matters - more specific patterns first to avoid false positives
   const patterns = [
-    // v18.17.0 or v1.2.3-beta.1
-    /v?(\d+\.\d+\.\d+(?:[-+][\w.-]*)?)/i,
-    // "version 8.19.2" or "Version: 1.2.3"
-    /version\s+v?(\d+\.\d+\.\d+(?:[-+][\w.-]*)?)/i,
-    // "Node.js v16.14.0" or "npm 8.19.2"
-    /(?:node\.?js|npm|git|python|java)\s+v?(\d+\.\d+\.\d+(?:[-+][\w.-]*)?)/i,
+    // "node v18.0.0" at start of string or after whitespace - before any parenthetical content
+    /^node\s+v?(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)/i,
+    // "Node.js v16.14.0" or "Node.js version: v18.0.0"
+    /node\.?js\s+(?:version[:\s]+)?v?(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)/i,
+    // "version 8.19.2" or "Version: 1.2.3-beta.1+build.123"
+    /version[:\s]+v?(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)/i,
+    // "npm 8.19.2", "git 2.34.1", etc
+    /(?:npm|git|python|java|typescript)\s+v?(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)/i,
+    // v18.17.0 or v1.2.3-beta.1+build.123 (generic pattern with v prefix)
+    /\bv(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)/i,
+    // Generic version pattern as last resort
+    /\b(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)\b/,
   ];
 
   for (const pattern of patterns) {
@@ -178,26 +240,21 @@ export async function queryNpmRegistry(
   }
 
   try {
-    // Check if fetch is available
-    if (!fetchImpl) {
-      return {
-        name: packageName,
-        version: '',
-        latestVersion: '',
-        versions: [],
-        error: 'Fetch API not available',
-      };
+    // Use globalThis.fetch directly for mockability in tests
+    // Tests can use vi.stubGlobal('fetch', mockFetch) to mock this
+    if (!globalThis.fetch) {
+      return null;
     }
 
-    // Encode package name for URL (handles scoped packages like @scope/name)
-    const encodedName = packageName.replace('/', '%2F');
-    const url = `${registry}/${encodedName}`;
+    // Use unencoded package name for scoped packages
+    // npm registry handles @scope/name URLs correctly
+    const url = `${registry}/${packageName}`;
 
     // Use AbortController for timeout handling
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const response = await fetchImpl(url, {
+    const response = await globalThis.fetch(url, {
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'APEX-doctor/0.6.0',
@@ -207,51 +264,27 @@ export async function queryNpmRegistry(
 
     clearTimeout(timeoutId);
 
+    // Return null for HTTP errors (including 404)
+    // This allows calling code to handle unavailability gracefully
     if (!response.ok) {
-      if (response.status === 404) {
-        return {
-          name: packageName,
-          version: '',
-          latestVersion: '',
-          versions: [],
-          error: 'Package not found',
-        };
-      }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      return null;
     }
 
-    const data = await response.json();
+    const data = await response.json() as Record<string, unknown>;
 
     return {
-      name: data.name || packageName,
-      version: data.version || '',
-      latestVersion: data['dist-tags']?.latest || '',
-      versions: Object.keys(data.versions || {}),
-      deprecated: data.deprecated,
-      homepage: data.homepage,
-      repository: typeof data.repository === 'string' ? data.repository : data.repository?.url,
+      name: (data.name as string) || packageName,
+      version: (data.version as string) || '',
+      latestVersion: (data['dist-tags'] as Record<string, string>)?.latest || '',
+      versions: Object.keys((data.versions as Record<string, unknown>) || {}),
+      deprecated: data.deprecated as string | undefined,
+      homepage: data.homepage as string | undefined,
+      repository: typeof data.repository === 'string' ? data.repository : (data.repository as Record<string, unknown>)?.url as string | undefined,
     };
 
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        return {
-          name: packageName,
-          version: '',
-          latestVersion: '',
-          versions: [],
-          error: 'Request timeout',
-        };
-      }
-      return {
-        name: packageName,
-        version: '',
-        latestVersion: '',
-        versions: [],
-        error: error.message,
-      };
-    }
-
+    // For network errors, fetch failures, and timeouts, return null
+    // This allows calling code to handle unavailability gracefully
     return null;
   }
 }
@@ -560,11 +593,13 @@ export async function detectClaudeApiKey(options: {
  * ```
  */
 export function createDoctorCheckResult(
-  partial: Partial<DoctorCheckResult> & Pick<DoctorCheckResult, 'id' | 'name' | 'category'>
+  partial: Partial<DoctorCheckResult> & Pick<DoctorCheckResult, 'name'>
 ): DoctorCheckResult {
   const now = new Date();
 
   return {
+    id: `check-${Math.random().toString(36).substr(2, 9)}`,
+    category: 'environment' as const,
     description: `Health check for ${partial.name}`,
     status: 'unknown' as CheckStatus,
     severity: 'info',
@@ -602,8 +637,9 @@ export function createHealthReport(
     total: checks.length,
     passed: checks.filter(c => c.status === 'pass').length,
     failed: checks.filter(c => c.status === 'fail').length,
-    warnings: checks.filter(c => c.severity === 'warning' && c.status !== 'pass').length,
+    warnings: checks.filter(c => c.severity === 'warning').length,
     skipped: checks.filter(c => c.status === 'skip').length,
+    errors: checks.filter(c => c.severity === 'error').length,
   };
 
   // Determine overall status

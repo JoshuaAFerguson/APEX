@@ -6,6 +6,11 @@
  */
 
 export { ConventionAnalyzer } from './analyzers/convention-analyzer.js';
+export { StackAnalyzer } from './analyzers/stack-analyzer.js';
+export { ArchitectureAnalyzer } from './analyzers/architecture-analyzer.js';
+export { TestingPatternAnalyzer } from './analyzers/testing-analyzer.js';
+export { IntegrationAnalyzer } from './analyzers/integration-analyzer.js';
+export { TechnicalDebtAnalyzer } from './analyzers/debt-analyzer.js';
 export {
   createCodebaseAnalyzer,
   CodebaseAnalysisOrchestratorImpl

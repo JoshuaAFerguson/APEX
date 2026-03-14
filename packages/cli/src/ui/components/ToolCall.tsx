@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
 import type { DisplayMode } from '@apexcli/core';
 import { formatDuration } from '@apexcli/core';
+import { useElapsedTime } from '../hooks/useElapsedTime.js';
 
 export interface ToolCallProps {
   toolName: string;
@@ -12,6 +13,7 @@ export interface ToolCallProps {
   duration?: number;
   collapsed?: boolean;
   displayMode?: DisplayMode;
+  startTime?: Date; // Add optional startTime prop for real-time elapsed time
 }
 
 export function ToolCall({
@@ -22,7 +24,12 @@ export function ToolCall({
   duration,
   collapsed = false,
   displayMode = 'normal',
+  startTime,
 }: ToolCallProps): React.ReactElement {
+  // Use hook for real-time elapsed time during running status
+  const elapsedTime = useElapsedTime(
+    status === 'running' ? startTime : null
+  );
   const getStatusIcon = () => {
     switch (status) {
       case 'pending':
@@ -94,6 +101,11 @@ export function ToolCall({
             {formatInput(input)}
           </Text>
         )}
+        {status === 'running' && startTime && (
+          <Text color="gray" dimColor>
+            ({elapsedTime})
+          </Text>
+        )}
         {duration !== undefined && status !== 'running' && (
           <Text color="gray" dimColor>
             {formatDuration(duration)}
@@ -120,6 +132,11 @@ export function ToolCall({
         {input && (
           <Text color="gray" dimColor>
             {formatInput(input)}
+          </Text>
+        )}
+        {status === 'running' && startTime && (
+          <Text color="gray" dimColor>
+            ({elapsedTime})
           </Text>
         )}
         {duration !== undefined && status !== 'running' && (

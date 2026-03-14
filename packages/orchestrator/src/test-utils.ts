@@ -157,7 +157,9 @@ function createTaskStoreTables(db: Database.Database): void {
       session_data TEXT,
       last_checkpoint TEXT,
       trashed_at TEXT,
-      archived_at TEXT
+      archived_at TEXT,
+      -- v0.5.0 policy check support
+      policy_check_result TEXT
     );
 
     -- Task logs

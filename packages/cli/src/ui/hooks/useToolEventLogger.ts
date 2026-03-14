@@ -107,10 +107,29 @@ export function useToolEventLogger(options: ToolEventLoggerOptions = {}): ToolEv
 
       log('Tool start', { tool: event.toolName, callId: event.callId });
 
+      // Parse timestamp if it comes as ISO string (from WebSocket)
+      const timestamp = typeof event.timestamp === 'string'
+        ? new Date(event.timestamp)
+        : event.timestamp;
+
+      // Parse startTime if it comes as ISO string (from WebSocket)
+      const startTime = event.startTime ? (
+        typeof event.startTime === 'string'
+          ? new Date(event.startTime)
+          : event.startTime
+      ) : timestamp;
+
+      // Create normalized event with parsed dates
+      const normalizedEvent = {
+        ...event,
+        timestamp,
+        startTime,
+      };
+
       // Track active tool call
       setState(prev => {
         const newActiveToolCalls = new Map(prev.activeToolCalls);
-        newActiveToolCalls.set(event.callId, event);
+        newActiveToolCalls.set(event.callId, normalizedEvent);
         return {
           ...prev,
           activeToolCalls: newActiveToolCalls,
@@ -120,7 +139,7 @@ export function useToolEventLogger(options: ToolEventLoggerOptions = {}): ToolEv
       // Create log entry for tool start
       const logEntry: LogEntry = {
         id: generateLogId(),
-        timestamp: event.timestamp,
+        timestamp,
         level: 'info',
         message: `Started ${event.toolName}`,
         agent: 'system', // Could be enhanced to track which agent triggered the tool
@@ -130,6 +149,7 @@ export function useToolEventLogger(options: ToolEventLoggerOptions = {}): ToolEv
           callId: event.callId,
           input: event.input,
           status: 'started',
+          startTime, // Include parsed startTime
         },
       };
 
@@ -143,11 +163,16 @@ export function useToolEventLogger(options: ToolEventLoggerOptions = {}): ToolEv
 
       log('Tool progress', { tool: event.toolName, callId: event.callId, progress: event.progress });
 
+      // Parse timestamp if it comes as ISO string (from WebSocket)
+      const timestamp = typeof event.timestamp === 'string'
+        ? new Date(event.timestamp)
+        : event.timestamp;
+
       // Create log entry for tool progress (only in verbose scenarios)
       if (event.progress.message) {
         const logEntry: LogEntry = {
           id: generateLogId(),
-          timestamp: event.timestamp,
+          timestamp,
           level: 'debug',
           message: `${event.toolName}: ${event.progress.message}`,
           agent: 'system',
@@ -175,6 +200,22 @@ export function useToolEventLogger(options: ToolEventLoggerOptions = {}): ToolEv
         duration: event.timing.duration
       });
 
+      // Parse timestamp if it comes as ISO string (from WebSocket)
+      const timestamp = typeof event.timestamp === 'string'
+        ? new Date(event.timestamp)
+        : event.timestamp;
+
+      // Parse timing dates if they come as ISO strings (from WebSocket)
+      const timing = {
+        startTime: typeof event.timing.startTime === 'string'
+          ? new Date(event.timing.startTime)
+          : event.timing.startTime,
+        endTime: typeof event.timing.endTime === 'string'
+          ? new Date(event.timing.endTime)
+          : event.timing.endTime,
+        duration: event.timing.duration,
+      };
+
       // Remove from active calls
       setState(prev => {
         const newActiveToolCalls = new Map(prev.activeToolCalls);
@@ -189,23 +230,23 @@ export function useToolEventLogger(options: ToolEventLoggerOptions = {}): ToolEv
       const isSuccess = event.result.success;
       const level = isSuccess ? 'success' : 'error';
       const message = isSuccess
-        ? `Completed ${event.toolName} (${formatDuration(event.timing.duration)})`
+        ? `Completed ${event.toolName} (${formatDuration(timing.duration)})`
         : `Failed ${event.toolName}: ${event.result.error || 'Unknown error'}`;
 
       // Create log entry for tool completion
       const logEntry: LogEntry = {
         id: generateLogId(),
-        timestamp: event.timing.endTime,
+        timestamp: timing.endTime,
         level,
         message,
         agent: 'system',
         category: 'tool',
-        duration: event.timing.duration,
+        duration: timing.duration,
         data: {
           toolName: event.toolName,
           callId: event.callId,
           result: event.result,
-          timing: event.timing,
+          timing, // Use normalized timing with parsed dates
           status: isSuccess ? 'completed' : 'failed',
         },
       };
@@ -216,7 +257,7 @@ export function useToolEventLogger(options: ToolEventLoggerOptions = {}): ToolEv
       const statUpdate = isSuccess
         ? { successful: 1 }
         : { failed: 1 };
-      updateStats(statUpdate, event.timing.duration);
+      updateStats(statUpdate, timing.duration);
     };
 
     // Register event listeners

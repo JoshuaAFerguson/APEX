@@ -20,7 +20,13 @@ export enum AnalysisPhase {
   TECHNICAL_DEBT = 'technical-debt',
 
   /** Documentation quality and coverage analysis */
-  DOCUMENTATION = 'documentation'
+  DOCUMENTATION = 'documentation',
+
+  /** Testing patterns and coverage analysis */
+  TESTING_PATTERNS = 'testing-patterns',
+
+  /** Third-party integrations and dependency analysis */
+  INTEGRATIONS = 'integrations'
 }
 
 /**

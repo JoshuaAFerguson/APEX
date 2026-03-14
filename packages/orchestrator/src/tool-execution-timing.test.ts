@@ -6,21 +6,52 @@ import { ApexOrchestrator, ToolCallStartEvent, ToolCallCompleteEvent } from './i
 import { ToolExecution } from '@apexcli/core';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
-// Mock the claude-agent-sdk
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: vi.fn(),
-}));
+// Mock the claude-agent-sdk (using import() syntax for Vitest 4)
+vi.mock(import('@anthropic-ai/claude-agent-sdk'), async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    query: vi.fn(),
+  };
+});
 
-// Mock child_process for git/gh commands
-vi.mock('child_process', () => ({
-  exec: vi.fn((cmd: string, opts: unknown, callback?: unknown) => {
-    if (typeof opts === 'function') {
-      callback = opts;
-    }
-    const cb = callback as (error: Error | null, result?: { stdout: string }) => void;
-    cb(null, { stdout: '' });
-  }),
-}));
+// Mock child_process for git/gh commands (using import() syntax for Vitest 4)
+vi.mock(import('child_process'), async (importOriginal) => {
+  const actual = await importOriginal();
+
+  // Create promisifiable mock function (inline to avoid hoisting issues)
+  const createMock = () => {
+    const fn = function(...args: unknown[]) {
+      const callback = args.find(arg => typeof arg === 'function') as
+        ((error: Error | null, result?: { stdout: string; stderr: string }) => void) | undefined;
+      if (callback) {
+        process.nextTick(() => callback(null, { stdout: '', stderr: '' }));
+      }
+      return { stdout: '', stderr: '' };
+    };
+    (fn as Record<string, unknown>).__promisify__ = async () => ({ stdout: '', stderr: '' });
+    return fn;
+  };
+
+  const mockExec = createMock();
+  const mockExecFile = createMock();
+  const mockSpawn = (..._args: unknown[]) => ({
+    stdout: { on: () => {} },
+    stderr: { on: () => {} },
+    on: (event: string, cb: (code: number) => void) => {
+      if (event === 'close') process.nextTick(() => cb(0));
+    },
+    kill: () => {},
+  });
+
+  return {
+    ...actual,
+    default: { ...actual, exec: mockExec, execFile: mockExecFile, spawn: mockSpawn },
+    exec: mockExec,
+    execFile: mockExecFile,
+    spawn: mockSpawn,
+  };
+});
 
 describe('Tool Execution Timing Infrastructure', () => {
   let orchestrator: ApexOrchestrator;
@@ -30,6 +61,25 @@ describe('Tool Execution Timing Infrastructure', () => {
   beforeEach(async () => {
     // Create a temporary directory for each test
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apex-timing-test-'));
+
+    // Create .apex directory and necessary workflow
+    const apexDir = path.join(tmpDir, '.apex', 'workflows');
+    await fs.mkdir(apexDir, { recursive: true });
+
+    // Create a simple testing workflow for the tests
+    const testingWorkflow = `name: testing
+description: Simple testing workflow for tool timing tests
+trigger:
+  - manual
+
+stages:
+  - name: analysis
+    agent: tester
+    description: Analyze and test
+    outputs:
+      - results`;
+
+    await fs.writeFile(path.join(apexDir, 'testing.yaml'), testingWorkflow);
 
     orchestrator = new ApexOrchestrator({
       projectPath: tmpDir,
@@ -157,12 +207,13 @@ describe('Tool Execution Timing Infrastructure', () => {
       });
 
       // Create a test task
-      const task = await orchestrator.createTask('Test task with tool usage', {
-        description: 'Test tool timing functionality'
+      const task = await orchestrator.createTask({
+        description: 'Test task with tool usage',
+        workflow: 'testing'
       });
 
       // Run the task
-      await orchestrator.runTask(task.id);
+      await orchestrator.executeTask(task.id);
 
       // Verify tool events were emitted
       expect(toolStartEvents).toHaveLength(1);
@@ -231,11 +282,12 @@ describe('Tool Execution Timing Infrastructure', () => {
         };
       });
 
-      const task = await orchestrator.createTask('Test active tracking', {
-        description: 'Test active tool execution tracking'
+      const task = await orchestrator.createTask({
+        description: 'Test active tracking',
+        workflow: 'testing'
       });
 
-      await orchestrator.runTask(task.id);
+      await orchestrator.executeTask(task.id);
 
       // Verify active executions were tracked
       expect(activeExecutionsDuringTool).toHaveLength(1);
@@ -319,11 +371,12 @@ describe('Tool Execution Timing Infrastructure', () => {
         };
       });
 
-      const task = await orchestrator.createTask('Test concurrent tools', {
-        description: 'Test multiple concurrent tool execution tracking'
+      const task = await orchestrator.createTask({
+        description: 'Test concurrent tools',
+        workflow: 'testing'
       });
 
-      await orchestrator.runTask(task.id);
+      await orchestrator.executeTask(task.id);
 
       // Verify all events were tracked
       expect(toolEvents).toHaveLength(4); // 2 starts + 2 completes
@@ -388,11 +441,12 @@ describe('Tool Execution Timing Infrastructure', () => {
         };
       });
 
-      const task = await orchestrator.createTask('Test error timing', {
-        description: 'Test tool execution error timing'
+      const task = await orchestrator.createTask({
+        description: 'Test error timing',
+        workflow: 'testing'
       });
 
-      await orchestrator.runTask(task.id);
+      await orchestrator.executeTask(task.id);
 
       expect(errorToolEvent).toBeTruthy();
       expect(errorToolEvent!.result.success).toBe(false);
@@ -455,17 +509,181 @@ describe('Tool Execution Timing Infrastructure', () => {
         };
       });
 
-      const task = await orchestrator.createTask('Test timing accuracy', {
-        description: 'Test tool execution timing accuracy'
+      const task = await orchestrator.createTask({
+        description: 'Test timing accuracy',
+        workflow: 'testing'
       });
 
-      await orchestrator.runTask(task.id);
+      await orchestrator.executeTask(task.id);
 
       expect(measuredTiming).toBeTruthy();
       expect(measuredTiming!.duration).toBeCloseTo(EXPECTED_DELAY, TOLERANCE);
       expect(measuredTiming!.duration).toBe(measuredTiming!.calculated);
       expect(measuredTiming!.duration).toBeGreaterThanOrEqual(EXPECTED_DELAY - TOLERANCE);
       expect(measuredTiming!.duration).toBeLessThanOrEqual(EXPECTED_DELAY + TOLERANCE * 2); // Allow extra buffer for CI
+    });
+
+    it('should include startTime field in tool:start event', async () => {
+      let startEvent: ToolCallStartEvent | null = null;
+
+      orchestrator.on('tool:start', (event) => {
+        startEvent = event;
+      });
+
+      mockedQuery.mockImplementation(async function* () {
+        yield {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'start_time_test',
+              name: 'TestStartTimeTool',
+              input: { param: 'value' }
+            }
+          ]
+        };
+
+        yield {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'start_time_test',
+              content: 'Success',
+              is_error: false
+            }
+          ]
+        };
+
+        yield {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: 'StartTime test complete'
+            }
+          ]
+        };
+      });
+
+      const task = await orchestrator.createTask({
+        description: 'Test startTime field',
+        workflow: 'testing'
+      });
+
+      await orchestrator.executeTask(task.id);
+
+      expect(startEvent).toBeTruthy();
+      expect(startEvent!.startTime).toBeInstanceOf(Date);
+      expect(startEvent!.timestamp).toBeInstanceOf(Date);
+      // startTime should be the same as timestamp (they both represent when the tool started)
+      expect(startEvent!.startTime.getTime()).toBe(startEvent!.timestamp.getTime());
+    });
+
+    it('should verify tool timing event sequence and data integrity', async () => {
+      const events: Array<{ type: string; data: any; time: number }> = [];
+
+      orchestrator.on('tool:start', (event) => {
+        events.push({
+          type: 'tool:start',
+          data: {
+            callId: event.callId,
+            toolName: event.toolName,
+            timestamp: event.timestamp,
+            startTime: event.startTime,
+          },
+          time: Date.now()
+        });
+      });
+
+      orchestrator.on('tool:complete', (event) => {
+        events.push({
+          type: 'tool:complete',
+          data: {
+            callId: event.callId,
+            toolName: event.toolName,
+            timing: event.timing,
+          },
+          time: Date.now()
+        });
+      });
+
+      mockedQuery.mockImplementation(async function* () {
+        yield {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'sequence_test',
+              name: 'SequenceTool',
+              input: { test: 'sequence' }
+            }
+          ]
+        };
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        yield {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'sequence_test',
+              content: 'Sequence test result',
+              is_error: false
+            }
+          ]
+        };
+
+        yield {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: 'Sequence test complete'
+            }
+          ]
+        };
+      });
+
+      const task = await orchestrator.createTask({
+        description: 'Test event sequence',
+        workflow: 'testing'
+      });
+
+      await orchestrator.executeTask(task.id);
+
+      // Verify event sequence
+      expect(events).toHaveLength(2);
+      expect(events[0].type).toBe('tool:start');
+      expect(events[1].type).toBe('tool:complete');
+
+      // Verify timing consistency
+      const startEvent = events[0].data;
+      const completeEvent = events[1].data;
+
+      expect(startEvent.callId).toBe(completeEvent.callId);
+      expect(startEvent.toolName).toBe(completeEvent.toolName);
+
+      // Verify timing data structure in tool:complete
+      expect(completeEvent.timing).toBeDefined();
+      expect(completeEvent.timing.startTime).toBeInstanceOf(Date);
+      expect(completeEvent.timing.endTime).toBeInstanceOf(Date);
+      expect(typeof completeEvent.timing.duration).toBe('number');
+
+      // Verify consistency between start event and complete event timing
+      expect(startEvent.startTime.getTime()).toBe(completeEvent.timing.startTime.getTime());
+      expect(completeEvent.timing.endTime.getTime()).toBeGreaterThan(completeEvent.timing.startTime.getTime());
+
+      // Verify duration calculation
+      const calculatedDuration = completeEvent.timing.endTime.getTime() - completeEvent.timing.startTime.getTime();
+      expect(completeEvent.timing.duration).toBe(calculatedDuration);
     });
   });
 

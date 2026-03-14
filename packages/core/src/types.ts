@@ -3177,6 +3177,7 @@ export const HealthReportSchema = z.object({
     failed: z.number(),
     warnings: z.number(),
     skipped: z.number(),
+    errors: z.number(),
   }),
   /** Individual check results */
   checks: z.array(DoctorCheckResultSchema),
@@ -6027,13 +6028,36 @@ export type ApexEventType =
   | 'browser:performance-warning'
   | 'browser:security-violation'
   | 'browser:session-started'
-  | 'browser:session-ended';
+  | 'browser:session-ended'
+  // MCP lifecycle events (v0.6.0)
+  | 'mcp:connected'
+  | 'mcp:disconnected'
+  | 'mcp:error'
+  | 'mcp:reconnecting'
+  | 'mcp:health-check'
+  | 'mcp:state-change';
 
 export interface ApexEvent {
   type: ApexEventType;
   taskId: string;
   timestamp: Date;
   data: Record<string, unknown>;
+  /** Optional truncation metadata indicating if data was truncated */
+  _truncation?: {
+    /** Whether any truncation occurred */
+    truncated: boolean;
+    /** Details about what was truncated */
+    truncations: Array<{
+      /** Path to truncated property */
+      path: string;
+      /** Type of truncation applied */
+      type: 'array' | 'string';
+      /** Original size before truncation */
+      originalSize: number;
+      /** Size after truncation */
+      truncatedSize: number;
+    }>;
+  };
 }
 
 // ============================================================================
@@ -10555,6 +10579,12 @@ export const ProjectStructureSchema = z.object({
   /** Maximum directory depth that was scanned */
   maxDepthScanned: z.number().int().min(0).optional(),
 
+  /** Maximum directory depth that was scanned (alias for compatibility) */
+  maxDepth: z.number().int().min(0).optional(),
+
+  /** Total size of all files in bytes */
+  totalSize: z.number().int().min(0).optional(),
+
   /** Directories that were excluded from scanning */
   excludedDirectories: z.array(z.string()).optional().default([]),
 
@@ -11308,6 +11338,217 @@ export const TechnicalDebtAnalysisSchema = z.object({
 export type TechnicalDebtAnalysis = z.infer<typeof TechnicalDebtAnalysisSchema>;
 
 /**
+ * Analysis of testing patterns and coverage in a codebase
+ * @example
+ * ```typescript
+ * const testingAnalysis: TestingPatternAnalysis = {
+ *   framework: 'Jest',
+ *   testCount: 150,
+ *   coverage: { overall: 85, statements: 87, branches: 83, functions: 90 },
+ *   patterns: {
+ *     unit: { count: 120, locations: ['src/__tests__', 'src/**/*.test.ts'] },
+ *     integration: { count: 25, locations: ['tests/integration'] },
+ *     e2e: { count: 5, locations: ['tests/e2e'] }
+ *   },
+ *   conventions: { fileNaming: 'suffix-.test', testLocation: 'colocated' },
+ *   antiPatterns: [],
+ *   recommendations: ['Add more integration tests', 'Improve branch coverage']
+ * };
+ * ```
+ */
+export const TestingPatternAnalysisSchema = z.object({
+  /** Primary testing framework detected */
+  framework: z.string(),
+
+  /** Total number of test files found */
+  testCount: z.number().int().min(0),
+
+  /** Test coverage information */
+  coverage: z.object({
+    overall: z.number().min(0).max(100).optional(),
+    statements: z.number().min(0).max(100).optional(),
+    branches: z.number().min(0).max(100).optional(),
+    functions: z.number().min(0).max(100).optional(),
+    lines: z.number().min(0).max(100).optional(),
+  }).optional(),
+
+  /** Test pattern categorization */
+  patterns: z.object({
+    unit: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }),
+    integration: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }),
+    e2e: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }),
+    component: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }).optional(),
+    performance: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }).optional(),
+  }),
+
+  /** Testing conventions detected */
+  conventions: z.object({
+    testFileNaming: z.enum(['suffix-.test', 'suffix-.spec', 'suffix-Test', 'prefix-test-', 'mixed']),
+    testLocation: z.enum(['colocated', 'separate-tests', 'separate-__tests__', 'mixed']),
+    testStructure: z.enum(['flat', 'mirrored', 'grouped', 'mixed']).optional(),
+  }),
+
+  /** Testing anti-patterns identified */
+  antiPatterns: z.array(z.object({
+    type: z.enum(['no-tests', 'god-test', 'mystery-guest', 'resource-optimism', 'test-code-duplication', 'assertion-roulette', 'conditional-test-logic', 'hardcoded-test-data', 'other']),
+    description: z.string(),
+    examples: z.array(z.string()),
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
+  })),
+
+  /** Recommendations for testing improvements */
+  recommendations: z.array(z.string()),
+
+  /** Additional testing metrics */
+  metrics: z.object({
+    avgTestsPerFile: z.number().min(0).optional(),
+    avgAssertionsPerTest: z.number().min(0).optional(),
+    testToSourceRatio: z.number().min(0).optional(),
+    mockedDependenciesCount: z.number().int().min(0).optional(),
+  }).optional(),
+});
+export type TestingPatternAnalysis = z.infer<typeof TestingPatternAnalysisSchema>;
+
+/**
+ * Analysis of third-party integrations and dependencies in a codebase
+ * @example
+ * ```typescript
+ * const integrationAnalysis: IntegrationAnalysis = {
+ *   dependencies: {
+ *     production: [{ name: 'react', version: '18.2.0', category: 'frontend' }],
+ *     development: [{ name: 'jest', version: '29.0.0', category: 'testing' }],
+ *     outdated: [{ name: 'lodash', current: '4.17.20', latest: '4.17.21', risk: 'low' }],
+ *     security: []
+ *   },
+ *   apis: {
+ *     consumed: [{ url: 'https://api.example.com', method: 'GET', authenticated: true }],
+ *     exposed: [{ path: '/api/users', method: 'POST', authenticated: true }]
+ *   },
+ *   services: { databases: ['PostgreSQL'], caches: ['Redis'], queues: [], cloud: ['AWS S3'] }
+ * };
+ * ```
+ */
+export const IntegrationAnalysisSchema = z.object({
+  /** Dependency analysis */
+  dependencies: z.object({
+    /** Production dependencies */
+    production: z.array(z.object({
+      name: z.string(),
+      version: z.string(),
+      category: z.enum(['frontend', 'backend', 'testing', 'build', 'runtime', 'database', 'ui', 'state-management', 'security', 'utility', 'other']),
+      license: z.string().optional(),
+      size: z.number().optional(), // Size in bytes
+      lastUpdated: z.date().optional(),
+    })),
+
+    /** Development dependencies */
+    development: z.array(z.object({
+      name: z.string(),
+      version: z.string(),
+      category: z.enum(['frontend', 'backend', 'testing', 'build', 'runtime', 'database', 'ui', 'state-management', 'security', 'utility', 'other']),
+      license: z.string().optional(),
+      size: z.number().optional(),
+      lastUpdated: z.date().optional(),
+    })),
+
+    /** Outdated dependencies */
+    outdated: z.array(z.object({
+      name: z.string(),
+      currentVersion: z.string(),
+      latestVersion: z.string(),
+      majorVersionsBehind: z.number().int().min(0).optional(),
+      minorVersionsBehind: z.number().int().min(0).optional(),
+      patchVersionsBehind: z.number().int().min(0).optional(),
+      risk: z.enum(['low', 'medium', 'high', 'critical']),
+      breaking: z.boolean().optional(),
+    })),
+
+    /** Security vulnerabilities */
+    security: z.array(z.object({
+      name: z.string(),
+      severity: z.enum(['low', 'moderate', 'high', 'critical']),
+      vulnerability: z.string(),
+      patchedVersion: z.string().optional(),
+      cve: z.string().optional(),
+    })),
+  }),
+
+  /** API integrations */
+  apis: z.object({
+    /** External APIs consumed */
+    consumed: z.array(z.object({
+      url: z.string(),
+      method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']),
+      authenticated: z.boolean().optional(),
+      rateLimit: z.boolean().optional(),
+      provider: z.string().optional(),
+      usageCount: z.number().int().min(0).optional(),
+    })),
+
+    /** APIs exposed by this service */
+    exposed: z.array(z.object({
+      path: z.string(),
+      method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']),
+      authenticated: z.boolean().optional(),
+      deprecated: z.boolean().optional(),
+      version: z.string().optional(),
+      documentation: z.boolean().optional(),
+    })),
+  }),
+
+  /** Service integrations */
+  services: z.object({
+    /** Database integrations */
+    databases: z.array(z.string()),
+
+    /** Cache systems */
+    caches: z.array(z.string()),
+
+    /** Message queues */
+    queues: z.array(z.string()),
+
+    /** Cloud services */
+    cloud: z.array(z.string()),
+
+    /** Monitoring and analytics */
+    monitoring: z.array(z.string()).optional(),
+
+    /** Authentication services */
+    auth: z.array(z.string()).optional(),
+
+    /** Payment processors */
+    payments: z.array(z.string()).optional(),
+  }),
+
+  /** Integration health metrics */
+  health: z.object({
+    dependencyRisk: z.enum(['low', 'medium', 'high', 'critical']),
+    securityRisk: z.enum(['low', 'medium', 'high', 'critical']),
+    maintenanceLoad: z.enum(['low', 'medium', 'high', 'critical']),
+    updateFrequency: z.enum(['current', 'behind', 'legacy', 'abandoned']),
+  }).optional(),
+
+  /** Integration recommendations */
+  recommendations: z.array(z.string()).optional(),
+});
+export type IntegrationAnalysis = z.infer<typeof IntegrationAnalysisSchema>;
+
+/**
  * Comprehensive codebase analysis combining all analysis types
  * This is the main output type for codebase analysis operations
  *
@@ -11346,6 +11587,12 @@ export const CodebaseAnalysisSchema = z.object({
 
   /** Technical debt analysis */
   technicalDebt: TechnicalDebtAnalysisSchema,
+
+  /** Testing pattern analysis */
+  testingPatterns: TestingPatternAnalysisSchema.optional(),
+
+  /** Integration and dependency analysis */
+  integrations: IntegrationAnalysisSchema.optional(),
 
   /** High-level summary metrics */
   summary: z.object({

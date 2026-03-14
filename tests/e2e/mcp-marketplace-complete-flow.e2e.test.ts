@@ -22,7 +22,7 @@ import {
   FILESYSTEM_SERVER,
   MEMORY_SERVER,
   ALL_MARKETPLACE_ENTRIES,
-} from '../helpers/mcp-e2e-helpers.js';
+} from './helpers/mcp-e2e-helpers.js';
 
 describe('MCP Marketplace Complete CLI Flow Tests (ADR-072)', () => {
   let ctx: MCPTestContext;

@@ -664,6 +664,7 @@ export interface ToolCallStartEvent {
   input: Record<string, unknown>;
   timestamp: Date;
   callId: string;
+  startTime: Date; // Explicit timing field for API serialization
 }
 
 /**
@@ -936,6 +937,27 @@ export interface MCPErrorEventData {
   timestamp: Date;
   /** Error code if available */
   code?: string;
+  /** Error category for UI display */
+  category: 'connection' | 'protocol' | 'transport' | 'timeout' | 'auth' | 'unknown';
+  /** Whether the error is recoverable through retry */
+  recoverable: boolean;
+  /** Error stack trace if available */
+  stack?: string;
+  /** Recovery information for user guidance */
+  recovery: {
+    /** Whether automatic retry is possible */
+    canRetry: boolean;
+    /** Recommended retry delay in milliseconds */
+    retryDelayMs?: number;
+    /** Current retry attempt number */
+    attempt?: number;
+    /** Maximum retry attempts allowed */
+    maxAttempts?: number;
+    /** Human-readable recovery suggestions */
+    suggestions: string[];
+  };
+  /** Additional error metadata */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -4225,6 +4247,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
             input,
             timestamp,
             callId,
+            startTime: timestamp, // Add explicit startTime field for timing
           });
           
           this.emit('agent:message', task.id, { 
@@ -10751,6 +10774,122 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Categorize MCP error and determine recovery information
+   * @param error The error to categorize
+   * @param attempt Current retry attempt number
+   * @param maxAttempts Maximum retry attempts
+   * @returns Error categorization and recovery info
+   */
+  private categorizeMCPError(
+    error: Error,
+    attempt?: number,
+    maxAttempts?: number
+  ): Pick<MCPErrorEventData, 'category' | 'recoverable' | 'recovery'> {
+    const errorMessage = error.message.toLowerCase();
+    const errorCode = (error as any).code;
+
+    // Determine category based on error type and message
+    let category: MCPErrorEventData['category'] = 'unknown';
+    let recoverable = false;
+    let retryDelayMs: number | undefined;
+    let suggestions: string[] = [];
+
+    // Connection-related errors
+    if (
+      errorCode === 'CONNECTION_FAILED' ||
+      errorCode === 'DISCONNECTED' ||
+      errorCode === 'NOT_CONNECTED' ||
+      errorMessage.includes('connection') ||
+      errorMessage.includes('econnrefused') ||
+      errorMessage.includes('network')
+    ) {
+      category = 'connection';
+      recoverable = true;
+      retryDelayMs = Math.min(1000 * Math.pow(2, attempt || 0), 30000); // Exponential backoff, max 30s
+      suggestions = [
+        'Check network connectivity',
+        'Verify server is running',
+        'Check firewall settings',
+        'Confirm server address and port'
+      ];
+    }
+    // Transport-related errors
+    else if (
+      errorCode === 'PROCESS_CRASHED' ||
+      errorCode === 'SPAWN_FAILED' ||
+      errorCode === 'SEND_FAILED' ||
+      errorCode === 'PARSE_ERROR' ||
+      errorMessage.includes('spawn') ||
+      errorMessage.includes('process')
+    ) {
+      category = 'transport';
+      recoverable = errorCode !== 'SPAWN_FAILED'; // SPAWN_FAILED typically needs user intervention
+      retryDelayMs = 2000; // Short delay for transport issues
+      suggestions = errorCode === 'SPAWN_FAILED'
+        ? ['Check MCP server executable exists', 'Verify server path and permissions', 'Check server configuration']
+        : ['Restart MCP server', 'Check server logs', 'Verify server stability'];
+    }
+    // Timeout-related errors
+    else if (
+      errorCode === 'TIMEOUT' ||
+      errorMessage.includes('timeout') ||
+      errorMessage.includes('timed out')
+    ) {
+      category = 'timeout';
+      recoverable = true;
+      retryDelayMs = 5000; // Longer delay for timeouts
+      suggestions = [
+        'Check server response time',
+        'Increase timeout settings',
+        'Verify server performance',
+        'Check system resource usage'
+      ];
+    }
+    // Authentication/authorization errors
+    else if (
+      errorMessage.includes('auth') ||
+      errorMessage.includes('unauthorized') ||
+      errorMessage.includes('forbidden') ||
+      errorMessage.includes('credential')
+    ) {
+      category = 'auth';
+      recoverable = false; // Auth errors typically require user intervention
+      suggestions = [
+        'Check authentication credentials',
+        'Verify API keys or tokens',
+        'Check user permissions',
+        'Update authentication configuration'
+      ];
+    }
+    // Protocol-related errors
+    else if (
+      errorMessage.includes('protocol') ||
+      errorMessage.includes('jsonrpc') ||
+      errorMessage.includes('invalid') ||
+      errorCode === 'ALREADY_CONNECTED'
+    ) {
+      category = 'protocol';
+      recoverable = errorCode !== 'ALREADY_CONNECTED';
+      retryDelayMs = 1000; // Short delay for protocol issues
+      suggestions = errorCode === 'ALREADY_CONNECTED'
+        ? ['Connection already exists', 'Use existing connection or disconnect first']
+        : ['Check protocol compatibility', 'Verify message format', 'Update server version'];
+    }
+
+    return {
+      category,
+      recoverable,
+      recovery: {
+        canRetry: recoverable && (!maxAttempts || (attempt || 0) < maxAttempts),
+        retryDelayMs,
+        attempt,
+        maxAttempts,
+        suggestions,
+      },
+    };
+  }
+
+  /**
    * Setup MCP connection event forwarding
    * Forwards MCP connection events from MCPConnectionManager to the orchestrator's event system
    * with proper metadata and timestamps.
@@ -10789,12 +10928,25 @@ Parent: ${parentTask.description}`;
     // Forward error events
     connManager.on('error', (serverId, error) => {
       const connection = connManager.getConnection(serverId);
+      const { category, recoverable, recovery } = this.categorizeMCPError(error);
+
       const eventData: MCPErrorEventData = {
         serverId,
         serverName: connection?.serverName || serverId,
         error: error.message,
         timestamp: new Date(),
         code: error.name || 'UNKNOWN_ERROR',
+        category,
+        recoverable,
+        stack: error.stack,
+        recovery,
+        metadata: {
+          errorType: error.constructor.name,
+          cause: error.cause ? {
+            message: error.cause instanceof Error ? error.cause.message : String(error.cause),
+            name: error.cause instanceof Error ? error.cause.constructor.name : 'Unknown'
+          } : undefined
+        }
       };
       this.emit('mcp:error', eventData);
     });

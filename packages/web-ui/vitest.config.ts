@@ -5,6 +5,7 @@
  * for React components and Next.js integration
  */
 import { defineConfig, mergeConfig } from 'vitest/config';
+import type { UserConfig } from 'vite';
 import { createBrowserTestConfig } from '../../vitest.shared.config.js';
 import { resolve } from 'path';
 
@@ -17,7 +18,7 @@ export default mergeConfig(
       branches: 60,
       statements: 60,
     },
-  }),
+  }) as UserConfig,
   defineConfig({
     test: {
       // Next.js and React setup

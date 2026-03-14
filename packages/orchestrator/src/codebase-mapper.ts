@@ -181,12 +181,39 @@ export class CodebaseMapper extends EventEmitter<CodebaseMapperEvents> {
       // Aggregate results into CodebaseAnalysis
       const analysis: CodebaseAnalysis = {
         timestamp: new Date(),
+        projectPath: this.config.projectPath,
+        stack: {} as any, // Will be filled from results
+        architecture: {} as any,
+        conventions: {} as any,
+        technicalDebt: {} as any,
+        summary: {
+          totalFiles: 0,
+          totalLines: 0,
+          analysisVersion: '0.6.0',
+        },
       };
 
       for (const result of results) {
         if (result.success && result.data) {
-          if (result.phase === 'conventions') {
-            analysis.conventions = result.data;
+          switch (result.phase) {
+            case 'stack':
+              analysis.stack = result.data;
+              break;
+            case 'architecture':
+              analysis.architecture = result.data;
+              break;
+            case 'conventions':
+              analysis.conventions = result.data;
+              break;
+            case 'testing-patterns':
+              analysis.testingPatterns = result.data;
+              break;
+            case 'integrations':
+              analysis.integrations = result.data;
+              break;
+            case 'technical-debt':
+              analysis.technicalDebt = result.data;
+              break;
           }
         }
       }

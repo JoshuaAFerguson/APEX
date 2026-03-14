@@ -1926,6 +1926,173 @@ export function truncateToolOutput(output: string, options: TruncateOptions = {}
 }
 
 // ============================================================================
+// Payload Truncation for WebSocket Events
+// ============================================================================
+
+/**
+ * Configuration for payload truncation
+ */
+export interface TruncatePayloadOptions {
+  /** Maximum number of items in arrays (default: 1000) */
+  maxArrayItems?: number;
+  /** Maximum string length in bytes (default: 50KB = 51200) */
+  maxStringLength?: number;
+  /** Whether to include truncation metadata (default: true) */
+  includeMetadata?: boolean;
+}
+
+/**
+ * Metadata about truncation operations
+ */
+export interface TruncationMetadata {
+  /** Whether any truncation occurred */
+  truncated: boolean;
+  /** Details about what was truncated */
+  truncations: TruncationDetail[];
+}
+
+export interface TruncationDetail {
+  /** Path to truncated property (e.g., "data.output.items") */
+  path: string;
+  /** Type of truncation applied */
+  type: 'array' | 'string';
+  /** Original size before truncation */
+  originalSize: number;
+  /** Size after truncation */
+  truncatedSize: number;
+}
+
+/**
+ * Result of payload truncation
+ */
+export interface TruncatedPayload<T> {
+  /** The truncated data */
+  data: T;
+  /** Metadata about truncation operations */
+  _truncation?: TruncationMetadata;
+}
+
+/**
+ * Truncate payload data to prevent large WebSocket events from overwhelming clients.
+ *
+ * Recursively traverses the payload and truncates arrays and strings that exceed
+ * the configured limits. Returns the truncated data with optional metadata about
+ * what was truncated.
+ *
+ * @param payload - The payload data to truncate
+ * @param options - Configuration options for truncation limits
+ * @returns TruncatedPayload with the processed data and truncation metadata
+ *
+ * @example
+ * ```typescript
+ * const largePayload = {
+ *   items: new Array(2000).fill('item'),
+ *   description: 'A'.repeat(100000)
+ * };
+ *
+ * const result = truncatePayload(largePayload, {
+ *   maxArrayItems: 1000,
+ *   maxStringLength: 50 * 1024
+ * });
+ *
+ * console.log(result.data.items.length); // 1000
+ * console.log(result._truncation.truncated); // true
+ * console.log(result._truncation.truncations.length); // 2
+ * ```
+ */
+export function truncatePayload<T>(
+  payload: T,
+  options: TruncatePayloadOptions = {}
+): TruncatedPayload<T> {
+  const {
+    maxArrayItems = 1000,
+    maxStringLength = 50 * 1024,
+    includeMetadata = true,
+  } = options;
+
+  const truncations: TruncationDetail[] = [];
+  const seen = new WeakSet();
+
+  function truncateValue(value: unknown, path: string): unknown {
+    // Handle nullish values
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    // Handle strings
+    if (typeof value === 'string') {
+      if (value.length > maxStringLength) {
+        truncations.push({
+          path,
+          type: 'string',
+          originalSize: value.length,
+          truncatedSize: maxStringLength,
+        });
+        return value.slice(0, maxStringLength) + '... [truncated]';
+      }
+      return value;
+    }
+
+    // Handle primitives
+    if (typeof value !== 'object') {
+      return value;
+    }
+
+    // Handle circular references
+    if (seen.has(value as object)) {
+      return '[Circular]';
+    }
+    seen.add(value as object);
+
+    // Handle arrays
+    if (Array.isArray(value)) {
+      const originalLength = value.length;
+      const truncatedArray = value.slice(0, maxArrayItems);
+
+      if (originalLength > maxArrayItems) {
+        truncations.push({
+          path,
+          type: 'array',
+          originalSize: originalLength,
+          truncatedSize: maxArrayItems,
+        });
+      }
+
+      return truncatedArray.map((item, index) =>
+        truncateValue(item, `${path}[${index}]`)
+      );
+    }
+
+    // Handle objects
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = truncateValue(val, path ? `${path}.${key}` : key);
+    }
+    return result;
+  }
+
+  try {
+    const truncatedData = truncateValue(payload, '') as T;
+
+    if (includeMetadata && truncations.length > 0) {
+      return {
+        data: truncatedData,
+        _truncation: {
+          truncated: true,
+          truncations,
+        },
+      };
+    }
+
+    return { data: truncatedData };
+  } catch (error) {
+    // Fail-safe: return original payload if truncation fails
+    console.warn('Payload truncation failed, returning original:', error);
+    return { data: payload };
+  }
+}
+
+// ============================================================================
 // Safe JSON Serialization
 // ============================================================================
 
@@ -1986,4 +2153,146 @@ export function safeSerialize(obj: any, space?: string | number): string {
       message: error instanceof Error ? error.message : String(error)
     });
   }
+}
+
+/**
+ * Interface for serialized MCP error data
+ */
+export interface SerializedMCPError {
+  /** Original error message */
+  message: string;
+  /** Error name/constructor */
+  name: string;
+  /** Error code (if available) */
+  code?: string;
+  /** Error category for UI handling */
+  category?: 'connection' | 'protocol' | 'transport' | 'timeout' | 'auth' | 'unknown';
+  /** Whether error is recoverable */
+  recoverable?: boolean;
+  /** Sanitized stack trace (dev mode only) */
+  stack?: string;
+  /** Underlying cause error (if any) */
+  cause?: {
+    message: string;
+    name: string;
+    stack?: string;
+  };
+  /** Additional error metadata */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Safely serialize MCP errors for transmission over WebSocket
+ * Handles Error objects, stack traces, and circular references
+ *
+ * @param error - The error to serialize (Error object, MCPErrorEventData, or any error-like object)
+ * @param includeStack - Whether to include stack traces (default: NODE_ENV !== 'production')
+ * @param sanitizeStack - Whether to sanitize file paths in stack traces (default: true)
+ * @returns Serialized error object safe for JSON transmission
+ *
+ * @example
+ * ```typescript
+ * const mcpError = new MCPTransportError('Connection failed', 'CONNECTION_FAILED');
+ * const serialized = serializeMCPError(mcpError);
+ * console.log(serialized);
+ * // {
+ * //   message: 'Connection failed',
+ * //   name: 'MCPTransportError',
+ * //   code: 'CONNECTION_FAILED',
+ * //   category: 'connection',
+ * //   recoverable: true,
+ * //   stack: '...' // In dev mode
+ * // }
+ * ```
+ */
+export function serializeMCPError(
+  error: any,
+  includeStack: boolean = process.env.NODE_ENV !== 'production',
+  sanitizeStack: boolean = true
+): SerializedMCPError {
+  // Handle null/undefined errors
+  if (!error) {
+    return {
+      message: 'Unknown error occurred',
+      name: 'UnknownError'
+    };
+  }
+
+  // Handle string errors
+  if (typeof error === 'string') {
+    return {
+      message: error,
+      name: 'StringError'
+    };
+  }
+
+  // Extract basic error properties
+  const serialized: SerializedMCPError = {
+    message: error.message || String(error),
+    name: error.name || error.constructor?.name || 'Error'
+  };
+
+  // Add error code if available
+  if (error.code) {
+    serialized.code = String(error.code);
+  }
+
+  // Add category and recoverable status if available
+  if (error.category) {
+    serialized.category = error.category;
+  }
+  if (typeof error.recoverable === 'boolean') {
+    serialized.recoverable = error.recoverable;
+  }
+
+  // Handle stack trace
+  if (includeStack && error.stack) {
+    let stack = String(error.stack);
+
+    if (sanitizeStack) {
+      // Remove absolute file paths for security
+      stack = stack.replace(/\/[^:\s]*\//g, '.../');
+      // Remove user home directory paths
+      stack = stack.replace(/\/Users\/[^\/]+/g, '/Users/***');
+      stack = stack.replace(/C:\\Users\\[^\\]+/g, 'C:\\Users\\***');
+    }
+
+    serialized.stack = stack;
+  }
+
+  // Handle cause error
+  if (error.cause) {
+    const cause = error.cause;
+    serialized.cause = {
+      message: cause.message || String(cause),
+      name: cause.name || cause.constructor?.name || 'Error'
+    };
+
+    if (includeStack && cause.stack) {
+      let causeStack = String(cause.stack);
+      if (sanitizeStack) {
+        causeStack = causeStack.replace(/\/[^:\s]*\//g, '.../');
+        causeStack = causeStack.replace(/\/Users\/[^\/]+/g, '/Users/***');
+        causeStack = causeStack.replace(/C:\\Users\\[^\\]+/g, 'C:\\Users\\***');
+      }
+      serialized.cause.stack = causeStack;
+    }
+  }
+
+  // Add additional metadata, excluding sensitive or circular data
+  if (error.metadata && typeof error.metadata === 'object') {
+    try {
+      // Use safeSerialize to handle circular references, then parse back
+      const metadataJson = safeSerialize(error.metadata);
+      serialized.metadata = JSON.parse(metadataJson);
+    } catch {
+      // If metadata can't be serialized, create a safe description
+      serialized.metadata = {
+        type: typeof error.metadata,
+        hasProperties: Object.keys(error.metadata).length > 0
+      };
+    }
+  }
+
+  return serialized;
 }

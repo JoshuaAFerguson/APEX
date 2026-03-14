@@ -166,6 +166,116 @@ export function ErrorDisplay({
       });
     }
 
+    // MCP (Model Context Protocol) specific error suggestions
+    if (message.toLowerCase().includes('mcp') || message.toLowerCase().includes('model context protocol')) {
+      // Connection failures
+      if (message.toLowerCase().includes('connection') || message.toLowerCase().includes('connect')) {
+        autoSuggestions.push({
+          title: 'MCP Connection Failed',
+          description: 'Unable to connect to MCP server. Check server status and configuration.',
+          command: 'apex mcp status',
+          priority: 'high',
+        });
+      }
+
+      // Process spawn/crash errors
+      if (message.toLowerCase().includes('spawn') || message.toLowerCase().includes('process') || message.toLowerCase().includes('crash')) {
+        autoSuggestions.push({
+          title: 'MCP Server Process Issue',
+          description: 'MCP server process failed to start or crashed. Check server executable and dependencies.',
+          command: 'apex mcp logs',
+          priority: 'high',
+        });
+      }
+
+      // Timeout errors
+      if (message.toLowerCase().includes('timeout')) {
+        autoSuggestions.push({
+          title: 'MCP Timeout',
+          description: 'MCP server response timeout. Check server performance and network latency.',
+          command: 'apex mcp health-check',
+          priority: 'medium',
+        });
+      }
+
+      // Protocol errors
+      if (message.toLowerCase().includes('protocol') || message.toLowerCase().includes('jsonrpc') || message.toLowerCase().includes('invalid')) {
+        autoSuggestions.push({
+          title: 'MCP Protocol Error',
+          description: 'Protocol incompatibility or invalid message format. Update server or check configuration.',
+          command: 'apex mcp validate-config',
+          priority: 'high',
+        });
+      }
+
+      // Authentication errors
+      if (message.toLowerCase().includes('auth') || message.toLowerCase().includes('unauthorized') || message.toLowerCase().includes('forbidden')) {
+        autoSuggestions.push({
+          title: 'MCP Authentication Error',
+          description: 'Authentication failed with MCP server. Check credentials and permissions.',
+          command: 'apex mcp update-credentials',
+          priority: 'high',
+        });
+      }
+
+      // Transport errors
+      if (message.toLowerCase().includes('transport') || message.toLowerCase().includes('send') || message.toLowerCase().includes('receive')) {
+        autoSuggestions.push({
+          title: 'MCP Transport Error',
+          description: 'Message transport failed. Check network connectivity and server stability.',
+          action: 'retry',
+          priority: 'medium',
+        });
+      }
+
+      // General MCP error fallback
+      if (!autoSuggestions.some(s => s.title.includes('MCP'))) {
+        autoSuggestions.push({
+          title: 'MCP Server Issue',
+          description: 'General MCP server error. Check server logs and configuration.',
+          command: 'apex mcp diagnose',
+          priority: 'medium',
+        });
+      }
+    }
+
+    // Error codes specific to MCP Transport
+    if (message.includes('CONNECTION_FAILED') || message.includes('DISCONNECTED')) {
+      autoSuggestions.push({
+        title: 'MCP Connection Lost',
+        description: 'Connection to MCP server was lost. Check network and restart server if needed.',
+        command: 'apex mcp restart',
+        priority: 'high',
+      });
+    }
+
+    if (message.includes('SPAWN_FAILED') || message.includes('PROCESS_CRASHED')) {
+      autoSuggestions.push({
+        title: 'MCP Process Error',
+        description: 'MCP server process failed. Check executable permissions and dependencies.',
+        command: 'apex mcp install --repair',
+        priority: 'high',
+      });
+    }
+
+    if (message.includes('PARSE_ERROR') || message.includes('SEND_FAILED')) {
+      autoSuggestions.push({
+        title: 'MCP Message Error',
+        description: 'Message parsing or transmission failed. Check protocol compatibility.',
+        command: 'apex mcp version-check',
+        priority: 'medium',
+      });
+    }
+
+    if (message.includes('TIMEOUT') && message.includes('MCP')) {
+      autoSuggestions.push({
+        title: 'MCP Operation Timeout',
+        description: 'MCP operation timed out. Increase timeout settings or check server performance.',
+        command: 'apex config set mcp.timeout 30000',
+        priority: 'medium',
+      });
+    }
+
     return autoSuggestions;
   };
 

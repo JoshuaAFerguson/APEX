@@ -1,0 +1,121 @@
+CODE REVIEW: Test Timing Consistency Between Events
+====================================================
+
+PROJECT: APEX
+BRANCH: apex/mmplyoge-test-event-data-integrity
+REVIEW DATE: 2026-03-14
+
+FILES REVIEWED:
+- tests/timing-consistency-focused.test.ts
+- packages/core/src/__tests__/tool-timing-validation.test.ts
+- packages/orchestrator/src/tool-execution-timing.test.ts
+- packages/api/src/websocket-tool-events.test.ts
+- packages/core/src/utils.ts
+
+HIGH SEVERITY ISSUES
+====================
+
+1. packages/core/src/utils.ts:213 - formatDuration Rounding Logic
+   ISSUE: Boundary condition handling for minute-to-hour transitions
+   IMPACT: Duration formatting may produce incorrect results near 60 second boundary
+
+2. tests/timing-consistency-focused.test.ts:333-366 - Race Condition in Event Sequence Test
+   ISSUE: Concurrent Promise.all() doesn't guarantee event ordering
+   IMPACT: Test may flakily fail due to non-deterministic event arrival order
+   RECOMMENDATION: Use sequential execution or timing-agnostic ordering validation
+
+3. packages/orchestrator/src/tool-execution-timing.test.ts:457-524 - Insufficient Timing Tolerance
+   ISSUE: 50ms tolerance too strict for CI environments
+   IMPACT: Test will flake under CI load with timer drift
+   RECOMMENDATION: Increase tolerance to 100-150ms for CI compatibility
+
+MEDIUM SEVERITY ISSUES
+======================
+
+4. packages/api/src/websocket-tool-events.test.ts:137-149 - Missing Error Handling
+   ISSUE: Mock event emitter doesn't handle listener exceptions
+   IMPACT: Single listener failure silently prevents subsequent listeners from firing
+   IMPACT LEVEL: Medium
+
+5. packages/orchestrator/src/tool-execution-timing.test.ts:680-686 - Incomplete Timing Validation
+   ISSUE: Tests existence of timing fields but not mathematical relationships
+   MISSING: Validation that duration >= 0 and matches calculated value
+   IMPACT LEVEL: Medium
+
+6. packages/orchestrator/src/tool-execution-timing.test.ts:234-300 - Cleanup Not Tested on Failure
+   ISSUE: Test verifies cleanup after success but not after failure scenarios
+   MISSING: Tests for: shouldFail, interruption, timeout scenarios
+   IMPACT LEVEL: Medium
+
+7. packages/api/src/websocket-tool-events.test.ts:350-362 - JSON Serialization Not Validated
+   ISSUE: Tests expect Date objects from JSON.parse (converts to strings)
+   MISSING: Validation of ISO 8601 format, JSON round-trip accuracy
+   IMPACT LEVEL: Medium
+
+LOW SEVERITY ISSUES
+===================
+
+8. tests/timing-consistency-focused.test.ts:196-207 - Poor Test Data Naming
+   ISSUE: Variable names are redundant and don't indicate test purpose
+   RECOMMENDATION: Use descriptive names like 'callId', 'toolName' instead of 'testCallId'
+   IMPACT LEVEL: Low
+
+9. packages/core/src/__tests__/tool-timing-validation.test.ts:165-183 - Incomplete Edge Case Testing
+   ISSUE: Tests that edge cases don't crash but doesn't validate output
+   MISSING: Assertions about actual return values for NaN, Infinity, negative numbers
+   IMPACT LEVEL: Low
+
+10. packages/orchestrator/src/tool-execution-timing.test.ts:580-583 - Precision Not Validated
+    ISSUE: startTime vs timestamp equality doesn't account for system clock precision
+    MISSING: Allow 1ms precision loss for valid implementation variation
+    IMPACT LEVEL: Low
+
+PASSING AREAS
+=============
+
+✓ Event emission and capture mechanism working correctly
+✓ Timing data structure properly defined and validated
+✓ Duration formatting handles multiple time ranges correctly
+✓ Concurrent execution tracking functionality sound
+✓ Error handling for failed tool executions adequate
+✓ WebSocket event transmission properly tested
+✓ Tool execution lifecycle events (start/progress/complete) functional
+
+BUILD STATUS
+============
+
+The codebase has pre-existing build errors in test-utils and other packages that are
+unrelated to the timing consistency implementation. These should be addressed separately.
+
+SUMMARY
+=======
+
+Total Issues Found: 10
+- HIGH severity: 3
+- MEDIUM severity: 4
+- LOW severity: 3
+
+The timing consistency test implementation is largely sound but has several issues
+that could cause flakiness in CI environments and incomplete validation of edge cases.
+All HIGH and MEDIUM severity issues should be addressed before merging.
+
+RECOMMENDATIONS FOR NEXT STAGE
+===============================
+
+Priority 1 (Must Fix):
+- Increase timing tolerance in orchestrator tests from 50ms to 100-150ms
+- Add sequential execution to concurrent event sequence test
+- Document and validate duration rounding boundary expectations
+
+Priority 2 (Should Fix):
+- Add error handling to mock event emitter
+- Complete timing consistency mathematical validation
+- Add failure scenario cleanup tests
+- Validate JSON serialization format for WebSocket events
+
+Priority 3 (Nice to Have):
+- Improve test data naming for clarity
+- Add comprehensive edge case output validation
+- Document timing precision expectations
+
+All findings detailed in: TIMING_CONSISTENCY_CODE_REVIEW.md

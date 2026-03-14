@@ -145,14 +145,13 @@ describe('v0.6.0 Context & Memory Features Validation', () => {
 
     describe('Framework Detection', () => {
       it('should detect multiple frameworks in monorepo', async () => {
-        const frameworks = await analyzer.detectFrameworks(projectRoot);
+        const frameworkDetection = await analyzer.detectFrameworks(projectRoot);
 
         // Validate schema compliance
-        frameworks.forEach(framework => {
-          expect(() => FrameworkDetectionSchema.parse(framework)).not.toThrow();
-        });
+        expect(() => FrameworkDetectionSchema.parse(frameworkDetection)).not.toThrow();
 
         // Test that we detect expected frameworks in APEX
+        const frameworks = frameworkDetection.frameworks;
         const frameworkNames = frameworks.map(f => f.name.toLowerCase());
 
         // Should detect TypeScript, Node.js, Vitest, etc.
@@ -167,7 +166,8 @@ describe('v0.6.0 Context & Memory Features Validation', () => {
       });
 
       it('should provide confidence levels for framework detection', async () => {
-        const frameworks = await analyzer.detectFrameworks(projectRoot);
+        const frameworkDetection = await analyzer.detectFrameworks(projectRoot);
+        const frameworks = frameworkDetection.frameworks;
 
         frameworks.forEach(framework => {
           expect(framework.confidence).toMatch(/^(high|medium|low)$/);
@@ -558,7 +558,7 @@ describe('v0.6.0 Context & Memory Features Validation', () => {
         changedFiles: [
           {
             path: 'test.ts',
-            status: 'modified',
+            status: 'M',
             staged: true,
           }
         ],
@@ -567,6 +567,12 @@ describe('v0.6.0 Context & Memory Features Validation', () => {
           hash: 'abc123',
           message: 'Test commit',
           timestamp: new Date(),
+        },
+        tracking: {
+          remote: 'origin',
+          remoteBranch: 'main',
+          aheadCount: 0,
+          behindCount: 0,
         },
       };
 

@@ -22,31 +22,38 @@ import {
 // Mock dependencies
 vi.mock('fs/promises');
 vi.mock('chalk', () => ({
-  cyan: vi.fn((text) => `[CYAN]${text}[/CYAN]`),
-  green: vi.fn((text) => `[GREEN]${text}[/GREEN]`),
-  yellow: vi.fn((text) => `[YELLOW]${text}[/YELLOW]`),
-  blue: vi.fn((text) => `[BLUE]${text}[/BLUE]`),
+  default: {
+    cyan: vi.fn((text) => `[CYAN]${text}[/CYAN]`),
+    green: vi.fn((text) => `[GREEN]${text}[/GREEN]`),
+    yellow: vi.fn((text) => `[YELLOW]${text}[/YELLOW]`),
+    blue: vi.fn((text) => `[BLUE]${text}[/BLUE]`),
+  },
 }));
 
-vi.mock('@apexcli/core', () => ({
-  getLatestPackageVersion: vi.fn(),
-  compareVersionStrings: vi.fn((a, b) => {
-    const parseVersion = (v: string) => v.replace(/^v/, '').split('.').map(Number);
-    const aParts = parseVersion(a);
-    const bParts = parseVersion(b);
+// Create mock functions
+const mockGetLatestPackageVersion = vi.fn();
+const mockCompareVersionStrings = vi.fn((a: string, b: string) => {
+  const parseVersion = (v: string) => v.replace(/^v/, '').split('.').map(Number);
+  const aParts = parseVersion(a);
+  const bParts = parseVersion(b);
 
-    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-      const aPart = aParts[i] || 0;
-      const bPart = bParts[i] || 0;
-      if (aPart > bPart) return 1;
-      if (aPart < bPart) return -1;
-    }
-    return 0;
-  }),
-}));
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || 0;
+    const bPart = bParts[i] || 0;
+    if (aPart > bPart) return 1;
+    if (aPart < bPart) return -1;
+  }
+  return 0;
+});
+
+vi.mock('@apexcli/core', async () => {
+  return {
+    getLatestPackageVersion: mockGetLatestPackageVersion,
+    compareVersionStrings: mockCompareVersionStrings,
+  };
+});
 
 const mockedFs = vi.mocked(fs);
-const { getLatestPackageVersion } = require('@apexcli/core');
 
 describe('Acceptance Criteria Verification', () => {
   let originalConsoleLog: typeof console.log;
@@ -67,7 +74,7 @@ describe('Acceptance Criteria Verification', () => {
 
   describe('AC1: Asynchronous, non-blocking update checks on CLI startup', () => {
     it('should perform update check asynchronously without blocking', async () => {
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
 
       const startTime = Date.now();
 
@@ -91,7 +98,7 @@ describe('Acceptance Criteria Verification', () => {
 
     it('should not block CLI startup even when network is slow', async () => {
       // Mock slow network response
-      getLatestPackageVersion.mockImplementation(() =>
+      mockGetLatestPackageVersion.mockImplementation(() =>
         new Promise(resolve => setTimeout(() => resolve('0.7.0'), 4000))
       );
 
@@ -201,11 +208,11 @@ describe('Acceptance Criteria Verification', () => {
       const originalEnv = process.env.APEX_SKIP_UPDATE_CHECK;
       process.env.APEX_SKIP_UPDATE_CHECK = '1';
 
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
 
       await checkAndNotifyUpdates();
 
-      expect(getLatestPackageVersion).not.toHaveBeenCalled();
+      expect(mockGetLatestPackageVersion).not.toHaveBeenCalled();
       expect(consoleLogs).toHaveLength(0);
 
       // Restore environment
@@ -220,11 +227,11 @@ describe('Acceptance Criteria Verification', () => {
       const originalEnv = process.env.APEX_SKIP_UPDATE_CHECK;
       process.env.APEX_SKIP_UPDATE_CHECK = 'true';
 
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
 
       await checkAndNotifyUpdates();
 
-      expect(getLatestPackageVersion).not.toHaveBeenCalled();
+      expect(mockGetLatestPackageVersion).not.toHaveBeenCalled();
       expect(consoleLogs).toHaveLength(0);
 
       // Restore environment
@@ -239,11 +246,11 @@ describe('Acceptance Criteria Verification', () => {
       const originalEnv = process.env.APEX_SKIP_UPDATE_CHECK;
       delete process.env.APEX_SKIP_UPDATE_CHECK;
 
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
 
       await checkAndNotifyUpdates();
 
-      expect(getLatestPackageVersion).toHaveBeenCalled();
+      expect(mockGetLatestPackageVersion).toHaveBeenCalled();
       expect(consoleLogs).toHaveLength(1);
       expect(consoleLogs[0]).toContain('Update available');
 
@@ -257,11 +264,11 @@ describe('Acceptance Criteria Verification', () => {
       const originalEnv = process.env.APEX_SKIP_UPDATE_CHECK;
       process.env.APEX_SKIP_UPDATE_CHECK = '';
 
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
 
       await checkAndNotifyUpdates();
 
-      expect(getLatestPackageVersion).toHaveBeenCalled();
+      expect(mockGetLatestPackageVersion).toHaveBeenCalled();
       expect(consoleLogs).toHaveLength(1);
 
       // Restore environment
@@ -275,7 +282,7 @@ describe('Acceptance Criteria Verification', () => {
 
   describe('AC5: Cache storage in ~/.apex/update-check.json', () => {
     it('should save cache to correct location after update check', async () => {
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
       mockedFs.writeFile.mockResolvedValue(undefined);
 
       await checkForUpdates();
@@ -304,7 +311,7 @@ describe('Acceptance Criteria Verification', () => {
       const result = await checkForUpdates();
 
       expect(result).toEqual(cacheData.updateInfo);
-      expect(getLatestPackageVersion).not.toHaveBeenCalled(); // Should use cache
+      expect(mockGetLatestPackageVersion).not.toHaveBeenCalled(); // Should use cache
     });
 
     it('should refresh stale cache (older than 6 hours)', async () => {
@@ -320,26 +327,26 @@ describe('Acceptance Criteria Verification', () => {
       };
 
       mockedFs.readFile.mockResolvedValue(JSON.stringify(staleCache));
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
 
       const result = await checkForUpdates();
 
-      expect(getLatestPackageVersion).toHaveBeenCalled(); // Should refresh stale cache
+      expect(mockGetLatestPackageVersion).toHaveBeenCalled(); // Should refresh stale cache
       expect(result?.latestVersion).toBe('0.7.0');
     });
 
     it('should handle cache file not found gracefully', async () => {
       mockedFs.readFile.mockRejectedValue(new Error('ENOENT: no such file or directory'));
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
 
       const result = await checkForUpdates();
 
-      expect(getLatestPackageVersion).toHaveBeenCalled(); // Should perform fresh check
+      expect(mockGetLatestPackageVersion).toHaveBeenCalled(); // Should perform fresh check
       expect(result?.latestVersion).toBe('0.7.0');
     });
 
     it('should handle cache write failures silently', async () => {
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
       mockedFs.writeFile.mockRejectedValue(new Error('EACCES: permission denied'));
 
       // Should not throw despite cache write failure
@@ -352,7 +359,7 @@ describe('Acceptance Criteria Verification', () => {
   describe('Complete Integration: All Acceptance Criteria Together', () => {
     it('should fulfill all acceptance criteria in a complete CLI startup scenario', async () => {
       // Setup: Mock network call
-      getLatestPackageVersion.mockResolvedValue('0.7.0');
+      mockGetLatestPackageVersion.mockResolvedValue('0.7.0');
       mockedFs.readFile.mockRejectedValue(new Error('ENOENT')); // No cache
       mockedFs.writeFile.mockResolvedValue(undefined);
 
