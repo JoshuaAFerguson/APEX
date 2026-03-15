@@ -8,7 +8,7 @@ import {
   formatLatency,
   formatUptime
 } from '@/types/websocket-connection'
-import { getRelativeTime } from '@/lib/utils'
+import { getRelativeTime, formatPercentage } from '@/lib/utils'
 
 /**
  * WebSocketConnectionTooltip - Detailed health information tooltip

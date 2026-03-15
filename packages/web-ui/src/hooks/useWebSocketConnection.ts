@@ -50,7 +50,7 @@ export function useWebSocketConnection(): WebSocketConnectionHealth {
         const healthState = wsClient.getHealthState()
 
         // Get reconnector stats safely
-        let reconnectorStats = { currentAttempt: 0, state: 'idle' as const }
+        let reconnectorStats: { currentAttempt: number; state: string } = { currentAttempt: 0, state: 'idle' }
         try {
           if (wsClient instanceof Object && 'reconnector' in wsClient) {
             reconnectorStats = (wsClient as any).reconnector?.getStats() || reconnectorStats
@@ -102,7 +102,7 @@ export function useWebSocketConnection(): WebSocketConnectionHealth {
       const healthState = wsClient.getHealthState()
 
       // Get reconnector stats safely
-      let reconnectorStats = { currentAttempt: 0, state: 'idle' as const }
+      let reconnectorStats: { currentAttempt: number; state: string } = { currentAttempt: 0, state: 'idle' }
       try {
         if (wsClient instanceof Object && 'reconnector' in wsClient) {
           reconnectorStats = (wsClient as any).reconnector?.getStats() || reconnectorStats
