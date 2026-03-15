@@ -24,3 +24,6 @@ export type { CheckboxProps } from './Checkbox'
 
 export { RadioGroup, Radio } from './RadioGroup'
 export type { RadioGroupProps, RadioProps, RadioOption } from './RadioGroup'
+
+export { BudgetGauge, BudgetGaugeMini } from './BudgetGauge'
+export type { BudgetGaugeProps, BudgetGaugeMiniProps, BudgetGaugeThresholds, ColorState } from './BudgetGauge'
