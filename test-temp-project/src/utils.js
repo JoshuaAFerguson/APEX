@@ -1,3 +1,0 @@
-function util() {
-  return true;
-}

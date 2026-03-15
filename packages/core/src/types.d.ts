@@ -10128,14 +10128,17 @@ export declare const HealthReportSchema: z.ZodObject<{
         failed: z.ZodNumber;
         warnings: z.ZodNumber;
         skipped: z.ZodNumber;
+        errors: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
         failed: number;
+        errors: number;
         total: number;
         passed: number;
         warnings: number;
         skipped: number;
     }, {
         failed: number;
+        errors: number;
         total: number;
         passed: number;
         warnings: number;
@@ -10269,6 +10272,7 @@ export declare const HealthReportSchema: z.ZodObject<{
     overallStatus: "unknown" | "skip" | "fail" | "pass";
     summary: {
         failed: number;
+        errors: number;
         total: number;
         passed: number;
         warnings: number;
@@ -10309,6 +10313,7 @@ export declare const HealthReportSchema: z.ZodObject<{
     overallStatus: "unknown" | "skip" | "fail" | "pass";
     summary: {
         failed: number;
+        errors: number;
         total: number;
         passed: number;
         warnings: number;
@@ -13856,15 +13861,15 @@ export declare const MCPInstallationSchema: z.ZodObject<{
     configPath: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     id: string;
     configPath: string;
-    serverId: string;
     installedAt: Date;
 }, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     id: string;
     configPath: string;
-    serverId: string;
     installedAt: Date;
 }>;
 export type MCPInstallation = z.infer<typeof MCPInstallationSchema>;
@@ -14558,6 +14563,7 @@ export declare const MCPRegistryInstallationSchema: z.ZodObject<{
     error: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     config: {
         autoStart: boolean;
         args?: string[] | undefined;
@@ -14565,14 +14571,14 @@ export declare const MCPRegistryInstallationSchema: z.ZodObject<{
         configPath?: string | undefined;
         instanceName?: string | undefined;
     };
-    serverId: string;
     installedAt: Date;
+    installationId?: string | undefined;
     error?: string | undefined;
     updatedAt?: Date | undefined;
     installedVersion?: string | undefined;
-    installationId?: string | undefined;
 }, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     config: {
         args?: string[] | undefined;
         env?: Record<string, string> | undefined;
@@ -14580,12 +14586,11 @@ export declare const MCPRegistryInstallationSchema: z.ZodObject<{
         autoStart?: boolean | undefined;
         instanceName?: string | undefined;
     };
-    serverId: string;
     installedAt: Date;
+    installationId?: string | undefined;
     error?: string | undefined;
     updatedAt?: Date | undefined;
     installedVersion?: string | undefined;
-    installationId?: string | undefined;
 }>;
 export type MCPRegistryInstallation = z.infer<typeof MCPRegistryInstallationSchema>;
 /**
@@ -15051,6 +15056,7 @@ export declare const MCPConnectionInfoSchema: z.ZodObject<{
         uptimeMs?: number | undefined;
     }>>;
 }, "strip", z.ZodTypeAny, {
+    serverId: string;
     state: "error" | "disconnected" | "connecting" | "connected" | "reconnecting";
     config: {
         type: "stdio" | "http" | "sse" | "sdk";
@@ -15092,7 +15098,6 @@ export declare const MCPConnectionInfoSchema: z.ZodObject<{
             heartbeatIntervalMs: number;
         } | undefined;
     };
-    serverId: string;
     serverName: string;
     reconnectAttempts: number;
     connectedAt?: Date | undefined;
@@ -15122,6 +15127,7 @@ export declare const MCPConnectionInfoSchema: z.ZodObject<{
         uptimeMs: number;
     } | undefined;
 }, {
+    serverId: string;
     state: "error" | "disconnected" | "connecting" | "connected" | "reconnecting";
     config: {
         name: string;
@@ -15163,7 +15169,6 @@ export declare const MCPConnectionInfoSchema: z.ZodObject<{
             heartbeatIntervalMs?: number | undefined;
         } | undefined;
     };
-    serverId: string;
     serverName: string;
     connectedAt?: Date | undefined;
     lastActivityAt?: Date | undefined;
@@ -15569,6 +15574,7 @@ export declare const MCPConnectionSchema: z.ZodObject<{
         uptimeMs?: number | undefined;
     }>>;
 }, "strip", z.ZodTypeAny, {
+    serverId: string;
     state: "error" | "disconnected" | "connecting" | "connected" | "reconnecting";
     config: {
         type: "stdio" | "http" | "sse" | "sdk";
@@ -15610,7 +15616,6 @@ export declare const MCPConnectionSchema: z.ZodObject<{
             heartbeatIntervalMs: number;
         } | undefined;
     };
-    serverId: string;
     serverName: string;
     reconnectAttempts: number;
     connectedAt?: Date | undefined;
@@ -15640,6 +15645,7 @@ export declare const MCPConnectionSchema: z.ZodObject<{
         uptimeMs: number;
     } | undefined;
 }, {
+    serverId: string;
     state: "error" | "disconnected" | "connecting" | "connected" | "reconnecting";
     config: {
         name: string;
@@ -15681,7 +15687,6 @@ export declare const MCPConnectionSchema: z.ZodObject<{
             heartbeatIntervalMs?: number | undefined;
         } | undefined;
     };
-    serverId: string;
     serverName: string;
     connectedAt?: Date | undefined;
     lastActivityAt?: Date | undefined;
@@ -16218,10 +16223,10 @@ export declare const MCPToolSchema: z.ZodObject<{
     /** When this tool definition was last updated */
     updatedAt: z.ZodOptional<z.ZodDate>;
 }, "strip", z.ZodTypeAny, {
+    serverId: string;
     name: string;
     tags: string[];
     available: boolean;
-    serverId: string;
     inputSchema: {
         type: "object";
         required: string[];
@@ -16292,8 +16297,8 @@ export declare const MCPToolSchema: z.ZodObject<{
         $schema?: string | undefined;
     } | undefined;
 }, {
-    name: string;
     serverId: string;
+    name: string;
     inputSchema: {
         type?: "object" | undefined;
         description?: string | undefined;
@@ -16709,10 +16714,10 @@ export declare const MCPToolRegistryEntrySchema: z.ZodObject<{
         /** When this tool definition was last updated */
         updatedAt: z.ZodOptional<z.ZodDate>;
     }, "strip", z.ZodTypeAny, {
+        serverId: string;
         name: string;
         tags: string[];
         available: boolean;
-        serverId: string;
         inputSchema: {
             type: "object";
             required: string[];
@@ -16783,8 +16788,8 @@ export declare const MCPToolRegistryEntrySchema: z.ZodObject<{
             $schema?: string | undefined;
         } | undefined;
     }, {
-        name: string;
         serverId: string;
+        name: string;
         inputSchema: {
             type?: "object" | undefined;
             description?: string | undefined;
@@ -17296,10 +17301,10 @@ export declare const MCPToolRegistryEntrySchema: z.ZodObject<{
     }>]>>;
 }, "strip", z.ZodTypeAny, {
     tool: {
+        serverId: string;
         name: string;
         tags: string[];
         available: boolean;
-        serverId: string;
         inputSchema: {
             type: "object";
             required: string[];
@@ -17475,8 +17480,8 @@ export declare const MCPToolRegistryEntrySchema: z.ZodObject<{
     } | undefined;
 }, {
     tool: {
-        name: string;
         serverId: string;
+        name: string;
         inputSchema: {
             type?: "object" | undefined;
             description?: string | undefined;
@@ -22400,14 +22405,14 @@ export declare const MCPToolInvocationRequestSchema: z.ZodObject<{
     stream: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
 }, "strip", z.ZodTypeAny, {
     arguments: Record<string, unknown>;
-    toolName: string;
     serverId: string;
+    toolName: string;
     stream: boolean;
     timeoutMs?: number | undefined;
     requestId?: string | undefined;
 }, {
-    toolName: string;
     serverId: string;
+    toolName: string;
     arguments?: Record<string, unknown> | undefined;
     timeoutMs?: number | undefined;
     requestId?: string | undefined;
@@ -22902,6 +22907,7 @@ export declare const MCPInstallationV050Schema: z.ZodObject<{
     status: z.ZodEnum<["pending", "installing", "installed", "failed", "uninstalling", "uninstalled"]>;
 }, "strip", z.ZodTypeAny, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     config: {
         type: "stdio" | "http" | "sse" | "sdk";
         name: string;
@@ -22942,10 +22948,10 @@ export declare const MCPInstallationV050Schema: z.ZodObject<{
             heartbeatIntervalMs: number;
         } | undefined;
     };
-    serverId: string;
     installedAt: Date;
 }, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     config: {
         name: string;
         type?: "stdio" | "http" | "sse" | "sdk" | undefined;
@@ -22986,7 +22992,6 @@ export declare const MCPInstallationV050Schema: z.ZodObject<{
             heartbeatIntervalMs?: number | undefined;
         } | undefined;
     };
-    serverId: string;
     installedAt: Date;
 }>;
 export type MCPInstallationV050 = z.infer<typeof MCPInstallationV050Schema>;
@@ -32911,12 +32916,28 @@ export interface ApproveGateRequest {
     approver: string;
     comment?: string;
 }
-export type ApexEventType = 'task:created' | 'task:started' | 'task:stage-changed' | 'task:completed' | 'task:failed' | 'task:paused' | 'task:session-resumed' | 'task:decomposed' | 'task:iteration-started' | 'task:iteration-completed' | 'task:trashed' | 'task:restored' | 'task:archived' | 'task:unarchived' | 'trash:emptied' | 'subtask:created' | 'subtask:completed' | 'subtask:failed' | 'agent:message' | 'agent:thinking' | 'agent:tool-use' | 'agent:tool-result' | 'tool:start' | 'tool:progress' | 'tool:complete' | 'tool:timing' | 'gate:required' | 'approval-required' | 'approval-resolved' | 'gate:approved' | 'gate:rejected' | 'approval:granted' | 'approval:denied' | 'usage:updated' | 'log:entry' | 'worktree:merge-cleaned' | 'container:created' | 'container:started' | 'container:stopped' | 'container:died' | 'container:removed' | 'container:health' | 'permission:request' | 'permission:granted' | 'permission:denied' | 'dangerous:detected' | 'dangerous:confirmed' | 'dangerous:blocked' | 'policy:blocked' | 'policy:warned' | 'policy:audited' | 'undo:requested' | 'undo:started' | 'undo:completed' | 'undo:failed' | 'redo:requested' | 'redo:started' | 'redo:completed' | 'redo:failed' | 'autofix:requested' | 'autofix:started' | 'autofix:progress' | 'autofix:completed' | 'autofix:failed' | 'autofix:skipped' | 'tdd:started' | 'tdd:iteration-started' | 'tdd:test-run' | 'tdd:fix-generated' | 'tdd:fix-applied' | 'tdd:regression-detected' | 'tdd:fix-reverted' | 'tdd:iteration-completed' | 'tdd:completed' | 'tdd:failed' | 'visual:comparison:failed' | 'visual:comparison:passed' | 'browser:console' | 'browser:error' | 'browser:network-error' | 'browser:performance-warning' | 'browser:security-violation' | 'browser:session-started' | 'browser:session-ended';
+export type ApexEventType = 'task:created' | 'task:started' | 'task:stage-changed' | 'task:completed' | 'task:failed' | 'task:paused' | 'task:session-resumed' | 'task:decomposed' | 'task:iteration-started' | 'task:iteration-completed' | 'task:trashed' | 'task:restored' | 'task:archived' | 'task:unarchived' | 'trash:emptied' | 'subtask:created' | 'subtask:completed' | 'subtask:failed' | 'agent:message' | 'agent:thinking' | 'agent:tool-use' | 'agent:tool-result' | 'tool:start' | 'tool:progress' | 'tool:complete' | 'tool:timing' | 'gate:required' | 'approval-required' | 'approval-resolved' | 'gate:approved' | 'gate:rejected' | 'approval:granted' | 'approval:denied' | 'usage:updated' | 'log:entry' | 'worktree:merge-cleaned' | 'container:created' | 'container:started' | 'container:stopped' | 'container:died' | 'container:removed' | 'container:health' | 'permission:request' | 'permission:granted' | 'permission:denied' | 'dangerous:detected' | 'dangerous:confirmed' | 'dangerous:blocked' | 'policy:blocked' | 'policy:warned' | 'policy:audited' | 'undo:requested' | 'undo:started' | 'undo:completed' | 'undo:failed' | 'redo:requested' | 'redo:started' | 'redo:completed' | 'redo:failed' | 'autofix:requested' | 'autofix:started' | 'autofix:progress' | 'autofix:completed' | 'autofix:failed' | 'autofix:skipped' | 'tdd:started' | 'tdd:iteration-started' | 'tdd:test-run' | 'tdd:fix-generated' | 'tdd:fix-applied' | 'tdd:regression-detected' | 'tdd:fix-reverted' | 'tdd:iteration-completed' | 'tdd:completed' | 'tdd:failed' | 'visual:comparison:failed' | 'visual:comparison:passed' | 'browser:console' | 'browser:error' | 'browser:network-error' | 'browser:performance-warning' | 'browser:security-violation' | 'browser:session-started' | 'browser:session-ended' | 'mcp:connected' | 'mcp:disconnected' | 'mcp:error' | 'mcp:reconnecting' | 'mcp:health-check' | 'mcp:state-change';
 export interface ApexEvent {
     type: ApexEventType;
     taskId: string;
     timestamp: Date;
     data: Record<string, unknown>;
+    /** Optional truncation metadata indicating if data was truncated */
+    _truncation?: {
+        /** Whether any truncation occurred */
+        truncated: boolean;
+        /** Details about what was truncated */
+        truncations: Array<{
+            /** Path to truncated property */
+            path: string;
+            /** Type of truncation applied */
+            type: 'array' | 'string';
+            /** Original size before truncation */
+            originalSize: number;
+            /** Size after truncation */
+            truncatedSize: number;
+        }>;
+    };
 }
 /**
  * Base interface for all container event data
@@ -42570,15 +42591,19 @@ export declare const GitChangedFileSchema: z.ZodObject<{
     path: z.ZodString;
     /** Git status indicator for this file */
     status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+    /** Whether this file change is staged for commit */
+    staged: z.ZodBoolean;
     /** Original path if the file was renamed (only present for renames) */
     oldPath: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     path: string;
     status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+    staged: boolean;
     oldPath?: string | undefined;
 }, {
     path: string;
     status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+    staged: boolean;
     oldPath?: string | undefined;
 }>;
 export type GitChangedFile = z.infer<typeof GitChangedFileSchema>;
@@ -42611,6 +42636,30 @@ export declare const GitCommitSchema: z.ZodObject<{
 }>;
 export type GitCommit = z.infer<typeof GitCommitSchema>;
 /**
+ * Remote tracking information for a git branch
+ */
+export declare const GitTrackingSchema: z.ZodObject<{
+    /** Name of the remote (e.g., 'origin') */
+    remote: z.ZodNullable<z.ZodString>;
+    /** Full name of the remote branch (e.g., 'origin/main') */
+    remoteBranch: z.ZodNullable<z.ZodString>;
+    /** Number of commits ahead of the remote branch */
+    aheadCount: z.ZodDefault<z.ZodNumber>;
+    /** Number of commits behind the remote branch */
+    behindCount: z.ZodDefault<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    remote: string | null;
+    remoteBranch: string | null;
+    aheadCount: number;
+    behindCount: number;
+}, {
+    remote: string | null;
+    remoteBranch: string | null;
+    aheadCount?: number | undefined;
+    behindCount?: number | undefined;
+}>;
+export type GitTracking = z.infer<typeof GitTrackingSchema>;
+/**
  * Git repository status information
  * Provides comprehensive information about the current state of a git repository
  * including branch info, tracking status, and file changes
@@ -42640,62 +42689,137 @@ export type GitCommit = z.infer<typeof GitCommitSchema>;
 export declare const GitStatusSchema: z.ZodObject<{
     /** Whether the path is a git repository */
     isRepository: z.ZodBoolean;
-    /** Current branch name (null if in detached HEAD state) */
-    branch: z.ZodNullable<z.ZodString>;
-    /** Remote tracking branch (if any) */
+    /** Current branch name (empty string if not in a git repository or detached HEAD) */
+    branch: z.ZodString;
+    /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+    isClean: z.ZodBoolean;
+    /** Whether there are uncommitted changes (modified or deleted files) */
+    hasUncommittedChanges: z.ZodBoolean;
+    /** Whether there are untracked files */
+    hasUntrackedFiles: z.ZodBoolean;
+    /** Whether there are staged changes ready for commit */
+    hasStagedChanges: z.ZodBoolean;
+    /** All changed files (staged, unstaged, and untracked) with their status */
+    changedFiles: z.ZodArray<z.ZodObject<{
+        /** Relative path to the file from the repository root */
+        path: z.ZodString;
+        /** Git status indicator for this file */
+        status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+        /** Whether this file change is staged for commit */
+        staged: z.ZodBoolean;
+        /** Original path if the file was renamed (only present for renames) */
+        oldPath: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }>, "many">;
+    /** Total number of stashes */
+    stashCount: z.ZodNumber;
+    /** Remote tracking information */
+    tracking: z.ZodNullable<z.ZodObject<{
+        /** Name of the remote (e.g., 'origin') */
+        remote: z.ZodNullable<z.ZodString>;
+        /** Full name of the remote branch (e.g., 'origin/main') */
+        remoteBranch: z.ZodNullable<z.ZodString>;
+        /** Number of commits ahead of the remote branch */
+        aheadCount: z.ZodDefault<z.ZodNumber>;
+        /** Number of commits behind the remote branch */
+        behindCount: z.ZodDefault<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        remote: string | null;
+        remoteBranch: string | null;
+        aheadCount: number;
+        behindCount: number;
+    }, {
+        remote: string | null;
+        remoteBranch: string | null;
+        aheadCount?: number | undefined;
+        behindCount?: number | undefined;
+    }>>;
+    /** Information about the last commit */
+    lastCommit: z.ZodNullable<z.ZodObject<{
+        /** Short commit hash (usually 7 characters) */
+        hash: z.ZodString;
+        /** Commit message */
+        message: z.ZodString;
+        /** Timestamp when the commit was made */
+        timestamp: z.ZodDate;
+    }, "strip", z.ZodTypeAny, {
+        timestamp: Date;
+        message: string;
+        hash: string;
+    }, {
+        timestamp: Date;
+        message: string;
+        hash: string;
+    }>>;
+    /** @deprecated Use branch instead */
     remoteBranch: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    /** Number of commits ahead of the remote tracking branch */
+    /** @deprecated Use tracking.aheadCount instead */
     ahead: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-    /** Number of commits behind the remote tracking branch */
+    /** @deprecated Use tracking.behindCount instead */
     behind: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-    /** Files staged for commit */
+    /** @deprecated Use changedFiles with staged=true instead */
     staged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
         /** Relative path to the file from the repository root */
         path: z.ZodString;
         /** Git status indicator for this file */
         status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+        /** Whether this file change is staged for commit */
+        staged: z.ZodBoolean;
         /** Original path if the file was renamed (only present for renames) */
         oldPath: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         path: string;
         status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
         oldPath?: string | undefined;
     }, {
         path: string;
         status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
         oldPath?: string | undefined;
     }>, "many">>>;
-    /** Files with unstaged changes */
+    /** @deprecated Use changedFiles with staged=false instead */
     unstaged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
         /** Relative path to the file from the repository root */
         path: z.ZodString;
         /** Git status indicator for this file */
         status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+        /** Whether this file change is staged for commit */
+        staged: z.ZodBoolean;
         /** Original path if the file was renamed (only present for renames) */
         oldPath: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         path: string;
         status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
         oldPath?: string | undefined;
     }, {
         path: string;
         status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
         oldPath?: string | undefined;
     }>, "many">>>;
-    /** Untracked files (paths relative to repository root) */
+    /** @deprecated Use changedFiles with status='?' instead */
     untracked: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+    isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** @deprecated Use lastCommit.hash instead */
+    lastCommitHash: z.ZodOptional<z.ZodString>;
+    /** @deprecated Use lastCommit.message instead */
+    lastCommitMessage: z.ZodOptional<z.ZodString>;
+    /** @deprecated Use lastCommit.timestamp instead */
+    lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
     /** Whether there are merge conflicts */
     hasConflicts: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
-    /** Whether the working directory has any changes (staged, unstaged, or untracked) */
-    isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
-    /** Hash of the last commit (short SHA) */
-    lastCommitHash: z.ZodOptional<z.ZodString>;
-    /** Message of the last commit */
-    lastCommitMessage: z.ZodOptional<z.ZodString>;
-    /** Timestamp of the last commit */
-    lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
-    /** Total number of stashes */
-    stashCount: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     /** List of configured remotes */
     remotes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
         name: z.ZodString;
@@ -42733,24 +42857,47 @@ export declare const GitStatusSchema: z.ZodObject<{
         authorEmail?: string | undefined;
     }>, "many">>>;
 }, "strip", z.ZodTypeAny, {
-    isRepository: boolean;
-    branch: string | null;
-    ahead: number;
-    behind: number;
     staged: {
         path: string;
         status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
         oldPath?: string | undefined;
     }[];
+    isRepository: boolean;
+    branch: string;
+    isClean: boolean;
+    hasUncommittedChanges: boolean;
+    hasUntrackedFiles: boolean;
+    hasStagedChanges: boolean;
+    changedFiles: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }[];
+    stashCount: number;
+    tracking: {
+        remote: string | null;
+        remoteBranch: string | null;
+        aheadCount: number;
+        behindCount: number;
+    } | null;
+    lastCommit: {
+        timestamp: Date;
+        message: string;
+        hash: string;
+    } | null;
+    ahead: number;
+    behind: number;
     unstaged: {
         path: string;
         status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
         oldPath?: string | undefined;
     }[];
     untracked: string[];
-    hasConflicts: boolean;
     isDirty: boolean;
-    stashCount: number;
+    hasConflicts: boolean;
     remotes: {
         name: string;
         url: string;
@@ -42768,27 +42915,50 @@ export declare const GitStatusSchema: z.ZodObject<{
     lastCommitTimestamp?: Date | undefined;
 }, {
     isRepository: boolean;
-    branch: string | null;
-    remoteBranch?: string | null | undefined;
-    ahead?: number | undefined;
-    behind?: number | undefined;
+    branch: string;
+    isClean: boolean;
+    hasUncommittedChanges: boolean;
+    hasUntrackedFiles: boolean;
+    hasStagedChanges: boolean;
+    changedFiles: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }[];
+    stashCount: number;
+    tracking: {
+        remote: string | null;
+        remoteBranch: string | null;
+        aheadCount?: number | undefined;
+        behindCount?: number | undefined;
+    } | null;
+    lastCommit: {
+        timestamp: Date;
+        message: string;
+        hash: string;
+    } | null;
     staged?: {
         path: string;
         status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
         oldPath?: string | undefined;
     }[] | undefined;
+    remoteBranch?: string | null | undefined;
+    ahead?: number | undefined;
+    behind?: number | undefined;
     unstaged?: {
         path: string;
         status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
         oldPath?: string | undefined;
     }[] | undefined;
     untracked?: string[] | undefined;
-    hasConflicts?: boolean | undefined;
     isDirty?: boolean | undefined;
     lastCommitHash?: string | undefined;
     lastCommitMessage?: string | undefined;
     lastCommitTimestamp?: Date | undefined;
-    stashCount?: number | undefined;
+    hasConflicts?: boolean | undefined;
     remotes?: {
         name: string;
         url: string;
@@ -42810,8 +42980,21 @@ export type ProjectEntryType = z.infer<typeof ProjectEntryTypeSchema>;
 /**
  * Represents a single entry (file or directory) in the project structure
  */
-export declare const ProjectEntrySchema: any;
-export type ProjectEntry = z.infer<typeof ProjectEntrySchema>;
+export interface ProjectEntry {
+    /** Name of the file or directory */
+    name: string;
+    /** Relative path from project root */
+    path: string;
+    /** Whether this is a file or directory */
+    type: ProjectEntryType;
+    /** Size in bytes (for files only) */
+    size?: number;
+    /** Last modified timestamp */
+    modifiedAt?: Date;
+    /** Child entries (for directories only) */
+    children?: ProjectEntry[];
+}
+export declare const ProjectEntrySchema: z.ZodType<ProjectEntry>;
 /**
  * Project structure information
  * Provides an overview of the project's directory layout and key files
@@ -42837,7 +43020,7 @@ export declare const ProjectStructureSchema: z.ZodObject<{
     /** Total number of directories in the scanned structure */
     totalDirectories: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     /** Hierarchical list of project entries */
-    entries: z.ZodDefault<z.ZodOptional<z.ZodArray<any, "many">>>;
+    entries: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodType<ProjectEntry, z.ZodTypeDef, ProjectEntry>, "many">>>;
     /** Key configuration/manifest files detected at the root */
     rootFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     /** Common project directories detected (src, lib, test, etc.) */
@@ -42852,6 +43035,10 @@ export declare const ProjectStructureSchema: z.ZodObject<{
     hasLicense: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
     /** Maximum directory depth that was scanned */
     maxDepthScanned: z.ZodOptional<z.ZodNumber>;
+    /** Maximum directory depth that was scanned (alias for compatibility) */
+    maxDepth: z.ZodOptional<z.ZodNumber>;
+    /** Total size of all files in bytes */
+    totalSize: z.ZodOptional<z.ZodNumber>;
     /** Directories that were excluded from scanning */
     excludedDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     /** Timestamp when the structure was scanned */
@@ -42879,7 +43066,7 @@ export declare const ProjectStructureSchema: z.ZodObject<{
     /** Workspace packages if this is a monorepo */
     workspaces: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
-    entries: any[];
+    entries: ProjectEntry[];
     root: string;
     totalFiles: number;
     totalDirectories: number;
@@ -42893,8 +43080,10 @@ export declare const ProjectStructureSchema: z.ZodObject<{
     filesByExtension: Record<string, number>;
     topLevelDirectories: string[];
     isMonorepo: boolean;
+    maxDepth?: number | undefined;
     scannedAt?: Date | undefined;
     maxDepthScanned?: number | undefined;
+    totalSize?: number | undefined;
     detectedFolders?: {
         docs?: string | undefined;
         test?: string | undefined;
@@ -42903,7 +43092,8 @@ export declare const ProjectStructureSchema: z.ZodObject<{
     workspaces?: string[] | undefined;
 }, {
     root: string;
-    entries?: any[] | undefined;
+    entries?: ProjectEntry[] | undefined;
+    maxDepth?: number | undefined;
     scannedAt?: Date | undefined;
     totalFiles?: number | undefined;
     totalDirectories?: number | undefined;
@@ -42914,6 +43104,7 @@ export declare const ProjectStructureSchema: z.ZodObject<{
     hasReadme?: boolean | undefined;
     hasLicense?: boolean | undefined;
     maxDepthScanned?: number | undefined;
+    totalSize?: number | undefined;
     excludedDirectories?: string[] | undefined;
     filesByExtension?: Record<string, number> | undefined;
     topLevelDirectories?: string[] | undefined;
@@ -43543,65 +43734,140 @@ export type TestFrameworkInfo = z.infer<typeof TestFrameworkInfoSchema>;
  */
 export declare const ProjectContextSchema: z.ZodObject<{
     /** Git repository status (if applicable) */
-    gitStatus: z.ZodOptional<z.ZodObject<{
+    git: z.ZodOptional<z.ZodObject<{
         /** Whether the path is a git repository */
         isRepository: z.ZodBoolean;
-        /** Current branch name (null if in detached HEAD state) */
-        branch: z.ZodNullable<z.ZodString>;
-        /** Remote tracking branch (if any) */
+        /** Current branch name (empty string if not in a git repository or detached HEAD) */
+        branch: z.ZodString;
+        /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+        isClean: z.ZodBoolean;
+        /** Whether there are uncommitted changes (modified or deleted files) */
+        hasUncommittedChanges: z.ZodBoolean;
+        /** Whether there are untracked files */
+        hasUntrackedFiles: z.ZodBoolean;
+        /** Whether there are staged changes ready for commit */
+        hasStagedChanges: z.ZodBoolean;
+        /** All changed files (staged, unstaged, and untracked) with their status */
+        changedFiles: z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">;
+        /** Total number of stashes */
+        stashCount: z.ZodNumber;
+        /** Remote tracking information */
+        tracking: z.ZodNullable<z.ZodObject<{
+            /** Name of the remote (e.g., 'origin') */
+            remote: z.ZodNullable<z.ZodString>;
+            /** Full name of the remote branch (e.g., 'origin/main') */
+            remoteBranch: z.ZodNullable<z.ZodString>;
+            /** Number of commits ahead of the remote branch */
+            aheadCount: z.ZodDefault<z.ZodNumber>;
+            /** Number of commits behind the remote branch */
+            behindCount: z.ZodDefault<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        }, {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        }>>;
+        /** Information about the last commit */
+        lastCommit: z.ZodNullable<z.ZodObject<{
+            /** Short commit hash (usually 7 characters) */
+            hash: z.ZodString;
+            /** Commit message */
+            message: z.ZodString;
+            /** Timestamp when the commit was made */
+            timestamp: z.ZodDate;
+        }, "strip", z.ZodTypeAny, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        }, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        }>>;
+        /** @deprecated Use branch instead */
         remoteBranch: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-        /** Number of commits ahead of the remote tracking branch */
+        /** @deprecated Use tracking.aheadCount instead */
         ahead: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-        /** Number of commits behind the remote tracking branch */
+        /** @deprecated Use tracking.behindCount instead */
         behind: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-        /** Files staged for commit */
+        /** @deprecated Use changedFiles with staged=true instead */
         staged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
             /** Relative path to the file from the repository root */
             path: z.ZodString;
             /** Git status indicator for this file */
             status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
             /** Original path if the file was renamed (only present for renames) */
             oldPath: z.ZodOptional<z.ZodString>;
         }, "strip", z.ZodTypeAny, {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }, {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }>, "many">>>;
-        /** Files with unstaged changes */
+        /** @deprecated Use changedFiles with staged=false instead */
         unstaged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
             /** Relative path to the file from the repository root */
             path: z.ZodString;
             /** Git status indicator for this file */
             status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
             /** Original path if the file was renamed (only present for renames) */
             oldPath: z.ZodOptional<z.ZodString>;
         }, "strip", z.ZodTypeAny, {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }, {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }>, "many">>>;
-        /** Untracked files (paths relative to repository root) */
+        /** @deprecated Use changedFiles with status='?' instead */
         untracked: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+        isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** @deprecated Use lastCommit.hash instead */
+        lastCommitHash: z.ZodOptional<z.ZodString>;
+        /** @deprecated Use lastCommit.message instead */
+        lastCommitMessage: z.ZodOptional<z.ZodString>;
+        /** @deprecated Use lastCommit.timestamp instead */
+        lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
         /** Whether there are merge conflicts */
         hasConflicts: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
-        /** Whether the working directory has any changes (staged, unstaged, or untracked) */
-        isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
-        /** Hash of the last commit (short SHA) */
-        lastCommitHash: z.ZodOptional<z.ZodString>;
-        /** Message of the last commit */
-        lastCommitMessage: z.ZodOptional<z.ZodString>;
-        /** Timestamp of the last commit */
-        lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
-        /** Total number of stashes */
-        stashCount: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
         /** List of configured remotes */
         remotes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
             name: z.ZodString;
@@ -43639,24 +43905,47 @@ export declare const ProjectContextSchema: z.ZodObject<{
             authorEmail?: string | undefined;
         }>, "many">>>;
     }, "strip", z.ZodTypeAny, {
-        isRepository: boolean;
-        branch: string | null;
-        ahead: number;
-        behind: number;
         staged: {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }[];
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        ahead: number;
+        behind: number;
         unstaged: {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }[];
         untracked: string[];
-        hasConflicts: boolean;
         isDirty: boolean;
-        stashCount: number;
+        hasConflicts: boolean;
         remotes: {
             name: string;
             url: string;
@@ -43674,27 +43963,336 @@ export declare const ProjectContextSchema: z.ZodObject<{
         lastCommitTimestamp?: Date | undefined;
     }, {
         isRepository: boolean;
-        branch: string | null;
-        remoteBranch?: string | null | undefined;
-        ahead?: number | undefined;
-        behind?: number | undefined;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
         staged?: {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }[] | undefined;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
         unstaged?: {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }[] | undefined;
         untracked?: string[] | undefined;
-        hasConflicts?: boolean | undefined;
         isDirty?: boolean | undefined;
         lastCommitHash?: string | undefined;
         lastCommitMessage?: string | undefined;
         lastCommitTimestamp?: Date | undefined;
-        stashCount?: number | undefined;
+        hasConflicts?: boolean | undefined;
+        remotes?: {
+            name: string;
+            url: string;
+        }[] | undefined;
+        recentCommits?: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[] | undefined;
+    }>>;
+    /** Git repository status (if applicable) - kept for backward compatibility */
+    gitStatus: z.ZodOptional<z.ZodObject<{
+        /** Whether the path is a git repository */
+        isRepository: z.ZodBoolean;
+        /** Current branch name (empty string if not in a git repository or detached HEAD) */
+        branch: z.ZodString;
+        /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+        isClean: z.ZodBoolean;
+        /** Whether there are uncommitted changes (modified or deleted files) */
+        hasUncommittedChanges: z.ZodBoolean;
+        /** Whether there are untracked files */
+        hasUntrackedFiles: z.ZodBoolean;
+        /** Whether there are staged changes ready for commit */
+        hasStagedChanges: z.ZodBoolean;
+        /** All changed files (staged, unstaged, and untracked) with their status */
+        changedFiles: z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">;
+        /** Total number of stashes */
+        stashCount: z.ZodNumber;
+        /** Remote tracking information */
+        tracking: z.ZodNullable<z.ZodObject<{
+            /** Name of the remote (e.g., 'origin') */
+            remote: z.ZodNullable<z.ZodString>;
+            /** Full name of the remote branch (e.g., 'origin/main') */
+            remoteBranch: z.ZodNullable<z.ZodString>;
+            /** Number of commits ahead of the remote branch */
+            aheadCount: z.ZodDefault<z.ZodNumber>;
+            /** Number of commits behind the remote branch */
+            behindCount: z.ZodDefault<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        }, {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        }>>;
+        /** Information about the last commit */
+        lastCommit: z.ZodNullable<z.ZodObject<{
+            /** Short commit hash (usually 7 characters) */
+            hash: z.ZodString;
+            /** Commit message */
+            message: z.ZodString;
+            /** Timestamp when the commit was made */
+            timestamp: z.ZodDate;
+        }, "strip", z.ZodTypeAny, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        }, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        }>>;
+        /** @deprecated Use branch instead */
+        remoteBranch: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        /** @deprecated Use tracking.aheadCount instead */
+        ahead: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** @deprecated Use tracking.behindCount instead */
+        behind: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** @deprecated Use changedFiles with staged=true instead */
+        staged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">>>;
+        /** @deprecated Use changedFiles with staged=false instead */
+        unstaged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">>>;
+        /** @deprecated Use changedFiles with status='?' instead */
+        untracked: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+        isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** @deprecated Use lastCommit.hash instead */
+        lastCommitHash: z.ZodOptional<z.ZodString>;
+        /** @deprecated Use lastCommit.message instead */
+        lastCommitMessage: z.ZodOptional<z.ZodString>;
+        /** @deprecated Use lastCommit.timestamp instead */
+        lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
+        /** Whether there are merge conflicts */
+        hasConflicts: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** List of configured remotes */
+        remotes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            url: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            url: string;
+        }, {
+            name: string;
+            url: string;
+        }>, "many">>>;
+        /** Recent commits (last 5) */
+        recentCommits: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Short commit hash (usually 7 characters) */
+            hash: z.ZodString;
+            /** Commit message */
+            message: z.ZodString;
+            /** Timestamp when the commit was made */
+            timestamp: z.ZodDate;
+            /** Author of the commit */
+            author: z.ZodOptional<z.ZodString>;
+            /** Author email */
+            authorEmail: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }>, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        staged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        ahead: number;
+        behind: number;
+        unstaged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        untracked: string[];
+        isDirty: boolean;
+        hasConflicts: boolean;
+        remotes: {
+            name: string;
+            url: string;
+        }[];
+        recentCommits: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[];
+        remoteBranch?: string | null | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+    }, {
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        staged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
+        unstaged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        untracked?: string[] | undefined;
+        isDirty?: boolean | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+        hasConflicts?: boolean | undefined;
         remotes?: {
             name: string;
             url: string;
@@ -43716,7 +44314,7 @@ export declare const ProjectContextSchema: z.ZodObject<{
         /** Total number of directories in the scanned structure */
         totalDirectories: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
         /** Hierarchical list of project entries */
-        entries: z.ZodDefault<z.ZodOptional<z.ZodArray<any, "many">>>;
+        entries: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodType<ProjectEntry, z.ZodTypeDef, ProjectEntry>, "many">>>;
         /** Key configuration/manifest files detected at the root */
         rootFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
         /** Common project directories detected (src, lib, test, etc.) */
@@ -43731,6 +44329,10 @@ export declare const ProjectContextSchema: z.ZodObject<{
         hasLicense: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
         /** Maximum directory depth that was scanned */
         maxDepthScanned: z.ZodOptional<z.ZodNumber>;
+        /** Maximum directory depth that was scanned (alias for compatibility) */
+        maxDepth: z.ZodOptional<z.ZodNumber>;
+        /** Total size of all files in bytes */
+        totalSize: z.ZodOptional<z.ZodNumber>;
         /** Directories that were excluded from scanning */
         excludedDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
         /** Timestamp when the structure was scanned */
@@ -43758,7 +44360,7 @@ export declare const ProjectContextSchema: z.ZodObject<{
         /** Workspace packages if this is a monorepo */
         workspaces: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     }, "strip", z.ZodTypeAny, {
-        entries: any[];
+        entries: ProjectEntry[];
         root: string;
         totalFiles: number;
         totalDirectories: number;
@@ -43772,8 +44374,10 @@ export declare const ProjectContextSchema: z.ZodObject<{
         filesByExtension: Record<string, number>;
         topLevelDirectories: string[];
         isMonorepo: boolean;
+        maxDepth?: number | undefined;
         scannedAt?: Date | undefined;
         maxDepthScanned?: number | undefined;
+        totalSize?: number | undefined;
         detectedFolders?: {
             docs?: string | undefined;
             test?: string | undefined;
@@ -43782,7 +44386,8 @@ export declare const ProjectContextSchema: z.ZodObject<{
         workspaces?: string[] | undefined;
     }, {
         root: string;
-        entries?: any[] | undefined;
+        entries?: ProjectEntry[] | undefined;
+        maxDepth?: number | undefined;
         scannedAt?: Date | undefined;
         totalFiles?: number | undefined;
         totalDirectories?: number | undefined;
@@ -43793,6 +44398,7 @@ export declare const ProjectContextSchema: z.ZodObject<{
         hasReadme?: boolean | undefined;
         hasLicense?: boolean | undefined;
         maxDepthScanned?: number | undefined;
+        totalSize?: number | undefined;
         excludedDirectories?: string[] | undefined;
         filesByExtension?: Record<string, number> | undefined;
         topLevelDirectories?: string[] | undefined;
@@ -44023,26 +44629,107 @@ export declare const ProjectContextSchema: z.ZodObject<{
         assertionLibrary?: string | undefined;
         mockingLibrary?: string | undefined;
     }[];
-    detectedAt?: Date | undefined;
-    gitStatus?: {
-        isRepository: boolean;
-        branch: string | null;
-        ahead: number;
-        behind: number;
+    git?: {
         staged: {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }[];
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        ahead: number;
+        behind: number;
         unstaged: {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }[];
         untracked: string[];
-        hasConflicts: boolean;
         isDirty: boolean;
+        hasConflicts: boolean;
+        remotes: {
+            name: string;
+            url: string;
+        }[];
+        recentCommits: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[];
+        remoteBranch?: string | null | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+    } | undefined;
+    detectedAt?: Date | undefined;
+    gitStatus?: {
+        staged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
         stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        ahead: number;
+        behind: number;
+        unstaged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        untracked: string[];
+        isDirty: boolean;
+        hasConflicts: boolean;
         remotes: {
             name: string;
             url: string;
@@ -44060,7 +44747,7 @@ export declare const ProjectContextSchema: z.ZodObject<{
         lastCommitTimestamp?: Date | undefined;
     } | undefined;
     structure?: {
-        entries: any[];
+        entries: ProjectEntry[];
         root: string;
         totalFiles: number;
         totalDirectories: number;
@@ -44074,8 +44761,10 @@ export declare const ProjectContextSchema: z.ZodObject<{
         filesByExtension: Record<string, number>;
         topLevelDirectories: string[];
         isMonorepo: boolean;
+        maxDepth?: number | undefined;
         scannedAt?: Date | undefined;
         maxDepthScanned?: number | undefined;
+        totalSize?: number | undefined;
         detectedFolders?: {
             docs?: string | undefined;
             test?: string | undefined;
@@ -44088,6 +44777,64 @@ export declare const ProjectContextSchema: z.ZodObject<{
         message: string;
         component: string;
     }[] | undefined;
+    git?: {
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        staged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
+        unstaged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        untracked?: string[] | undefined;
+        isDirty?: boolean | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+        hasConflicts?: boolean | undefined;
+        remotes?: {
+            name: string;
+            url: string;
+        }[] | undefined;
+        recentCommits?: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[] | undefined;
+    } | undefined;
     detectedAt?: Date | undefined;
     frameworks?: {
         name: string;
@@ -44103,27 +44850,50 @@ export declare const ProjectContextSchema: z.ZodObject<{
     }[] | undefined;
     gitStatus?: {
         isRepository: boolean;
-        branch: string | null;
-        remoteBranch?: string | null | undefined;
-        ahead?: number | undefined;
-        behind?: number | undefined;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
         staged?: {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }[] | undefined;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
         unstaged?: {
             path: string;
             status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
             oldPath?: string | undefined;
         }[] | undefined;
         untracked?: string[] | undefined;
-        hasConflicts?: boolean | undefined;
         isDirty?: boolean | undefined;
         lastCommitHash?: string | undefined;
         lastCommitMessage?: string | undefined;
         lastCommitTimestamp?: Date | undefined;
-        stashCount?: number | undefined;
+        hasConflicts?: boolean | undefined;
         remotes?: {
             name: string;
             url: string;
@@ -44138,7 +44908,8 @@ export declare const ProjectContextSchema: z.ZodObject<{
     } | undefined;
     structure?: {
         root: string;
-        entries?: any[] | undefined;
+        entries?: ProjectEntry[] | undefined;
+        maxDepth?: number | undefined;
         scannedAt?: Date | undefined;
         totalFiles?: number | undefined;
         totalDirectories?: number | undefined;
@@ -44149,6 +44920,7 @@ export declare const ProjectContextSchema: z.ZodObject<{
         hasReadme?: boolean | undefined;
         hasLicense?: boolean | undefined;
         maxDepthScanned?: number | undefined;
+        totalSize?: number | undefined;
         excludedDirectories?: string[] | undefined;
         filesByExtension?: Record<string, number> | undefined;
         topLevelDirectories?: string[] | undefined;
@@ -44774,6 +45546,760 @@ export declare const TechnicalDebtAnalysisSchema: z.ZodObject<{
 }>;
 export type TechnicalDebtAnalysis = z.infer<typeof TechnicalDebtAnalysisSchema>;
 /**
+ * Analysis of testing patterns and coverage in a codebase
+ * @example
+ * ```typescript
+ * const testingAnalysis: TestingPatternAnalysis = {
+ *   framework: "Jest",
+ *   testCount: 150,
+ *   coverage: { overall: 85, statements: 87, branches: 83, functions: 90 },
+ *   patterns: {
+ *     unit: { count: 120, locations: ["src/__tests__", "src/**\/*.test.ts"] },
+ *     integration: { count: 25, locations: ["tests/integration"] },
+ *     e2e: { count: 5, locations: ["tests/e2e"] }
+ *   },
+ *   conventions: { fileNaming: "suffix-.test", testLocation: "colocated" },
+ *   antiPatterns: [],
+ *   recommendations: ["Add more integration tests", "Improve branch coverage"]
+ * };
+ * ```
+ */
+export declare const TestingPatternAnalysisSchema: z.ZodObject<{
+    /** Primary testing framework detected */
+    framework: z.ZodString;
+    /** Total number of test files found */
+    testCount: z.ZodNumber;
+    /** Test coverage information */
+    coverage: z.ZodOptional<z.ZodObject<{
+        overall: z.ZodOptional<z.ZodNumber>;
+        statements: z.ZodOptional<z.ZodNumber>;
+        branches: z.ZodOptional<z.ZodNumber>;
+        functions: z.ZodOptional<z.ZodNumber>;
+        lines: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        lines?: number | undefined;
+        overall?: number | undefined;
+        statements?: number | undefined;
+        branches?: number | undefined;
+        functions?: number | undefined;
+    }, {
+        lines?: number | undefined;
+        overall?: number | undefined;
+        statements?: number | undefined;
+        branches?: number | undefined;
+        functions?: number | undefined;
+    }>>;
+    /** Test pattern categorization */
+    patterns: z.ZodObject<{
+        unit: z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>;
+        integration: z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>;
+        e2e: z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>;
+        component: z.ZodOptional<z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>>;
+        performance: z.ZodOptional<z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        integration: {
+            count: number;
+            locations: string[];
+        };
+        unit: {
+            count: number;
+            locations: string[];
+        };
+        e2e: {
+            count: number;
+            locations: string[];
+        };
+        performance?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+        component?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+    }, {
+        integration: {
+            count: number;
+            locations: string[];
+        };
+        unit: {
+            count: number;
+            locations: string[];
+        };
+        e2e: {
+            count: number;
+            locations: string[];
+        };
+        performance?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+        component?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+    }>;
+    /** Testing conventions detected */
+    conventions: z.ZodObject<{
+        testFileNaming: z.ZodEnum<["suffix-.test", "suffix-.spec", "suffix-Test", "prefix-test-", "mixed"]>;
+        testLocation: z.ZodEnum<["colocated", "separate-tests", "separate-__tests__", "mixed"]>;
+        testStructure: z.ZodOptional<z.ZodEnum<["flat", "mirrored", "grouped", "mixed"]>>;
+    }, "strip", z.ZodTypeAny, {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+    }, {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+    }>;
+    /** Testing anti-patterns identified */
+    antiPatterns: z.ZodArray<z.ZodObject<{
+        type: z.ZodEnum<["no-tests", "god-test", "mystery-guest", "resource-optimism", "test-code-duplication", "assertion-roulette", "conditional-test-logic", "hardcoded-test-data", "other"]>;
+        description: z.ZodString;
+        examples: z.ZodArray<z.ZodString, "many">;
+        severity: z.ZodEnum<["low", "medium", "high", "critical"]>;
+    }, "strip", z.ZodTypeAny, {
+        type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+        description: string;
+        severity: "critical" | "high" | "medium" | "low";
+        examples: string[];
+    }, {
+        type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+        description: string;
+        severity: "critical" | "high" | "medium" | "low";
+        examples: string[];
+    }>, "many">;
+    /** Recommendations for testing improvements */
+    recommendations: z.ZodArray<z.ZodString, "many">;
+    /** Additional testing metrics */
+    metrics: z.ZodOptional<z.ZodObject<{
+        avgTestsPerFile: z.ZodOptional<z.ZodNumber>;
+        avgAssertionsPerTest: z.ZodOptional<z.ZodNumber>;
+        testToSourceRatio: z.ZodOptional<z.ZodNumber>;
+        mockedDependenciesCount: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        avgTestsPerFile?: number | undefined;
+        avgAssertionsPerTest?: number | undefined;
+        testToSourceRatio?: number | undefined;
+        mockedDependenciesCount?: number | undefined;
+    }, {
+        avgTestsPerFile?: number | undefined;
+        avgAssertionsPerTest?: number | undefined;
+        testToSourceRatio?: number | undefined;
+        mockedDependenciesCount?: number | undefined;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    framework: string;
+    conventions: {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+    };
+    patterns: {
+        integration: {
+            count: number;
+            locations: string[];
+        };
+        unit: {
+            count: number;
+            locations: string[];
+        };
+        e2e: {
+            count: number;
+            locations: string[];
+        };
+        performance?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+        component?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+    };
+    testCount: number;
+    antiPatterns: {
+        type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+        description: string;
+        severity: "critical" | "high" | "medium" | "low";
+        examples: string[];
+    }[];
+    recommendations: string[];
+    metrics?: {
+        avgTestsPerFile?: number | undefined;
+        avgAssertionsPerTest?: number | undefined;
+        testToSourceRatio?: number | undefined;
+        mockedDependenciesCount?: number | undefined;
+    } | undefined;
+    coverage?: {
+        lines?: number | undefined;
+        overall?: number | undefined;
+        statements?: number | undefined;
+        branches?: number | undefined;
+        functions?: number | undefined;
+    } | undefined;
+}, {
+    framework: string;
+    conventions: {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+    };
+    patterns: {
+        integration: {
+            count: number;
+            locations: string[];
+        };
+        unit: {
+            count: number;
+            locations: string[];
+        };
+        e2e: {
+            count: number;
+            locations: string[];
+        };
+        performance?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+        component?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+    };
+    testCount: number;
+    antiPatterns: {
+        type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+        description: string;
+        severity: "critical" | "high" | "medium" | "low";
+        examples: string[];
+    }[];
+    recommendations: string[];
+    metrics?: {
+        avgTestsPerFile?: number | undefined;
+        avgAssertionsPerTest?: number | undefined;
+        testToSourceRatio?: number | undefined;
+        mockedDependenciesCount?: number | undefined;
+    } | undefined;
+    coverage?: {
+        lines?: number | undefined;
+        overall?: number | undefined;
+        statements?: number | undefined;
+        branches?: number | undefined;
+        functions?: number | undefined;
+    } | undefined;
+}>;
+export type TestingPatternAnalysis = z.infer<typeof TestingPatternAnalysisSchema>;
+/**
+ * Analysis of third-party integrations and dependencies in a codebase
+ * @example
+ * ```typescript
+ * const integrationAnalysis: IntegrationAnalysis = {
+ *   dependencies: {
+ *     production: [{ name: "react", version: "18.2.0", category: "frontend" }],
+ *     development: [{ name: "jest", version: "29.0.0", category: "testing" }],
+ *     outdated: [{ name: "lodash", current: "4.17.20", latest: "4.17.21", risk: "low" }],
+ *     security: []
+ *   },
+ *   apis: {
+ *     consumed: [{ url: "https://api.example.com", method: "GET", authenticated: true }],
+ *     exposed: [{ path: "/api/users", method: "POST", authenticated: true }]
+ *   },
+ *   services: { databases: ["PostgreSQL"], caches: ["Redis"], queues: [], cloud: ["AWS S3"] }
+ * };
+ * ```
+ */
+export declare const IntegrationAnalysisSchema: z.ZodObject<{
+    /** Dependency analysis */
+    dependencies: z.ZodObject<{
+        /** Production dependencies */
+        production: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            version: z.ZodString;
+            category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "security", "utility", "other"]>;
+            license: z.ZodOptional<z.ZodString>;
+            size: z.ZodOptional<z.ZodNumber>;
+            lastUpdated: z.ZodOptional<z.ZodDate>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }, {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }>, "many">;
+        /** Development dependencies */
+        development: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            version: z.ZodString;
+            category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "security", "utility", "other"]>;
+            license: z.ZodOptional<z.ZodString>;
+            size: z.ZodOptional<z.ZodNumber>;
+            lastUpdated: z.ZodOptional<z.ZodDate>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }, {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }>, "many">;
+        /** Outdated dependencies */
+        outdated: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            currentVersion: z.ZodString;
+            latestVersion: z.ZodString;
+            majorVersionsBehind: z.ZodOptional<z.ZodNumber>;
+            minorVersionsBehind: z.ZodOptional<z.ZodNumber>;
+            patchVersionsBehind: z.ZodOptional<z.ZodNumber>;
+            risk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            breaking: z.ZodOptional<z.ZodBoolean>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }, {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }>, "many">;
+        /** Security vulnerabilities */
+        security: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            severity: z.ZodEnum<["low", "moderate", "high", "critical"]>;
+            vulnerability: z.ZodString;
+            patchedVersion: z.ZodOptional<z.ZodString>;
+            cve: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }, {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }>, "many">;
+    }, "strip", z.ZodTypeAny, {
+        development: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        security: {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }[];
+        production: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        outdated: {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }[];
+    }, {
+        development: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        security: {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }[];
+        production: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        outdated: {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }[];
+    }>;
+    /** API integrations */
+    apis: z.ZodObject<{
+        /** External APIs consumed */
+        consumed: z.ZodArray<z.ZodObject<{
+            url: z.ZodString;
+            method: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]>;
+            authenticated: z.ZodOptional<z.ZodBoolean>;
+            rateLimit: z.ZodOptional<z.ZodBoolean>;
+            provider: z.ZodOptional<z.ZodString>;
+            usageCount: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }, {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }>, "many">;
+        /** APIs exposed by this service */
+        exposed: z.ZodArray<z.ZodObject<{
+            path: z.ZodString;
+            method: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]>;
+            authenticated: z.ZodOptional<z.ZodBoolean>;
+            deprecated: z.ZodOptional<z.ZodBoolean>;
+            version: z.ZodOptional<z.ZodString>;
+            documentation: z.ZodOptional<z.ZodBoolean>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }, {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }>, "many">;
+    }, "strip", z.ZodTypeAny, {
+        consumed: {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }[];
+        exposed: {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }[];
+    }, {
+        consumed: {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }[];
+        exposed: {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }[];
+    }>;
+    /** Service integrations */
+    services: z.ZodObject<{
+        /** Database integrations */
+        databases: z.ZodArray<z.ZodString, "many">;
+        /** Cache systems */
+        caches: z.ZodArray<z.ZodString, "many">;
+        /** Message queues */
+        queues: z.ZodArray<z.ZodString, "many">;
+        /** Cloud services */
+        cloud: z.ZodArray<z.ZodString, "many">;
+        /** Monitoring and analytics */
+        monitoring: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        /** Authentication services */
+        auth: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        /** Payment processors */
+        payments: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        databases: string[];
+        caches: string[];
+        queues: string[];
+        cloud: string[];
+        monitoring?: string[] | undefined;
+        auth?: string[] | undefined;
+        payments?: string[] | undefined;
+    }, {
+        databases: string[];
+        caches: string[];
+        queues: string[];
+        cloud: string[];
+        monitoring?: string[] | undefined;
+        auth?: string[] | undefined;
+        payments?: string[] | undefined;
+    }>;
+    /** Integration health metrics */
+    health: z.ZodOptional<z.ZodObject<{
+        dependencyRisk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        securityRisk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        maintenanceLoad: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        updateFrequency: z.ZodEnum<["current", "behind", "legacy", "abandoned"]>;
+    }, "strip", z.ZodTypeAny, {
+        dependencyRisk: "critical" | "high" | "medium" | "low";
+        securityRisk: "critical" | "high" | "medium" | "low";
+        maintenanceLoad: "critical" | "high" | "medium" | "low";
+        updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+    }, {
+        dependencyRisk: "critical" | "high" | "medium" | "low";
+        securityRisk: "critical" | "high" | "medium" | "low";
+        maintenanceLoad: "critical" | "high" | "medium" | "low";
+        updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+    }>>;
+    /** Integration recommendations */
+    recommendations: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+}, "strip", z.ZodTypeAny, {
+    services: {
+        databases: string[];
+        caches: string[];
+        queues: string[];
+        cloud: string[];
+        monitoring?: string[] | undefined;
+        auth?: string[] | undefined;
+        payments?: string[] | undefined;
+    };
+    dependencies: {
+        development: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        security: {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }[];
+        production: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        outdated: {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }[];
+    };
+    apis: {
+        consumed: {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }[];
+        exposed: {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }[];
+    };
+    health?: {
+        dependencyRisk: "critical" | "high" | "medium" | "low";
+        securityRisk: "critical" | "high" | "medium" | "low";
+        maintenanceLoad: "critical" | "high" | "medium" | "low";
+        updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+    } | undefined;
+    recommendations?: string[] | undefined;
+}, {
+    services: {
+        databases: string[];
+        caches: string[];
+        queues: string[];
+        cloud: string[];
+        monitoring?: string[] | undefined;
+        auth?: string[] | undefined;
+        payments?: string[] | undefined;
+    };
+    dependencies: {
+        development: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        security: {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }[];
+        production: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        outdated: {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }[];
+    };
+    apis: {
+        consumed: {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }[];
+        exposed: {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }[];
+    };
+    health?: {
+        dependencyRisk: "critical" | "high" | "medium" | "low";
+        securityRisk: "critical" | "high" | "medium" | "low";
+        maintenanceLoad: "critical" | "high" | "medium" | "low";
+        updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+    } | undefined;
+    recommendations?: string[] | undefined;
+}>;
+export type IntegrationAnalysis = z.infer<typeof IntegrationAnalysisSchema>;
+/**
  * Comprehensive codebase analysis combining all analysis types
  * This is the main output type for codebase analysis operations
  *
@@ -45307,6 +46833,722 @@ export declare const CodebaseAnalysisSchema: z.ZodObject<{
             timeframe?: string | undefined;
         } | undefined;
     }>;
+    /** Testing pattern analysis */
+    testingPatterns: z.ZodOptional<z.ZodObject<{
+        /** Primary testing framework detected */
+        framework: z.ZodString;
+        /** Total number of test files found */
+        testCount: z.ZodNumber;
+        /** Test coverage information */
+        coverage: z.ZodOptional<z.ZodObject<{
+            overall: z.ZodOptional<z.ZodNumber>;
+            statements: z.ZodOptional<z.ZodNumber>;
+            branches: z.ZodOptional<z.ZodNumber>;
+            functions: z.ZodOptional<z.ZodNumber>;
+            lines: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        }, {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        }>>;
+        /** Test pattern categorization */
+        patterns: z.ZodObject<{
+            unit: z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>;
+            integration: z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>;
+            e2e: z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>;
+            component: z.ZodOptional<z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>>;
+            performance: z.ZodOptional<z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>>;
+        }, "strip", z.ZodTypeAny, {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        }, {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        }>;
+        /** Testing conventions detected */
+        conventions: z.ZodObject<{
+            testFileNaming: z.ZodEnum<["suffix-.test", "suffix-.spec", "suffix-Test", "prefix-test-", "mixed"]>;
+            testLocation: z.ZodEnum<["colocated", "separate-tests", "separate-__tests__", "mixed"]>;
+            testStructure: z.ZodOptional<z.ZodEnum<["flat", "mirrored", "grouped", "mixed"]>>;
+        }, "strip", z.ZodTypeAny, {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        }, {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        }>;
+        /** Testing anti-patterns identified */
+        antiPatterns: z.ZodArray<z.ZodObject<{
+            type: z.ZodEnum<["no-tests", "god-test", "mystery-guest", "resource-optimism", "test-code-duplication", "assertion-roulette", "conditional-test-logic", "hardcoded-test-data", "other"]>;
+            description: z.ZodString;
+            examples: z.ZodArray<z.ZodString, "many">;
+            severity: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        }, "strip", z.ZodTypeAny, {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }, {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }>, "many">;
+        /** Recommendations for testing improvements */
+        recommendations: z.ZodArray<z.ZodString, "many">;
+        /** Additional testing metrics */
+        metrics: z.ZodOptional<z.ZodObject<{
+            avgTestsPerFile: z.ZodOptional<z.ZodNumber>;
+            avgAssertionsPerTest: z.ZodOptional<z.ZodNumber>;
+            testToSourceRatio: z.ZodOptional<z.ZodNumber>;
+            mockedDependenciesCount: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        }, {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        framework: string;
+        conventions: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        };
+        patterns: {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        };
+        testCount: number;
+        antiPatterns: {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }[];
+        recommendations: string[];
+        metrics?: {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        } | undefined;
+        coverage?: {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        } | undefined;
+    }, {
+        framework: string;
+        conventions: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        };
+        patterns: {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        };
+        testCount: number;
+        antiPatterns: {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }[];
+        recommendations: string[];
+        metrics?: {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        } | undefined;
+        coverage?: {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        } | undefined;
+    }>>;
+    /** Integration and dependency analysis */
+    integrations: z.ZodOptional<z.ZodObject<{
+        /** Dependency analysis */
+        dependencies: z.ZodObject<{
+            /** Production dependencies */
+            production: z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                version: z.ZodString;
+                category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "security", "utility", "other"]>;
+                license: z.ZodOptional<z.ZodString>;
+                size: z.ZodOptional<z.ZodNumber>;
+                lastUpdated: z.ZodOptional<z.ZodDate>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }, {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }>, "many">;
+            /** Development dependencies */
+            development: z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                version: z.ZodString;
+                category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "security", "utility", "other"]>;
+                license: z.ZodOptional<z.ZodString>;
+                size: z.ZodOptional<z.ZodNumber>;
+                lastUpdated: z.ZodOptional<z.ZodDate>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }, {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }>, "many">;
+            /** Outdated dependencies */
+            outdated: z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                currentVersion: z.ZodString;
+                latestVersion: z.ZodString;
+                majorVersionsBehind: z.ZodOptional<z.ZodNumber>;
+                minorVersionsBehind: z.ZodOptional<z.ZodNumber>;
+                patchVersionsBehind: z.ZodOptional<z.ZodNumber>;
+                risk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+                breaking: z.ZodOptional<z.ZodBoolean>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }, {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }>, "many">;
+            /** Security vulnerabilities */
+            security: z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                severity: z.ZodEnum<["low", "moderate", "high", "critical"]>;
+                vulnerability: z.ZodString;
+                patchedVersion: z.ZodOptional<z.ZodString>;
+                cve: z.ZodOptional<z.ZodString>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }, {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }>, "many">;
+        }, "strip", z.ZodTypeAny, {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        }, {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        }>;
+        /** API integrations */
+        apis: z.ZodObject<{
+            /** External APIs consumed */
+            consumed: z.ZodArray<z.ZodObject<{
+                url: z.ZodString;
+                method: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]>;
+                authenticated: z.ZodOptional<z.ZodBoolean>;
+                rateLimit: z.ZodOptional<z.ZodBoolean>;
+                provider: z.ZodOptional<z.ZodString>;
+                usageCount: z.ZodOptional<z.ZodNumber>;
+            }, "strip", z.ZodTypeAny, {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }, {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }>, "many">;
+            /** APIs exposed by this service */
+            exposed: z.ZodArray<z.ZodObject<{
+                path: z.ZodString;
+                method: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]>;
+                authenticated: z.ZodOptional<z.ZodBoolean>;
+                deprecated: z.ZodOptional<z.ZodBoolean>;
+                version: z.ZodOptional<z.ZodString>;
+                documentation: z.ZodOptional<z.ZodBoolean>;
+            }, "strip", z.ZodTypeAny, {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }, {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }>, "many">;
+        }, "strip", z.ZodTypeAny, {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        }, {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        }>;
+        /** Service integrations */
+        services: z.ZodObject<{
+            /** Database integrations */
+            databases: z.ZodArray<z.ZodString, "many">;
+            /** Cache systems */
+            caches: z.ZodArray<z.ZodString, "many">;
+            /** Message queues */
+            queues: z.ZodArray<z.ZodString, "many">;
+            /** Cloud services */
+            cloud: z.ZodArray<z.ZodString, "many">;
+            /** Monitoring and analytics */
+            monitoring: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+            /** Authentication services */
+            auth: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+            /** Payment processors */
+            payments: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        }, "strip", z.ZodTypeAny, {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        }, {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        }>;
+        /** Integration health metrics */
+        health: z.ZodOptional<z.ZodObject<{
+            dependencyRisk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            securityRisk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            maintenanceLoad: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            updateFrequency: z.ZodEnum<["current", "behind", "legacy", "abandoned"]>;
+        }, "strip", z.ZodTypeAny, {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        }, {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        }>>;
+        /** Integration recommendations */
+        recommendations: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        services: {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        };
+        dependencies: {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        };
+        apis: {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        };
+        health?: {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        } | undefined;
+        recommendations?: string[] | undefined;
+    }, {
+        services: {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        };
+        dependencies: {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        };
+        apis: {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        };
+        health?: {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        } | undefined;
+        recommendations?: string[] | undefined;
+    }>>;
     /** High-level summary metrics */
     summary: z.ZodObject<{
         totalFiles: z.ZodNumber;
@@ -45494,6 +47736,128 @@ export declare const CodebaseAnalysisSchema: z.ZodObject<{
         excludedPaths: string[];
         analysisTime?: number | undefined;
     } | undefined;
+    integrations?: {
+        services: {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        };
+        dependencies: {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        };
+        apis: {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        };
+        health?: {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        } | undefined;
+        recommendations?: string[] | undefined;
+    } | undefined;
+    testingPatterns?: {
+        framework: string;
+        conventions: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        };
+        patterns: {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        };
+        testCount: number;
+        antiPatterns: {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }[];
+        recommendations: string[];
+        metrics?: {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        } | undefined;
+        coverage?: {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        } | undefined;
+    } | undefined;
 }, {
     timestamp: Date;
     conventions: {
@@ -45623,6 +47987,128 @@ export declare const CodebaseAnalysisSchema: z.ZodObject<{
         analysisTools?: string[] | undefined;
         excludedPaths?: string[] | undefined;
         analysisTime?: number | undefined;
+    } | undefined;
+    integrations?: {
+        services: {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        };
+        dependencies: {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        };
+        apis: {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        };
+        health?: {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        } | undefined;
+        recommendations?: string[] | undefined;
+    } | undefined;
+    testingPatterns?: {
+        framework: string;
+        conventions: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        };
+        patterns: {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        };
+        testCount: number;
+        antiPatterns: {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }[];
+        recommendations: string[];
+        metrics?: {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        } | undefined;
+        coverage?: {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        } | undefined;
     } | undefined;
 }>;
 export type CodebaseAnalysis = z.infer<typeof CodebaseAnalysisSchema>;
@@ -52328,16 +54814,16 @@ export type MultimodalInputCounts = z.infer<typeof MultimodalInputCountsSchema>;
  * const context: MultimodalContext = {
  *   inputs: [
  *     {
- *       input: { type: 'design_mockup', designTool: 'figma', ... },
+ *       input: { type: 'design_mockup', designTool: 'figma' },
  *       status: 'completed',
  *       processedAt: new Date(),
- *       extractedContent: { text: 'Login screen mockup', entities: [...] }
+ *       extractedContent: { text: 'Login screen mockup', entities: [] }
  *     },
  *     {
- *       input: { type: 'web_page', url: 'https://example.com', ... },
+ *       input: { type: 'web_page', url: 'https://example.com' },
  *       status: 'completed',
  *       processedAt: new Date(),
- *       extractedContent: { text: 'Current implementation', structuredData: {...} }
+ *       extractedContent: { text: 'Current implementation', structuredData: {} }
  *     }
  *   ],
  *   status: 'completed',

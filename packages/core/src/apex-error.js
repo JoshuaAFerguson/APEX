@@ -10,13 +10,14 @@
  * @module apex-error
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PermissionRevokedError = exports.ApexError = exports.ApexErrorContextSchema = exports.ApexErrorCode = void 0;
+exports.MCPInstallationError = exports.PermissionRevokedError = exports.ApexError = exports.ApexErrorContextSchema = exports.ApexErrorCode = void 0;
 exports.isApexError = isApexError;
 exports.toApexError = toApexError;
 exports.wrapWithApexError = wrapWithApexError;
 exports.sanitizeErrorMessage = sanitizeErrorMessage;
 exports.toSafeErrorResponse = toSafeErrorResponse;
 exports.isPermissionRevokedError = isPermissionRevokedError;
+exports.isMCPInstallationError = isMCPInstallationError;
 const zod_1 = require("zod");
 // ============================================================================
 // Error Codes
@@ -73,6 +74,17 @@ var ApexErrorCode;
     ApexErrorCode["BROWSER_PERMISSION_DENIED"] = "APEX_1850";
     ApexErrorCode["BROWSER_RESOURCE_LEAK"] = "APEX_1851";
     ApexErrorCode["BROWSER_SESSION_INVALID"] = "APEX_1852";
+    // MCP Installation errors (1900-1949)
+    ApexErrorCode["MCP_INSTALLATION_FAILED"] = "APEX_1900";
+    ApexErrorCode["MCP_PACKAGE_INSTALL_FAILED"] = "APEX_1901";
+    ApexErrorCode["MCP_CONFIG_CREATION_FAILED"] = "APEX_1902";
+    ApexErrorCode["MCP_DATABASE_RECORD_FAILED"] = "APEX_1903";
+    ApexErrorCode["MCP_ROLLBACK_FAILED"] = "APEX_1904";
+    ApexErrorCode["MCP_VERIFICATION_FAILED"] = "APEX_1905";
+    ApexErrorCode["MCP_SERVER_NOT_FOUND"] = "APEX_1906";
+    ApexErrorCode["MCP_ALREADY_INSTALLED"] = "APEX_1907";
+    ApexErrorCode["MCP_UNINSTALL_FAILED"] = "APEX_1908";
+    ApexErrorCode["MCP_CORRUPTED_INSTALLATION"] = "APEX_1909";
 })(ApexErrorCode || (exports.ApexErrorCode = ApexErrorCode = {}));
 // ============================================================================
 // Error Context Schema
@@ -442,5 +454,39 @@ exports.PermissionRevokedError = PermissionRevokedError;
  */
 function isPermissionRevokedError(error) {
     return error instanceof PermissionRevokedError;
+}
+/**
+ * Specific error class for MCP installation operations
+ *
+ * This error provides detailed context about MCP installation failures,
+ * including rollback information and recovery steps.
+ */
+class MCPInstallationError extends ApexError {
+    installationContext;
+    constructor(message, code, context, cause) {
+        super(message, code, context, cause);
+        this.name = 'MCPInstallationError';
+        this.installationContext = context;
+        // Set the prototype explicitly for proper instanceof checks
+        Object.setPrototypeOf(this, MCPInstallationError.prototype);
+    }
+    /** Format user-friendly error message with recovery steps */
+    formatUserMessage() {
+        let msg = this.message;
+        if (this.installationContext.recoverySteps?.length) {
+            msg += '\n\nSuggested recovery steps:\n';
+            this.installationContext.recoverySteps.forEach((step, i) => {
+                msg += `  ${i + 1}. ${step}\n`;
+            });
+        }
+        return msg;
+    }
+}
+exports.MCPInstallationError = MCPInstallationError;
+/**
+ * Type guard to check if an error is an MCPInstallationError
+ */
+function isMCPInstallationError(error) {
+    return error instanceof MCPInstallationError;
 }
 //# sourceMappingURL=apex-error.js.map

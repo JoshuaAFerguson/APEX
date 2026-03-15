@@ -11342,17 +11342,17 @@ export type TechnicalDebtAnalysis = z.infer<typeof TechnicalDebtAnalysisSchema>;
  * @example
  * ```typescript
  * const testingAnalysis: TestingPatternAnalysis = {
- *   framework: 'Jest',
+ *   framework: "Jest",
  *   testCount: 150,
  *   coverage: { overall: 85, statements: 87, branches: 83, functions: 90 },
  *   patterns: {
- *     unit: { count: 120, locations: ['src/__tests__', 'src/\*\*/\*.test.ts'] },
- *     integration: { count: 25, locations: ['tests/integration'] },
- *     e2e: { count: 5, locations: ['tests/e2e'] }
+ *     unit: { count: 120, locations: ["src/__tests__", "src/**\/*.test.ts"] },
+ *     integration: { count: 25, locations: ["tests/integration"] },
+ *     e2e: { count: 5, locations: ["tests/e2e"] }
  *   },
- *   conventions: { fileNaming: 'suffix-.test', testLocation: 'colocated' },
+ *   conventions: { fileNaming: "suffix-.test", testLocation: "colocated" },
  *   antiPatterns: [],
- *   recommendations: ['Add more integration tests', 'Improve branch coverage']
+ *   recommendations: ["Add more integration tests", "Improve branch coverage"]
  * };
  * ```
  */
@@ -11430,16 +11430,16 @@ export type TestingPatternAnalysis = z.infer<typeof TestingPatternAnalysisSchema
  * ```typescript
  * const integrationAnalysis: IntegrationAnalysis = {
  *   dependencies: {
- *     production: [{ name: 'react', version: '18.2.0', category: 'frontend' }],
- *     development: [{ name: 'jest', version: '29.0.0', category: 'testing' }],
- *     outdated: [{ name: 'lodash', current: '4.17.20', latest: '4.17.21', risk: 'low' }],
+ *     production: [{ name: "react", version: "18.2.0", category: "frontend" }],
+ *     development: [{ name: "jest", version: "29.0.0", category: "testing" }],
+ *     outdated: [{ name: "lodash", current: "4.17.20", latest: "4.17.21", risk: "low" }],
  *     security: []
  *   },
  *   apis: {
- *     consumed: [{ url: 'https://api.example.com', method: 'GET', authenticated: true }],
- *     exposed: [{ path: '/api/users', method: 'POST', authenticated: true }]
+ *     consumed: [{ url: "https://api.example.com", method: "GET", authenticated: true }],
+ *     exposed: [{ path: "/api/users", method: "POST", authenticated: true }]
  *   },
- *   services: { databases: ['PostgreSQL'], caches: ['Redis'], queues: [], cloud: ['AWS S3'] }
+ *   services: { databases: ["PostgreSQL"], caches: ["Redis"], queues: [], cloud: ["AWS S3"] }
  * };
  * ```
  */
@@ -12657,16 +12657,16 @@ export type MultimodalInputCounts = z.infer<typeof MultimodalInputCountsSchema>;
  * const context: MultimodalContext = {
  *   inputs: [
  *     {
- *       input: { type: 'design_mockup', designTool: 'figma', ... },
+ *       input: { type: 'design_mockup', designTool: 'figma' },
  *       status: 'completed',
  *       processedAt: new Date(),
- *       extractedContent: { text: 'Login screen mockup', entities: [...] }
+ *       extractedContent: { text: 'Login screen mockup', entities: [] }
  *     },
  *     {
- *       input: { type: 'web_page', url: 'https://example.com', ... },
+ *       input: { type: 'web_page', url: 'https://example.com' },
  *       status: 'completed',
  *       processedAt: new Date(),
- *       extractedContent: { text: 'Current implementation', structuredData: {...} }
+ *       extractedContent: { text: 'Current implementation', structuredData: {} }
  *     }
  *   ],
  *   status: 'completed',

@@ -253,7 +253,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.4.0 - Sleepless Mode & Autonomy
+## v0.4.0 - Sleepless Mode & Autonomy (Complete)
 
 *24/7 autonomous operation with intelligent scheduling - inspired by [sleepless-agent](https://github.com/context-machine-lab/sleepless-agent)*
 
@@ -413,10 +413,10 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### Tool Visualization
 
-- 🟡 **Tool call display** - Show tool name, parameters in real-time (WebSocket serialization failures on circular refs)
-- 🟡 **Tool output formatting** - Syntax highlighted, truncated large outputs (failures on large payloads 100K+ items)
-- 🟡 **Tool timing** - Show execution duration (WebSocket event streaming broken)
-- 🟡 **Tool error display** - Clear error messages with context (MCP error event handling incomplete)
+- 🟢 **Tool call display** - Show tool name, parameters in real-time
+- 🟢 **Tool output formatting** - Syntax highlighted, truncated large outputs
+- 🟢 **Tool timing** - Show execution duration
+- 🟢 **Tool error display** - Clear error messages with context
 - 🟢 **Diff preview** - Show changes before applying
 - 🟢 **Undo capability** - Revert tool actions
 - 🟢 **Dry-run mode** - Simulate tool actions and show planned changes before execution
@@ -458,9 +458,9 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ### MCP Ecosystem (Accelerated)
 
-- 🟡 **MCP Marketplace** - Discover and install MCP servers (error handling incomplete)
-- 🟡 **Easy Install** - One-click installation of capabilities (MCP server integration broken)
-- 🟡 **Auto-configuration** - Minimal config setup for standard tools (install error events not properly broadcast)
+- 🟢 **MCP Marketplace** - Discover and install MCP servers
+- 🟢 **Easy Install** - One-click installation of capabilities
+- 🟢 **Auto-configuration** - Minimal config setup for standard tools
 
 ### Test-Driven Development (TDD)
 
@@ -470,30 +470,30 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.6.0 - Context & Memory
+## v0.6.0 - Context & Memory (Complete)
 
 *Intelligent context management and project understanding*
 
 ### Project Context
 
-- 🟡 **Git status awareness** - Branch, uncommitted changes, recent commits (integration failures in tests)
+- 🟢 **Git status awareness** - Branch, uncommitted changes, recent commits
 - 🟢 **Project structure analysis** - Understand directory layout
 - 🟢 **Dependency detection** - Identify project dependencies
 - 🟢 **Framework detection** - Auto-detect frameworks and conventions
 - 🟢 **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
 - 🟢 **Test framework detection** - Know how to run tests
-- 🟡 **Workspace health checks** - `apex doctor` validates toolchain and config per package (doctor check failures in tests)
-- 🟡 **Update available checker** - Check npm registry for newer APEX versions on CLI startup with non-intrusive notification (blocks CLI startup on network issues)
+- 🟢 **Workspace health checks** - `apex doctor` validates toolchain and config per package
+- 🟢 **Update available checker** - Check npm registry for newer APEX versions on CLI startup with non-intrusive notification
 
 ### Brownfield Codebase Analysis (inspired by [GSD](https://github.com/glittercowboy/get-shit-done))
 
-- 🟡 **`apex map-codebase`** - Spawn parallel agents to analyze existing codebases (project analysis failures)
-- 🟡 **Stack documentation** - Auto-generate stack/technology documentation (npm integration failures)
-- 🟡 **Architecture documentation** - Auto-document architecture patterns (project analysis failures)
-- 🟡 **Convention extraction** - Extract and document coding conventions (project analysis failures)
-- 🟡 **Testing patterns** - Document existing test patterns and coverage (npm integration failures)
-- 🟡 **Integration mapping** - Map third-party integrations and APIs (npm registry integration broken)
-- 🟡 **Technical concerns** - Identify technical debt and concerns (project analysis failures)
+- 🟢 **`apex map-codebase`** - Spawn parallel agents to analyze existing codebases
+- 🟢 **Stack documentation** - Auto-generate stack/technology documentation
+- 🟢 **Architecture documentation** - Auto-document architecture patterns
+- 🟢 **Convention extraction** - Extract and document coding conventions
+- 🟢 **Testing patterns** - Document existing test patterns and coverage
+- 🟢 **Integration mapping** - Map third-party integrations and APIs
+- 🟢 **Technical concerns** - Identify technical debt and concerns
 
 ### Codebase Intelligence (inspired by [Aider](https://github.com/Aider-AI/aider))
 

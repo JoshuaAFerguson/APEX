@@ -49,7 +49,17 @@ export declare enum ApexErrorCode {
     PERMISSION_EXPIRED = "APEX_1802",
     BROWSER_PERMISSION_DENIED = "APEX_1850",
     BROWSER_RESOURCE_LEAK = "APEX_1851",
-    BROWSER_SESSION_INVALID = "APEX_1852"
+    BROWSER_SESSION_INVALID = "APEX_1852",
+    MCP_INSTALLATION_FAILED = "APEX_1900",
+    MCP_PACKAGE_INSTALL_FAILED = "APEX_1901",
+    MCP_CONFIG_CREATION_FAILED = "APEX_1902",
+    MCP_DATABASE_RECORD_FAILED = "APEX_1903",
+    MCP_ROLLBACK_FAILED = "APEX_1904",
+    MCP_VERIFICATION_FAILED = "APEX_1905",
+    MCP_SERVER_NOT_FOUND = "APEX_1906",
+    MCP_ALREADY_INSTALLED = "APEX_1907",
+    MCP_UNINSTALL_FAILED = "APEX_1908",
+    MCP_CORRUPTED_INSTALLATION = "APEX_1909"
 }
 /**
  * Context information for debugging and error tracking
@@ -281,4 +291,41 @@ export declare class PermissionRevokedError extends ApexError {
  * Type guard to check if an error is a PermissionRevokedError
  */
 export declare function isPermissionRevokedError(error: unknown): error is PermissionRevokedError;
+/**
+ * Extended context for MCP installation errors
+ */
+export interface MCPInstallationErrorContext extends ApexErrorContext {
+    /** Server ID being installed */
+    serverId?: string;
+    /** Installation ID if created */
+    installationId?: string;
+    /** Package name being installed */
+    packageName?: string;
+    /** Installation step that failed */
+    failedStep?: 'npm_install' | 'config_creation' | 'database_record' | 'verification';
+    /** Rollback actions attempted */
+    rollbackAttempts?: {
+        step: string;
+        success: boolean;
+        error?: string;
+    }[];
+    /** Recommended recovery actions */
+    recoverySteps?: string[];
+}
+/**
+ * Specific error class for MCP installation operations
+ *
+ * This error provides detailed context about MCP installation failures,
+ * including rollback information and recovery steps.
+ */
+export declare class MCPInstallationError extends ApexError {
+    readonly installationContext: MCPInstallationErrorContext;
+    constructor(message: string, code: ApexErrorCode, context: MCPInstallationErrorContext, cause?: Error);
+    /** Format user-friendly error message with recovery steps */
+    formatUserMessage(): string;
+}
+/**
+ * Type guard to check if an error is an MCPInstallationError
+ */
+export declare function isMCPInstallationError(error: unknown): error is MCPInstallationError;
 //# sourceMappingURL=apex-error.d.ts.map

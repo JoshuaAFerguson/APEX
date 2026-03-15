@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-15
+
 ### Added
 
+- **Context & Memory:** Intelligent context management and project understanding
+  - Git status awareness with branch, uncommitted changes, and recent commit detection
+  - Project structure analysis, dependency detection, and framework auto-detection
+  - Configuration awareness for tsconfig, package.json, and project-specific configs
+  - Test framework detection for automated test execution
+  - Workspace health checks via `apex doctor` command
+  - Update available checker with non-blocking npm registry lookup on CLI startup
 - **Brownfield Codebase Analysis:** New `apex map-codebase` command for comprehensive codebase documentation
   - Parallel agent execution across 5 analysis domains: Stack, Architecture, Conventions, Technical Debt, and Documentation
   - Multiple output formats: Markdown, JSON, YAML (default: Markdown)
@@ -18,11 +27,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Verbose mode (`--verbose`) for detailed real-time progress reporting
   - Command aliases: `map`, `analyze` for convenience
   - REPL access via `/map-codebase` command with full option support
-  - Comprehensive help text with usage examples (`--help`)
   - Output written to `.apex/codebase-analysis/` by default
-  - Graceful handling of analyzer failures with partial results
   - Language detection for 25+ programming languages
-  - Binary file detection and exclusion
+- **Codebase Intelligence:** AST-aware repository analysis powered by Tree-sitter
+  - Repository map with function, class, and signature extraction
+  - Codebase indexing with semantic code search
+  - Symbol resolution for definitions and usages
+  - Import graph for understanding module dependencies
+  - Type awareness leveraging TypeScript type information
+  - Documentation extraction from JSDoc, docstrings, and comments
+- **Multimodal Input:** Visual context support for AI agents
+  - Image context (screenshots, diagrams) for visual task descriptions
+  - Web page context fetching and inclusion
+  - GitHub issue image processing
+  - Design mockup input (Figma/design files)
+  - Error screenshot analysis
+- **Conversation Memory:** Persistent memory across sessions
+  - Session context with full conversation history
+  - Run replay bundles for reproducible reruns
+  - Long-term memory with RAG over repo, docs, and issues
+  - Context summarization for intelligent compression
+  - Explicit memory management (remember, search, edit, delete)
+  - Living memory files for multi-session continuity
+  - Cross-session agent insights and pattern retention
+- **Cross-Task Context:** Learning and adaptation
+  - Task history awareness and pattern recognition
+  - User preference and coding style learning
+  - Project convention detection and enforcement
+- **Smart Context Management:** Token-efficient context handling
+  - Relevant file auto-detection and prioritization
+  - Token-aware truncation with external change detection
+  - Context visualization showing current context window contents
+- **AI Platform Agnostic Orchestration:** Multi-provider support
+  - Modular driver architecture for switching AI backends
+  - Claude Code MAX, OpenAI Codex, and Gemini Code Assist support
+  - Generic LLM support via Vercel AI SDK
+  - Standalone MCP integration independent of AI provider
+
+### Enhanced
+
+- **Tool Visualization:** Fixed WebSocket serialization for tool events
+  - Safe JSON serialization with circular reference handling
+  - Payload truncation for large outputs (100K+ items)
+  - Correct tool timing event streaming
+  - MCP error event handling and broadcasting
+- **MCP Ecosystem:** Fixed marketplace and installation flow
+  - Error handling in MCP marketplace server discovery
+  - End-to-end MCP server installation and auto-configuration
+- **Daemon Process Management:** Improved stability and resource control
+  - Vitest worker limits to prevent CPU exhaustion
+  - Process tree cleanup for orphaned child processes
+  - Auto-triage fixes for stuck/phantom task failures
+  - `projectPath` validation to prevent database misrouting
+
+### Fixed
+
+- Fixed auto-triage incorrectly marking parent tasks as failed when subtasks were still running
+- Fixed process cleanup gaps where auto-triage updated task status without killing Claude subprocesses
+- Fixed CPU exhaustion from uncapped vitest workers (default 1 per CPU core, now capped at cores/4)
+- Excluded Playwright browser tests from default `npm test` to prevent Chrome instance proliferation
+- Fixed `TaskStore` accepting undefined `projectPath`, creating errant `undefined/.apex/` database
+- Fixed API health endpoint reporting version `0.1.0` instead of `0.6.0`
 
 ## [0.5.0] - 2026-02-18
 

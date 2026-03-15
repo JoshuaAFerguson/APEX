@@ -1337,4 +1337,205 @@ ${Object.entries(this.options.environment).map(([key, value]) => `set ${key}=${v
       );
     }
   }
+
+  // ============================================================================
+  // Windows Service Management Integration
+  // ============================================================================
+
+  private windowsServiceManager?: import('./windows-service-manager').WindowsServiceManager;
+  private windowsEventLogger?: import('./windows-event-log').WindowsEventLogger;
+
+  /**
+   * Get Windows Service Manager instance (lazy loaded)
+   */
+  private async getWindowsServiceManager(): Promise<import('./windows-service-manager').WindowsServiceManager> {
+    if (!this.windowsServiceManager) {
+      const { WindowsServiceManager } = await import('./windows-service-manager');
+      this.windowsServiceManager = new WindowsServiceManager();
+    }
+    return this.windowsServiceManager;
+  }
+
+  /**
+   * Get Windows Event Logger instance (lazy loaded)
+   */
+  private async getWindowsEventLogger(): Promise<import('./windows-event-log').WindowsEventLogger> {
+    if (!this.windowsEventLogger) {
+      const { createApexEventLogger } = await import('./windows-event-log');
+      this.windowsEventLogger = createApexEventLogger();
+
+      // Try to register the event source (requires admin privileges)
+      try {
+        await this.windowsEventLogger.registerSource();
+      } catch {
+        // Ignore registration failures - events can still be written
+      }
+    }
+    return this.windowsEventLogger;
+  }
+
+  /**
+   * Install Windows service using native Windows service management
+   */
+  async installWindowsServiceNative(options: InstallOptions = {}): Promise<InstallResult> {
+    if (this.platform !== 'win32') {
+      throw new ServiceError('Windows service install only available on Windows', 'PLATFORM_UNSUPPORTED');
+    }
+
+    const manager = await this.getWindowsServiceManager();
+    const eventLogger = await this.getWindowsEventLogger();
+
+    const config = {
+      serviceName: this.options.serviceName,
+      displayName: this.options.serviceDescription,
+      description: this.options.serviceDescription,
+      executablePath: process.execPath,
+      arguments: [this.findApexCliPath(), 'daemon', 'start', '--foreground', '--windows-service'],
+      workingDirectory: this.options.workingDirectory,
+      environment: {
+        NODE_ENV: 'production',
+        APEX_PROJECT_PATH: this.options.projectPath,
+        APEX_WINDOWS_SERVICE: '1',
+        ...this.options.environment
+      },
+      startType: (options.enableOnBoot ? 'auto' : 'demand') as 'auto' | 'demand' | 'disabled',
+      recoveryOptions: {
+        firstFailure: 'restart' as const,
+        secondFailure: 'restart' as const,
+        subsequentFailures: 'restart' as const,
+        resetPeriodDays: 1,
+        restartDelayMs: this.options.restartDelaySeconds * 1000
+      }
+    };
+
+    const result = await manager.install(config);
+
+    // Log installation event
+    try {
+      await eventLogger.writeInfo(
+        `APEX service installed using ${result.method} (${this.options.serviceName})`,
+        1004 // SERVICE_INSTALLED
+      );
+    } catch {
+      // Ignore event logging errors
+    }
+
+    return {
+      success: result.success,
+      servicePath: '',
+      platform: this.platform,
+      enabled: options.enableAfterInstall || options.enableOnBoot || false,
+      warnings: result.warnings
+    };
+  }
+
+  /**
+   * Uninstall Windows service using native Windows service management
+   */
+  async uninstallWindowsServiceNative(options: UninstallOptions = {}): Promise<UninstallResult> {
+    if (this.platform !== 'win32') {
+      throw new ServiceError('Windows service uninstall only available on Windows', 'PLATFORM_UNSUPPORTED');
+    }
+
+    const manager = await this.getWindowsServiceManager();
+    const eventLogger = await this.getWindowsEventLogger();
+
+    // Get current status
+    const status = await manager.getStatus(this.options.serviceName);
+    const wasRunning = status.state === 'running';
+
+    await manager.uninstall(this.options.serviceName, {
+      force: options.force,
+      stopTimeout: options.stopTimeout,
+      cleanup: true
+    });
+
+    // Log uninstallation event
+    try {
+      await eventLogger.writeInfo(
+        `APEX service uninstalled (${this.options.serviceName})`,
+        1005 // SERVICE_UNINSTALLED
+      );
+    } catch {
+      // Ignore event logging errors
+    }
+
+    return {
+      success: true,
+      servicePath: '',
+      wasRunning,
+      warnings: []
+    };
+  }
+
+  /**
+   * Get enhanced Windows service status
+   */
+  async getWindowsServiceStatusNative(): Promise<import('./windows-service-manager').WindowsServiceStatus> {
+    if (this.platform !== 'win32') {
+      throw new ServiceError('Windows service status only available on Windows', 'PLATFORM_UNSUPPORTED');
+    }
+
+    const manager = await this.getWindowsServiceManager();
+    return await manager.getStatus(this.options.serviceName);
+  }
+
+  /**
+   * Start Windows service with event logging
+   */
+  async startWindowsServiceNative(): Promise<void> {
+    if (this.platform !== 'win32') {
+      throw new ServiceError('Windows service start only available on Windows', 'PLATFORM_UNSUPPORTED');
+    }
+
+    const manager = await this.getWindowsServiceManager();
+    const eventLogger = await this.getWindowsEventLogger();
+
+    await manager.start(this.options.serviceName);
+
+    // Log start event
+    try {
+      await eventLogger.logServiceStarted();
+    } catch {
+      // Ignore event logging errors
+    }
+  }
+
+  /**
+   * Stop Windows service with event logging
+   */
+  async stopWindowsServiceNative(): Promise<void> {
+    if (this.platform !== 'win32') {
+      throw new ServiceError('Windows service stop only available on Windows', 'PLATFORM_UNSUPPORTED');
+    }
+
+    const manager = await this.getWindowsServiceManager();
+    const eventLogger = await this.getWindowsEventLogger();
+
+    await manager.stop(this.options.serviceName);
+
+    // Log stop event
+    try {
+      await eventLogger.logServiceStopped();
+    } catch {
+      // Ignore event logging errors
+    }
+  }
+
+  /**
+   * Check if Windows service management is preferred over PowerShell scripts
+   */
+  shouldUseNativeWindowsService(): boolean {
+    return this.platform === 'win32';
+  }
+
+  /**
+   * Get Windows Event Logger for external use
+   */
+  async getEventLogger(): Promise<import('./windows-event-log').WindowsEventLogger | null> {
+    if (this.platform !== 'win32') {
+      return null;
+    }
+    return await this.getWindowsEventLogger();
+  }
 }

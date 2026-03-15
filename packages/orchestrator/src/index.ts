@@ -12912,10 +12912,13 @@ export {
   ServiceManager,
   SystemdGenerator,
   LaunchdGenerator,
+  WindowsServiceGenerator,
   ServiceError,
   detectPlatform,
   isSystemdAvailable,
   isLaunchdAvailable,
+  isWindowsServiceAvailable,
+  isNSSMAvailable,
   type ServiceManagerOptions,
   type ServiceStatus,
   type ServiceFileResult,
@@ -12926,6 +12929,24 @@ export {
   type ServiceErrorCode,
   type Platform,
 } from './service-manager';
+export {
+  WindowsServiceManager,
+  WindowsServiceError,
+  type WindowsServiceConfig,
+  type ServiceRecoveryOptions,
+  type WindowsServiceStatus,
+  type WindowsServiceErrorCode,
+} from './windows-service-manager';
+export {
+  WindowsEventLogger,
+  createApexEventLogger,
+  createCustomEventLogger,
+  WindowsEventLogType,
+  APEX_EVENT_IDS,
+  type WindowsEventLogEntry,
+  type EventLogConfig,
+  type ApexEventId,
+} from './windows-event-log';
 export {
   DaemonScheduler,
   UsageManagerProvider,

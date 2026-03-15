@@ -40,19 +40,46 @@ pnpm-debug.log*
 test_artifacts/
 test-artifacts/
 .apex-test/
+test-temp*/
+.test-temp-*/
+test_results.txt
+
+# Debug scripts
+debug-*.js
+debug_*.js
 
 # Caches
 .cache/
 .eslintcache
 .vitest/
 
-# AI-generated reports (prevent coverage/analysis docs from being committed)
+# AI-generated reports and audit artifacts
+# These are generated during development by AI agents and should not be committed
+*REPORT*.md
+*AUDIT*.md
+*REVIEW*.md
+*FINDINGS*.md
+*SUMMARY*.md
+CODE_REVIEW_*.md
+STAGE_*.md
+*IMPLEMENTATION*.md
+*VERIFICATION*.md
 *-coverage-report.md
 *-coverage-summary.md
 *-test-coverage*.md
 *-coverage-analysis*.md
 *-test-report*.md
 *-implementation-summary.md
+*-test-summary*.md
+*-audit-*.md
+# Preserve legitimate docs
+!README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+!ROADMAP.md
+!SECURITY.md
+!SUPPORT.md
 
 # AI Tools
 CLAUDE.md

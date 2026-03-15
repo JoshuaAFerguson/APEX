@@ -61,7 +61,7 @@ class PermissionManager {
             this.sessionCache.set(cacheKey, permission.level);
             await this.store.clearPermission({ tool, scope });
         }
-        return permission.level ?? null;
+        return permission.level || null;
     }
     /**
      * Grant a permission for a specific tool and scope combination

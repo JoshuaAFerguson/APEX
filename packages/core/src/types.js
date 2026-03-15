@@ -6,7 +6,8 @@ exports.ToolSourceTypeSchema = exports.MCPToolSchema = exports.MCPToolCapabiliti
 exports.TodoStatusSchema = exports.IdleTaskSchema = exports.TaskTemplateSchema = exports.DocumentationAnalysisConfigSchema = exports.OutdatedDocsConfigSchema = exports.VisualComparisonEventDataSchema = exports.PermissionNotificationSchema = exports.ApprovalDecisionResponseSchema = exports.ApprovalDecisionRequestSchema = exports.ApprovalResolvedEventDataSchema = exports.ApprovalDeniedEventDataSchema = exports.ApprovalGrantedEventDataSchema = exports.ApprovalResponseEventDataSchema = exports.ApprovalRequiredEventDataSchema = exports.ApprovalStateSchema = exports.ApprovalResponseSchema = exports.ApprovalRequestSchema = exports.ApprovalActionSchema = exports.ApprovalStatusSchema = exports.GateStatusSchema = exports.WorkspaceConfigSchema = exports.WorkspaceDefaultsSchema = exports.ContainerDefaultsSchema = exports.WorkspaceStrategySchema = exports.IsolationModeSchema = exports.ContainerStatusSchema = exports.ContainerConfigSchema = exports.ContainerNetworkModeSchema = exports.ResourceLimitsSchema = exports.TaskEffortSchema = exports.TaskPrioritySchema = exports.TaskStatusSchema = exports.ApexConfigSchema = exports.ApiAuthConfigSchema = exports.SlackIntegrationConfigSchema = exports.VisualRegressionConfigSchema = exports.TDDModeConfigSchema = exports.MCPInstallProgressV050Schema = exports.MCPInstallationV050Schema = exports.MCPServerV050Schema = exports.MCPToolInvocationResponseSchema = exports.MCPToolResultContentSchema = exports.MCPToolResultContentTypeSchema = exports.MCPToolInvocationRequestSchema = exports.ToolDiscoveryEventSchema = exports.ToolDiscoveryEventTypeSchema = exports.ToolRegistryStateSchema = exports.UnifiedToolRegistryEntrySchema = exports.MCPToolRegistryEntrySchema = exports.ToolSourceSchema = void 0;
 exports.HookConfigSchema = exports.HookHandlerSchema = exports.HookTypeSchema = exports.GuardrailEvaluationResultSchema = exports.GuardrailViolationSchema = exports.GuardrailConfigSchema = exports.SecretScanResultSchema = exports.SecretDetectionSchema = exports.EnforcementModeSchema = exports.PolicyCheckOptionsSchema = exports.PolicyCheckContextSchema = exports.PolicyCheckResultSchema = exports.PolicyCheckStatusSchema = exports.TaskPolicyCheckResultSchema = exports.PolicyViolationEventSchema = exports.PolicyValidationResultSchema = exports.PolicyViolationSchema = exports.LegacyPolicySchema = exports.PolicySchema = exports.ApprovalPolicySchema = exports.TestPolicySchema = exports.PathPolicySchema = exports.PolicyRuleSchema = exports.PolicySeveritySchema = exports.PolicyConfigSchema = exports.PolicyEnforcementModeSchema = exports.ApprovalRulesConfigSchema = exports.ApprovalRuleSchema = exports.ApprovalUrgencySchema = exports.ApprovalConditionSchema = exports.ApprovalOperationTypeSchema = exports.ApprovalConditionTypeSchema = exports.RequiredTestsConfigSchema = exports.TestRequirementRuleSchema = exports.TestEnforcementLevelSchema = exports.AllowedPathsConfigSchema = exports.PathAccessModeSchema = exports.PermissionsConfigSchema = exports.PERMISSION_PRESET_CONFIGS = exports.PermissionPresetConfigSchema = exports.ToolPermissionRuleSchema = exports.ALL_TOOLS = exports.WRITE_TOOLS = exports.READ_ONLY_TOOLS = exports.ToolPermissionBehaviorSchema = exports.PermissionPresetSchema = exports.TodoWriteOutputSchema = exports.TodoWriteInputSchema = exports.TodoSchema = exports.TodoItemSchema = void 0;
 exports.PermissionDetailsSchema = exports.PermissionChangeTypeSchema = exports.TestReportSchema = exports.TestSummarySchema = exports.VisualRegressionSummarySchema = exports.TestResultSchema = exports.TestArtifactSchema = exports.TestVisualComparisonSchema = exports.ScreenshotResponseSchema = exports.ScreenshotElementRequestSchema = exports.ScreenshotFullPageRequestSchema = exports.ScreenshotViewportRequestSchema = exports.ToolErrorHookContextSchema = exports.ToolCompleteHookContextSchema = exports.ToolStartHookContextSchema = exports.CaptureRegionOptionsSchema = exports.CaptureElementOptionsSchema = exports.ScreenshotResultSchema = exports.ScreenshotOutputModeSchema = exports.ScreenshotFormatSchema = exports.ImageMetadataSchema = exports.ScreenshotComparisonOptionsSchema = exports.ApexRuleSchema = exports.RuleActionSchema = exports.RuleActionTypeSchema = exports.RuleConditionSchema = exports.RuleTriggerSchema = exports.RuleTriggerEventSchema = exports.AutoFixEventSchema = exports.AutoFixIssueDetailSchema = exports.AutoFixStatusSchema = exports.AutoFixEventTypeSchema = exports.AutoFixResultSchema = exports.AutoFixConfigSchema = exports.AuditLogEntrySchema = exports.AuditSeveritySchema = exports.AuditEventTypeSchema = exports.RepairLoopConfigSchema = exports.FixAttemptConfigSchema = exports.BackoffStrategySchema = exports.PostHookResultSchema = exports.BehaviorEventDataSchema = exports.BehaviorModeSchema = exports.PreHookResultSchema = exports.PreHookActionSchema = exports.PostHookContextSchema = exports.PreHookContextSchema = exports.ToolHookConfigSchema = exports.ToolHookDefinitionSchema = exports.ToolHookTypeSchema = void 0;
-exports.MultimodalContextSchema = exports.MultimodalInputCountsSchema = exports.ProcessedMultimodalInputSchema = exports.ExtractedContentSchema = exports.ExtractedEntitySchema = exports.MultimodalProcessingStatusSchema = exports.MultimodalInputCollectionSchema = exports.MultimodalInputSchema = exports.DesignMockupInputSchema = exports.DesignToolSchema = exports.WebPageInputSchema = exports.ImageInputSchema = exports.BaseMultimodalInputSchema = exports.SourceMetadataSchema = exports.MultimodalInputTypeSchema = exports.ImageMediaTypeSchema = exports.RepositoryMapSchema = exports.CodeFileSchema = exports.ImportEdgeSchema = exports.SymbolReferenceSchema = exports.CodeSymbolSchema = exports.SymbolTypeSchema = exports.CodebaseAnalysisSchema = exports.TechnicalDebtAnalysisSchema = exports.ConventionAnalysisSchema = exports.ArchitectureAnalysisSchema = exports.StackAnalysisSchema = exports.ProjectContextSchema = exports.TestFrameworkInfoSchema = exports.TestRunnerTypeSchema = exports.ParsedConfigurationInfoSchema = exports.ConfigurationInfoSchema = exports.ConfigFileInfoSchema = exports.ConfigPurposeSchema = exports.ConfigFormatSchema = exports.FrameworkDetectionSchema = exports.FrameworkInfoSchema = exports.DetectionConfidenceSchema = exports.FrameworkCategorySchema = exports.ProjectStructureSchema = exports.ProjectEntrySchema = exports.ProjectEntryTypeSchema = exports.GitStatusSchema = exports.GitCommitSchema = exports.GitChangedFileSchema = exports.GitFileStatusSchema = exports.toBrowserPermissionDeniedError = exports.isBrowserPermissionDeniedError = exports.BrowserPermissionDeniedError = exports.PermissionChangeEventSchema = void 0;
+exports.ExtractedContentSchema = exports.ExtractedEntitySchema = exports.MultimodalProcessingStatusSchema = exports.MultimodalInputCollectionSchema = exports.MultimodalInputSchema = exports.DesignMockupInputSchema = exports.DesignToolSchema = exports.WebPageInputSchema = exports.ImageInputSchema = exports.BaseMultimodalInputSchema = exports.SourceMetadataSchema = exports.MultimodalInputTypeSchema = exports.ImageMediaTypeSchema = exports.RepositoryMapSchema = exports.CodeFileSchema = exports.ImportEdgeSchema = exports.SymbolReferenceSchema = exports.CodeSymbolSchema = exports.SymbolTypeSchema = exports.CodebaseAnalysisSchema = exports.IntegrationAnalysisSchema = exports.TestingPatternAnalysisSchema = exports.TechnicalDebtAnalysisSchema = exports.ConventionAnalysisSchema = exports.ArchitectureAnalysisSchema = exports.StackAnalysisSchema = exports.ProjectContextSchema = exports.TestFrameworkInfoSchema = exports.TestRunnerTypeSchema = exports.ParsedConfigurationInfoSchema = exports.ConfigurationInfoSchema = exports.ConfigFileInfoSchema = exports.ConfigPurposeSchema = exports.ConfigFormatSchema = exports.FrameworkDetectionSchema = exports.FrameworkInfoSchema = exports.DetectionConfidenceSchema = exports.FrameworkCategorySchema = exports.ProjectStructureSchema = exports.ProjectEntrySchema = exports.ProjectEntryTypeSchema = exports.GitStatusSchema = exports.GitTrackingSchema = exports.GitCommitSchema = exports.GitChangedFileSchema = exports.GitFileStatusSchema = exports.toBrowserPermissionDeniedError = exports.isBrowserPermissionDeniedError = exports.BrowserPermissionDeniedError = exports.PermissionChangeEventSchema = void 0;
+exports.MultimodalContextSchema = exports.MultimodalInputCountsSchema = exports.ProcessedMultimodalInputSchema = void 0;
 exports.migrateLegacyAutonomyLevel = migrateLegacyAutonomyLevel;
 exports.getToolBehaviorForPreset = getToolBehaviorForPreset;
 exports.isToolAllowedForPreset = isToolAllowedForPreset;
@@ -2637,6 +2638,7 @@ exports.HealthReportSchema = zod_1.z.object({
         failed: zod_1.z.number(),
         warnings: zod_1.z.number(),
         skipped: zod_1.z.number(),
+        errors: zod_1.z.number(),
     }),
     /** Individual check results */
     checks: zod_1.z.array(exports.DoctorCheckResultSchema),
@@ -6758,6 +6760,8 @@ exports.GitChangedFileSchema = zod_1.z.object({
     path: zod_1.z.string().min(1),
     /** Git status indicator for this file */
     status: exports.GitFileStatusSchema,
+    /** Whether this file change is staged for commit */
+    staged: zod_1.z.boolean(),
     /** Original path if the file was renamed (only present for renames) */
     oldPath: zod_1.z.string().optional(),
 });
@@ -6775,6 +6779,19 @@ exports.GitCommitSchema = zod_1.z.object({
     author: zod_1.z.string().optional(),
     /** Author email */
     authorEmail: zod_1.z.string().optional(),
+});
+/**
+ * Remote tracking information for a git branch
+ */
+exports.GitTrackingSchema = zod_1.z.object({
+    /** Name of the remote (e.g., 'origin') */
+    remote: zod_1.z.string().nullable(),
+    /** Full name of the remote branch (e.g., 'origin/main') */
+    remoteBranch: zod_1.z.string().nullable(),
+    /** Number of commits ahead of the remote branch */
+    aheadCount: zod_1.z.number().int().min(0).default(0),
+    /** Number of commits behind the remote branch */
+    behindCount: zod_1.z.number().int().min(0).default(0),
 });
 /**
  * Git repository status information
@@ -6806,32 +6823,54 @@ exports.GitCommitSchema = zod_1.z.object({
 exports.GitStatusSchema = zod_1.z.object({
     /** Whether the path is a git repository */
     isRepository: zod_1.z.boolean(),
-    /** Current branch name (null if in detached HEAD state) */
-    branch: zod_1.z.string().nullable(),
-    /** Remote tracking branch (if any) */
+    /** Current branch name (empty string if not in a git repository or detached HEAD) */
+    branch: zod_1.z.string(),
+    /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+    isClean: zod_1.z.boolean(),
+    /** Whether there are uncommitted changes (modified or deleted files) */
+    hasUncommittedChanges: zod_1.z.boolean(),
+    /** Whether there are untracked files */
+    hasUntrackedFiles: zod_1.z.boolean(),
+    /** Whether there are staged changes ready for commit */
+    hasStagedChanges: zod_1.z.boolean(),
+    /** All changed files (staged, unstaged, and untracked) with their status */
+    changedFiles: zod_1.z.array(exports.GitChangedFileSchema),
+    /** Total number of stashes */
+    stashCount: zod_1.z.number().int().min(0),
+    /** Remote tracking information */
+    tracking: exports.GitTrackingSchema.nullable(),
+    /** Information about the last commit */
+    lastCommit: zod_1.z.object({
+        /** Short commit hash (usually 7 characters) */
+        hash: zod_1.z.string(),
+        /** Commit message */
+        message: zod_1.z.string(),
+        /** Timestamp when the commit was made */
+        timestamp: zod_1.z.date(),
+    }).nullable(),
+    // Legacy fields for backward compatibility
+    /** @deprecated Use branch instead */
     remoteBranch: zod_1.z.string().nullable().optional(),
-    /** Number of commits ahead of the remote tracking branch */
+    /** @deprecated Use tracking.aheadCount instead */
     ahead: zod_1.z.number().int().min(0).optional().default(0),
-    /** Number of commits behind the remote tracking branch */
+    /** @deprecated Use tracking.behindCount instead */
     behind: zod_1.z.number().int().min(0).optional().default(0),
-    /** Files staged for commit */
+    /** @deprecated Use changedFiles with staged=true instead */
     staged: zod_1.z.array(exports.GitChangedFileSchema).optional().default([]),
-    /** Files with unstaged changes */
+    /** @deprecated Use changedFiles with staged=false instead */
     unstaged: zod_1.z.array(exports.GitChangedFileSchema).optional().default([]),
-    /** Untracked files (paths relative to repository root) */
+    /** @deprecated Use changedFiles with status='?' instead */
     untracked: zod_1.z.array(zod_1.z.string()).optional().default([]),
+    /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+    isDirty: zod_1.z.boolean().optional().default(false),
+    /** @deprecated Use lastCommit.hash instead */
+    lastCommitHash: zod_1.z.string().optional(),
+    /** @deprecated Use lastCommit.message instead */
+    lastCommitMessage: zod_1.z.string().optional(),
+    /** @deprecated Use lastCommit.timestamp instead */
+    lastCommitTimestamp: zod_1.z.date().optional(),
     /** Whether there are merge conflicts */
     hasConflicts: zod_1.z.boolean().optional().default(false),
-    /** Whether the working directory has any changes (staged, unstaged, or untracked) */
-    isDirty: zod_1.z.boolean().optional().default(false),
-    /** Hash of the last commit (short SHA) */
-    lastCommitHash: zod_1.z.string().optional(),
-    /** Message of the last commit */
-    lastCommitMessage: zod_1.z.string().optional(),
-    /** Timestamp of the last commit */
-    lastCommitTimestamp: zod_1.z.date().optional(),
-    /** Total number of stashes */
-    stashCount: zod_1.z.number().int().min(0).optional().default(0),
     /** List of configured remotes */
     remotes: zod_1.z.array(zod_1.z.object({
         name: zod_1.z.string(),
@@ -6847,9 +6886,6 @@ exports.GitStatusSchema = zod_1.z.object({
  * Entry type in project structure
  */
 exports.ProjectEntryTypeSchema = zod_1.z.enum(['file', 'directory']);
-/**
- * Represents a single entry (file or directory) in the project structure
- */
 exports.ProjectEntrySchema = zod_1.z.object({
     /** Name of the file or directory */
     name: zod_1.z.string().min(1),
@@ -6904,6 +6940,10 @@ exports.ProjectStructureSchema = zod_1.z.object({
     hasLicense: zod_1.z.boolean().optional().default(false),
     /** Maximum directory depth that was scanned */
     maxDepthScanned: zod_1.z.number().int().min(0).optional(),
+    /** Maximum directory depth that was scanned (alias for compatibility) */
+    maxDepth: zod_1.z.number().int().min(0).optional(),
+    /** Total size of all files in bytes */
+    totalSize: zod_1.z.number().int().min(0).optional(),
     /** Directories that were excluded from scanning */
     excludedDirectories: zod_1.z.array(zod_1.z.string()).optional().default([]),
     /** Timestamp when the structure was scanned */
@@ -7289,6 +7329,8 @@ exports.TestFrameworkInfoSchema = zod_1.z.object({
  */
 exports.ProjectContextSchema = zod_1.z.object({
     /** Git repository status (if applicable) */
+    git: exports.GitStatusSchema.optional(),
+    /** Git repository status (if applicable) - kept for backward compatibility */
     gitStatus: exports.GitStatusSchema.optional(),
     /** Project directory structure */
     structure: exports.ProjectStructureSchema.optional(),
@@ -7536,6 +7578,192 @@ exports.TechnicalDebtAnalysisSchema = zod_1.z.object({
     }).optional(),
 });
 /**
+ * Analysis of testing patterns and coverage in a codebase
+ * @example
+ * ```typescript
+ * const testingAnalysis: TestingPatternAnalysis = {
+ *   framework: "Jest",
+ *   testCount: 150,
+ *   coverage: { overall: 85, statements: 87, branches: 83, functions: 90 },
+ *   patterns: {
+ *     unit: { count: 120, locations: ["src/__tests__", "src/**\/*.test.ts"] },
+ *     integration: { count: 25, locations: ["tests/integration"] },
+ *     e2e: { count: 5, locations: ["tests/e2e"] }
+ *   },
+ *   conventions: { fileNaming: "suffix-.test", testLocation: "colocated" },
+ *   antiPatterns: [],
+ *   recommendations: ["Add more integration tests", "Improve branch coverage"]
+ * };
+ * ```
+ */
+exports.TestingPatternAnalysisSchema = zod_1.z.object({
+    /** Primary testing framework detected */
+    framework: zod_1.z.string(),
+    /** Total number of test files found */
+    testCount: zod_1.z.number().int().min(0),
+    /** Test coverage information */
+    coverage: zod_1.z.object({
+        overall: zod_1.z.number().min(0).max(100).optional(),
+        statements: zod_1.z.number().min(0).max(100).optional(),
+        branches: zod_1.z.number().min(0).max(100).optional(),
+        functions: zod_1.z.number().min(0).max(100).optional(),
+        lines: zod_1.z.number().min(0).max(100).optional(),
+    }).optional(),
+    /** Test pattern categorization */
+    patterns: zod_1.z.object({
+        unit: zod_1.z.object({
+            count: zod_1.z.number().int().min(0),
+            locations: zod_1.z.array(zod_1.z.string()),
+        }),
+        integration: zod_1.z.object({
+            count: zod_1.z.number().int().min(0),
+            locations: zod_1.z.array(zod_1.z.string()),
+        }),
+        e2e: zod_1.z.object({
+            count: zod_1.z.number().int().min(0),
+            locations: zod_1.z.array(zod_1.z.string()),
+        }),
+        component: zod_1.z.object({
+            count: zod_1.z.number().int().min(0),
+            locations: zod_1.z.array(zod_1.z.string()),
+        }).optional(),
+        performance: zod_1.z.object({
+            count: zod_1.z.number().int().min(0),
+            locations: zod_1.z.array(zod_1.z.string()),
+        }).optional(),
+    }),
+    /** Testing conventions detected */
+    conventions: zod_1.z.object({
+        testFileNaming: zod_1.z.enum(['suffix-.test', 'suffix-.spec', 'suffix-Test', 'prefix-test-', 'mixed']),
+        testLocation: zod_1.z.enum(['colocated', 'separate-tests', 'separate-__tests__', 'mixed']),
+        testStructure: zod_1.z.enum(['flat', 'mirrored', 'grouped', 'mixed']).optional(),
+    }),
+    /** Testing anti-patterns identified */
+    antiPatterns: zod_1.z.array(zod_1.z.object({
+        type: zod_1.z.enum(['no-tests', 'god-test', 'mystery-guest', 'resource-optimism', 'test-code-duplication', 'assertion-roulette', 'conditional-test-logic', 'hardcoded-test-data', 'other']),
+        description: zod_1.z.string(),
+        examples: zod_1.z.array(zod_1.z.string()),
+        severity: zod_1.z.enum(['low', 'medium', 'high', 'critical']),
+    })),
+    /** Recommendations for testing improvements */
+    recommendations: zod_1.z.array(zod_1.z.string()),
+    /** Additional testing metrics */
+    metrics: zod_1.z.object({
+        avgTestsPerFile: zod_1.z.number().min(0).optional(),
+        avgAssertionsPerTest: zod_1.z.number().min(0).optional(),
+        testToSourceRatio: zod_1.z.number().min(0).optional(),
+        mockedDependenciesCount: zod_1.z.number().int().min(0).optional(),
+    }).optional(),
+});
+/**
+ * Analysis of third-party integrations and dependencies in a codebase
+ * @example
+ * ```typescript
+ * const integrationAnalysis: IntegrationAnalysis = {
+ *   dependencies: {
+ *     production: [{ name: "react", version: "18.2.0", category: "frontend" }],
+ *     development: [{ name: "jest", version: "29.0.0", category: "testing" }],
+ *     outdated: [{ name: "lodash", current: "4.17.20", latest: "4.17.21", risk: "low" }],
+ *     security: []
+ *   },
+ *   apis: {
+ *     consumed: [{ url: "https://api.example.com", method: "GET", authenticated: true }],
+ *     exposed: [{ path: "/api/users", method: "POST", authenticated: true }]
+ *   },
+ *   services: { databases: ["PostgreSQL"], caches: ["Redis"], queues: [], cloud: ["AWS S3"] }
+ * };
+ * ```
+ */
+exports.IntegrationAnalysisSchema = zod_1.z.object({
+    /** Dependency analysis */
+    dependencies: zod_1.z.object({
+        /** Production dependencies */
+        production: zod_1.z.array(zod_1.z.object({
+            name: zod_1.z.string(),
+            version: zod_1.z.string(),
+            category: zod_1.z.enum(['frontend', 'backend', 'testing', 'build', 'runtime', 'database', 'ui', 'state-management', 'security', 'utility', 'other']),
+            license: zod_1.z.string().optional(),
+            size: zod_1.z.number().optional(), // Size in bytes
+            lastUpdated: zod_1.z.date().optional(),
+        })),
+        /** Development dependencies */
+        development: zod_1.z.array(zod_1.z.object({
+            name: zod_1.z.string(),
+            version: zod_1.z.string(),
+            category: zod_1.z.enum(['frontend', 'backend', 'testing', 'build', 'runtime', 'database', 'ui', 'state-management', 'security', 'utility', 'other']),
+            license: zod_1.z.string().optional(),
+            size: zod_1.z.number().optional(),
+            lastUpdated: zod_1.z.date().optional(),
+        })),
+        /** Outdated dependencies */
+        outdated: zod_1.z.array(zod_1.z.object({
+            name: zod_1.z.string(),
+            currentVersion: zod_1.z.string(),
+            latestVersion: zod_1.z.string(),
+            majorVersionsBehind: zod_1.z.number().int().min(0).optional(),
+            minorVersionsBehind: zod_1.z.number().int().min(0).optional(),
+            patchVersionsBehind: zod_1.z.number().int().min(0).optional(),
+            risk: zod_1.z.enum(['low', 'medium', 'high', 'critical']),
+            breaking: zod_1.z.boolean().optional(),
+        })),
+        /** Security vulnerabilities */
+        security: zod_1.z.array(zod_1.z.object({
+            name: zod_1.z.string(),
+            severity: zod_1.z.enum(['low', 'moderate', 'high', 'critical']),
+            vulnerability: zod_1.z.string(),
+            patchedVersion: zod_1.z.string().optional(),
+            cve: zod_1.z.string().optional(),
+        })),
+    }),
+    /** API integrations */
+    apis: zod_1.z.object({
+        /** External APIs consumed */
+        consumed: zod_1.z.array(zod_1.z.object({
+            url: zod_1.z.string(),
+            method: zod_1.z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']),
+            authenticated: zod_1.z.boolean().optional(),
+            rateLimit: zod_1.z.boolean().optional(),
+            provider: zod_1.z.string().optional(),
+            usageCount: zod_1.z.number().int().min(0).optional(),
+        })),
+        /** APIs exposed by this service */
+        exposed: zod_1.z.array(zod_1.z.object({
+            path: zod_1.z.string(),
+            method: zod_1.z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']),
+            authenticated: zod_1.z.boolean().optional(),
+            deprecated: zod_1.z.boolean().optional(),
+            version: zod_1.z.string().optional(),
+            documentation: zod_1.z.boolean().optional(),
+        })),
+    }),
+    /** Service integrations */
+    services: zod_1.z.object({
+        /** Database integrations */
+        databases: zod_1.z.array(zod_1.z.string()),
+        /** Cache systems */
+        caches: zod_1.z.array(zod_1.z.string()),
+        /** Message queues */
+        queues: zod_1.z.array(zod_1.z.string()),
+        /** Cloud services */
+        cloud: zod_1.z.array(zod_1.z.string()),
+        /** Monitoring and analytics */
+        monitoring: zod_1.z.array(zod_1.z.string()).optional(),
+        /** Authentication services */
+        auth: zod_1.z.array(zod_1.z.string()).optional(),
+        /** Payment processors */
+        payments: zod_1.z.array(zod_1.z.string()).optional(),
+    }),
+    /** Integration health metrics */
+    health: zod_1.z.object({
+        dependencyRisk: zod_1.z.enum(['low', 'medium', 'high', 'critical']),
+        securityRisk: zod_1.z.enum(['low', 'medium', 'high', 'critical']),
+        maintenanceLoad: zod_1.z.enum(['low', 'medium', 'high', 'critical']),
+        updateFrequency: zod_1.z.enum(['current', 'behind', 'legacy', 'abandoned']),
+    }).optional(),
+    /** Integration recommendations */
+    recommendations: zod_1.z.array(zod_1.z.string()).optional(),
+});
+/**
  * Comprehensive codebase analysis combining all analysis types
  * This is the main output type for codebase analysis operations
  *
@@ -7569,6 +7797,10 @@ exports.CodebaseAnalysisSchema = zod_1.z.object({
     conventions: exports.ConventionAnalysisSchema,
     /** Technical debt analysis */
     technicalDebt: exports.TechnicalDebtAnalysisSchema,
+    /** Testing pattern analysis */
+    testingPatterns: exports.TestingPatternAnalysisSchema.optional(),
+    /** Integration and dependency analysis */
+    integrations: exports.IntegrationAnalysisSchema.optional(),
     /** High-level summary metrics */
     summary: zod_1.z.object({
         totalFiles: zod_1.z.number().int().min(0),
@@ -8458,16 +8690,16 @@ exports.MultimodalInputCountsSchema = zod_1.z.object({
  * const context: MultimodalContext = {
  *   inputs: [
  *     {
- *       input: { type: 'design_mockup', designTool: 'figma', ... },
+ *       input: { type: 'design_mockup', designTool: 'figma' },
  *       status: 'completed',
  *       processedAt: new Date(),
- *       extractedContent: { text: 'Login screen mockup', entities: [...] }
+ *       extractedContent: { text: 'Login screen mockup', entities: [] }
  *     },
  *     {
- *       input: { type: 'web_page', url: 'https://example.com', ... },
+ *       input: { type: 'web_page', url: 'https://example.com' },
  *       status: 'completed',
  *       processedAt: new Date(),
- *       extractedContent: { text: 'Current implementation', structuredData: {...} }
+ *       extractedContent: { text: 'Current implementation', structuredData: {} }
  *     }
  *   ],
  *   status: 'completed',
