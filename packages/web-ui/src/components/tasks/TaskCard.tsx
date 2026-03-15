@@ -17,6 +17,8 @@ import {
   GitBranch,
   Layers,
   Play,
+  XCircle,
+  RotateCcw,
 } from 'lucide-react'
 
 export interface TaskCardProps {
@@ -28,6 +30,12 @@ export interface TaskCardProps {
   compact?: boolean
   /** Whether to show progress indicator */
   showProgress?: boolean
+  /** Optional callback to cancel a task */
+  onCancel?: (taskId: string) => Promise<void>
+  /** Optional callback to retry a task */
+  onRetry?: (taskId: string) => Promise<void>
+  /** Whether an action is currently loading for this task */
+  isActionLoading?: boolean
 }
 
 /**
@@ -43,6 +51,9 @@ export function TaskCard({
   onViewDetails,
   compact = false,
   showProgress = true,
+  onCancel,
+  onRetry,
+  isActionLoading = false,
 }: TaskCardProps) {
   const isRunning = isTaskRunning(task.status)
   const hasSubtasks = task.subtaskIds && task.subtaskIds.length > 0
@@ -78,10 +89,14 @@ export function TaskCard({
 
   const progressValue = getProgressValue()
 
+  // Determine which actions are available for the task
+  const canCancel = (task.status === 'pending' || task.status === 'queued' || isRunning) && onCancel
+  const canRetry = (task.status === 'failed' || task.status === 'cancelled') && onRetry
+
   return (
     <Card
       className={cn(
-        'transition-all duration-200 hover:shadow-md cursor-pointer',
+        'transition-all duration-200 hover:shadow-md cursor-pointer relative group',
         'border-l-4',
         isRunning && 'border-l-apex-500',
         task.status === 'completed' && 'border-l-green-500',
@@ -91,6 +106,32 @@ export function TaskCard({
       onClick={handleCardClick}
     >
       <CardContent className={cn('p-0', compact && 'space-y-2')}>
+        {/* Action overlay - shows on hover */}
+        {(canCancel || canRetry) && (
+          <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            {canCancel && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onCancel!(task.id); }}
+                className="p-1.5 rounded hover:bg-red-500/10 text-foreground-secondary hover:text-red-500 disabled:opacity-50"
+                title="Cancel task"
+                disabled={isActionLoading}
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            )}
+            {canRetry && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onRetry!(task.id); }}
+                className="p-1.5 rounded hover:bg-green-500/10 text-foreground-secondary hover:text-green-500 disabled:opacity-50"
+                title="Retry task"
+                disabled={isActionLoading}
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Header with title and status */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex-1 min-w-0">

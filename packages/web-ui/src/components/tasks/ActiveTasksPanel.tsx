@@ -30,6 +30,12 @@ export interface ActiveTasksPanelProps {
   maxTasks?: number
   /** Whether to show the panel in compact mode */
   compact?: boolean
+  /** Optional callback to cancel a task */
+  onCancel?: (taskId: string) => Promise<void>
+  /** Optional callback to retry a task */
+  onRetry?: (taskId: string) => Promise<void>
+  /** ID of task currently being acted upon (for loading state) */
+  actionLoadingTaskId?: string | null
 }
 
 type FilterType = 'all' | 'active' | 'completed' | 'failed' | 'paused'
@@ -49,6 +55,9 @@ export function ActiveTasksPanel({
   defaultShowActiveOnly = true,
   maxTasks = 10,
   compact = false,
+  onCancel,
+  onRetry,
+  actionLoadingTaskId,
 }: ActiveTasksPanelProps) {
   const [filter, setFilter] = useState<FilterType>(defaultShowActiveOnly ? 'active' : 'all')
 
@@ -203,6 +212,9 @@ export function ActiveTasksPanel({
                 onViewDetails={onViewDetails}
                 compact={compact}
                 showProgress={true}
+                onCancel={onCancel}
+                onRetry={onRetry}
+                isActionLoading={actionLoadingTaskId?.includes(task.id) || false}
               />
             ))}
 

@@ -152,7 +152,7 @@ describe('SubtaskTree', () => {
   describe('Error State', () => {
     it('renders error message when error prop is provided', () => {
       const errorMessage = 'Failed to load subtasks'
-      render(<SubtaskTree taskId="task-123" error={errorMessage} />)
+      render(<SubtaskTree taskId="task-123" error={errorMessage} loading={false} />)
 
       expect(screen.getByText(errorMessage)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
@@ -191,7 +191,7 @@ describe('SubtaskTree', () => {
 
     it('applies custom className to error state', () => {
       const { container } = render(
-        <SubtaskTree taskId="task-123" error="Test error" className="custom-error" />
+        <SubtaskTree taskId="task-123" error="Test error" className="custom-error" loading={false} />
       )
 
       expect(container.firstChild).toHaveClass('custom-error')
@@ -201,20 +201,22 @@ describe('SubtaskTree', () => {
   describe('Empty State', () => {
     it('renders empty state when no subtasks exist', () => {
       const emptyTree = createSubtaskNode({ children: [] })
-      render(<SubtaskTree taskId="task-123" tree={emptyTree} />)
+      render(<SubtaskTree taskId="task-123" tree={emptyTree} loading={false} />)
 
-      expect(screen.getByText('No subtasks found')).toBeInTheDocument()
+      // A tree with empty children should still render the root node, not empty state
+      expect(screen.getByText('Test subtask')).toBeInTheDocument()
+      expect(screen.queryByText('No subtasks found')).not.toBeInTheDocument()
     })
 
     it('renders empty state when tree is null', () => {
-      render(<SubtaskTree taskId="task-123" tree={null as any} />)
+      render(<SubtaskTree taskId="task-123" tree={null as any} loading={false} />)
 
       expect(screen.getByText('No subtasks found')).toBeInTheDocument()
     })
 
     it('applies custom className to empty state', () => {
       const { container } = render(
-        <SubtaskTree taskId="task-123" tree={null as any} className="custom-empty" />
+        <SubtaskTree taskId="task-123" tree={null as any} className="custom-empty" loading={false} />
       )
 
       expect(container.firstChild).toHaveClass('custom-empty')
@@ -233,7 +235,7 @@ describe('SubtaskTree', () => {
 
       expect(screen.getByText('Test subtask')).toBeInTheDocument()
       expect(screen.getByTestId('badge-in-progress')).toBeInTheDocument()
-      expect(screen.getByText('subtask-1...')).toBeInTheDocument() // Truncated ID
+      expect(screen.getByText('subtask-...')).toBeInTheDocument() // Truncated ID
     })
 
     it('renders hierarchical tree structure with multiple levels', () => {

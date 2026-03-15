@@ -1,24 +1,28 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout'
 import { Card, CardHeader, CardContent } from '@/components/ui'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
+import { ActiveTasksPanel } from '@/components/tasks/ActiveTasksPanel'
 import { apiClient } from '@/lib/api-client'
 import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId } from '@/lib/utils'
 import type { Task } from '@apexcli/core'
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [stats, setStats] = useState<{
     byStatus: Record<string, number>
     totalCost: number
     totalTokens: number
   } | null>(null)
-  const [recentTasks, setRecentTasks] = useState<Task[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   useEffect(() => {
     loadDashboard()
@@ -28,16 +32,47 @@ export default function DashboardPage() {
     try {
       setLoading(true)
       setError(null)
-      const [statsData, recentData] = await Promise.all([
+      const [statsData, tasksData] = await Promise.all([
         apiClient.getTaskStats(),
-        apiClient.listTasks({ limit: 5 }),
+        apiClient.listTasks({ limit: 20 }), // Increased limit for ActiveTasksPanel
       ])
       setStats(statsData)
-      setRecentTasks(recentData.tasks || [])
+      setTasks(tasksData.tasks || [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Navigation handler for view details
+  const handleViewDetails = (taskId: string) => {
+    router.push(`/tasks/${taskId}`)
+  }
+
+  // Cancel handler (optional action)
+  const handleCancel = async (taskId: string) => {
+    try {
+      setActionLoading(`cancel-${taskId}`)
+      await apiClient.cancelTask(taskId)
+      await loadDashboard()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel task')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // Retry handler (optional action)
+  const handleRetry = async (taskId: string) => {
+    try {
+      setActionLoading(`retry-${taskId}`)
+      await apiClient.retryTask(taskId)
+      await loadDashboard()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to retry task')
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -168,45 +203,18 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-8">
-        <Card>
-          <CardHeader>
-            <h3 className="text-lg font-semibold">Recent Activity</h3>
-          </CardHeader>
-          <CardContent>
-            {recentTasks.length === 0 ? (
-              <div className="text-center py-12 text-foreground-secondary">
-                <p>No recent activity</p>
-                <p className="text-sm mt-2">
-                  Run <code className="bg-background-tertiary px-2 py-1 rounded">apex run &quot;your task&quot;</code> to create a task.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {recentTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-center justify-between p-4 bg-background-secondary rounded-lg"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{task.description}</p>
-                      <p className="text-sm text-foreground-secondary mt-1">
-                        {truncateId(task.id)} · {task.workflow} · {getRelativeTime(task.updatedAt || task.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4 ml-4">
-                      <span className="text-sm text-foreground-secondary">
-                        {formatCost(task.usage?.estimatedCost || 0)}
-                      </span>
-                      <Badge variant={getStatusVariant(task.status)}>
-                        {formatStatus(task.status)}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <ActiveTasksPanel
+          tasks={tasks}
+          onViewDetails={handleViewDetails}
+          onRefresh={loadDashboard}
+          loading={loading}
+          defaultShowActiveOnly={false}
+          maxTasks={15}
+          compact={false}
+          onCancel={handleCancel}
+          onRetry={handleRetry}
+          actionLoadingTaskId={actionLoading}
+        />
       </div>
     </div>
   )

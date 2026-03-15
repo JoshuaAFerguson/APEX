@@ -44,8 +44,8 @@ function formatTokensPerSecond(tokensPerSec: number): string {
 /**
  * Truncate agent names for display
  */
-function truncateAgentName(name: string, maxLength: number = 12): string {
-  if (name.length <= maxLength) return name
+function truncateAgentName(name: string, maxLength: number = 17): string {
+  if (!name || name.length <= maxLength) return name
   return `${name.slice(0, maxLength - 3)}...`
 }
 
@@ -77,39 +77,51 @@ function useProcessedAgents(
 
       switch (sortBy) {
         case 'tokens':
-          valueA = a.totalTokens
-          valueB = b.totalTokens
+          valueA = a.totalTokens || 0
+          valueB = b.totalTokens || 0
           break
         case 'inputTokens':
-          valueA = a.inputTokens
-          valueB = b.inputTokens
+          valueA = a.inputTokens || 0
+          valueB = b.inputTokens || 0
           break
         case 'outputTokens':
-          valueA = a.outputTokens
-          valueB = b.outputTokens
+          valueA = a.outputTokens || 0
+          valueB = b.outputTokens || 0
           break
         case 'cost':
-          valueA = a.estimatedCost
-          valueB = b.estimatedCost
+          valueA = a.estimatedCost || 0
+          valueB = b.estimatedCost || 0
           break
         case 'tokensPerSecond':
-          valueA = a.tokensPerSecond
-          valueB = b.tokensPerSecond
+          valueA = a.tokensPerSecond || 0
+          valueB = b.tokensPerSecond || 0
           break
         case 'duration':
-          valueA = a.duration
-          valueB = b.duration
+          valueA = a.duration || 0
+          valueB = b.duration || 0
           break
         case 'invocations':
-          valueA = a.invocations
-          valueB = b.invocations
+          valueA = a.invocations || 0
+          valueB = b.invocations || 0
           break
         default:
-          valueA = a.totalTokens
-          valueB = b.totalTokens
+          valueA = a.totalTokens || 0
+          valueB = b.totalTokens || 0
       }
 
-      return sortDirection === 'desc' ? valueB - valueA : valueA - valueB
+      // Handle NaN and infinite values
+      if (!isFinite(valueA)) valueA = 0
+      if (!isFinite(valueB)) valueB = 0
+
+      // Primary sort by the selected metric
+      const primarySort = sortDirection === 'desc' ? valueB - valueA : valueA - valueB
+
+      // If values are equal, use agent name as a stable tiebreaker
+      if (primarySort === 0) {
+        return a.agentName.localeCompare(b.agentName)
+      }
+
+      return primarySort
     })
 
     // Take top N agents, group rest as "Other"
@@ -126,9 +138,9 @@ function useProcessedAgents(
         outputTokens: otherAgents.reduce((sum, agent) => sum + agent.outputTokens, 0),
         totalTokens: otherAgents.reduce((sum, agent) => sum + agent.totalTokens, 0),
         estimatedCost: otherAgents.reduce((sum, agent) => sum + agent.estimatedCost, 0),
-        tokensPerSecond: otherAgents.reduce((sum, agent, idx) => {
-          return sum + agent.tokensPerSecond
-        }, 0) / otherAgents.length,
+        tokensPerSecond: otherAgents.length > 0
+          ? otherAgents.reduce((sum, agent) => sum + (agent.tokensPerSecond || 0), 0) / otherAgents.length
+          : 0,
         duration: otherAgents.reduce((sum, agent) => sum + agent.duration, 0),
         invocations: otherAgents.reduce((sum, agent) => sum + agent.invocations, 0),
       }
@@ -238,17 +250,22 @@ export function AgentUtilizationChart({
     )
   }
 
-  // Empty state
+  // Empty state - only when there are no agents
   if (processedAgents.length === 0) {
     return (
       <div className={cn('flex items-center justify-center py-8 text-foreground-secondary', className)} style={{ height }}>
-        <p className="text-sm">{emptyMessage}</p>
+        <p className="text-sm">
+          {data.agents.length === 0
+            ? emptyMessage
+            : 'No usage data yet'  // Match TokenUsageChart pattern when agents exist but no tokens
+          }
+        </p>
       </div>
     )
   }
 
   // Find the maximum token count for scaling bars
-  const maxTokens = Math.max(...processedAgents.map(agent => agent.totalTokens))
+  const maxTokens = Math.max(...processedAgents.map(agent => agent.totalTokens || 0))
 
   return (
     <div
@@ -407,7 +424,7 @@ export function AgentUtilizationChartMini({
     )
   }
 
-  const maxTokens = Math.max(...processedAgents.map(agent => agent.totalTokens))
+  const maxTokens = Math.max(...processedAgents.map(agent => agent.totalTokens || 0))
 
   return (
     <div className={cn('space-y-2', className)}>

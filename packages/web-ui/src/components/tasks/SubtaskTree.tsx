@@ -426,8 +426,8 @@ export function SubtaskTree({
     );
   }
 
-  // Empty state
-  if (!tree || tree.children.length === 0) {
+  // Empty state - only show when there's no tree at all
+  if (!tree) {
     return (
       <div className={cn('text-sm text-foreground-secondary py-4 text-center', className)}>
         No subtasks found
