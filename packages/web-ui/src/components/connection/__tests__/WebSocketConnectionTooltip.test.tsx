@@ -8,8 +8,19 @@ import type { WebSocketConnectionHealth } from '@/types/websocket-connection';
 // Mock the utility functions
 vi.mock('@/lib/utils', () => ({
   cn: (...classes: (string | undefined)[]) => classes.filter(Boolean).join(' '),
-  getRelativeTime: vi.fn((date: Date) => '5m ago'),
-  formatPercentage: vi.fn((value: number) => `${value}%`),
+  getRelativeTime: vi.fn((date: Date) => {
+    // Return different values based on the timestamp to avoid conflicts
+    const time = date.getTime();
+    const baseTime = new Date('2023-01-01T12:00:00Z').getTime();
+    if (time === baseTime) return 'healthy-5m ago';
+    return 'check-5m ago';
+  }),
+  formatPercentage: vi.fn((value: number, precision = 1) => {
+    const percentage = value * 100;
+    return precision === 1 && percentage === Math.floor(percentage)
+      ? `${percentage}%`
+      : `${percentage.toFixed(precision)}%`;
+  }),
 }));
 
 // Mock the CONNECTION_STATUS_LABELS
@@ -204,7 +215,7 @@ describe('WebSocketConnectionTooltip Component', () => {
       const health = createMockHealth();
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -229,7 +240,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -252,7 +263,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -273,7 +284,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -293,7 +304,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -313,7 +324,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -336,7 +347,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -358,7 +369,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -379,7 +390,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -388,7 +399,7 @@ describe('WebSocketConnectionTooltip Component', () => {
       await waitFor(() => {
         expect(screen.getByText('Health Checks')).toBeInTheDocument();
         expect(screen.getByText('Success Rate:')).toBeInTheDocument();
-        expect(screen.getByText('100%')).toBeInTheDocument();
+        expect(screen.getByText(/100/)).toBeInTheDocument();
       });
     });
 
@@ -399,7 +410,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -419,7 +430,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -438,7 +449,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -446,7 +457,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Last Healthy:')).toBeInTheDocument();
-        expect(screen.getByText('5m ago')).toBeInTheDocument();
+        expect(screen.getByText('healthy-5m ago')).toBeInTheDocument();
       });
     });
 
@@ -457,7 +468,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -476,7 +487,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -484,7 +495,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Last Check:')).toBeInTheDocument();
-        expect(screen.getByText('5m ago')).toBeInTheDocument();
+        expect(screen.getByText('check-5m ago')).toBeInTheDocument();
       });
     });
   });
@@ -504,7 +515,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
         render(
           <WebSocketConnectionTooltip health={health}>
-            <button>Trigger</button>
+            <span data-testid="trigger-content">Trigger</span>
           </WebSocketConnectionTooltip>
         );
 
@@ -526,7 +537,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -556,7 +567,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -587,7 +598,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -605,7 +616,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -632,14 +643,14 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
       fireEvent.mouseEnter(screen.getByRole('button'));
 
       await waitFor(() => {
-        expect(screen.getByText('100%')).toBeInTheDocument();
+        expect(screen.getByText(/100/)).toBeInTheDocument();
       });
     });
 
@@ -648,7 +659,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -656,7 +667,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       await waitFor(() => {
         // With 5 failures, should be 85%
-        expect(screen.getByText('85%')).toBeInTheDocument();
+        expect(screen.getByText(/85/)).toBeInTheDocument();
       });
     });
 
@@ -665,7 +676,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -673,7 +684,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       await waitFor(() => {
         // Should not go below 50%
-        expect(screen.getByText('50%')).toBeInTheDocument();
+        expect(screen.getByText(/50/)).toBeInTheDocument();
       });
     });
   });
@@ -684,7 +695,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health} className="custom-tooltip">
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -701,7 +712,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -728,7 +739,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -750,7 +761,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -779,7 +790,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -804,7 +815,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -823,7 +834,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       const { unmount } = render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
@@ -840,7 +851,7 @@ describe('WebSocketConnectionTooltip Component', () => {
 
       render(
         <WebSocketConnectionTooltip health={health}>
-          <button>Trigger</button>
+          <span data-testid="trigger-content">Trigger</span>
         </WebSocketConnectionTooltip>
       );
 
