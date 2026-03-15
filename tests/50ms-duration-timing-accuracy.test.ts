@@ -10,10 +10,45 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
 import { performance } from 'perf_hooks';
 import {
-  assertTimingAccuracy,
-  DEFAULT_TIMING_TOLERANCE,
-  type ToolCallCompleteEventLike,
-} from './test-utils/failed-tool-timing-helpers';
+  assertValidTiming,
+  TIMING_TOLERANCE_MS,
+} from './tool-event-emission/fixtures/event-assertions';
+
+// Constants for 50ms timing test
+const DEFAULT_TIMING_TOLERANCE = 50;
+
+// Type definition compatible with timing tests
+interface ToolCallCompleteEventLike {
+  taskId: string;
+  toolName: string;
+  callId: string;
+  result: {
+    success: boolean;
+    output?: unknown;
+    error?: string;
+  };
+  timing: {
+    startTime: Date;
+    endTime: Date;
+    duration: number;
+  };
+  timestamp: Date;
+}
+
+/**
+ * Assert that timing is accurate within tolerance bounds
+ * @param actualDuration - The measured duration in milliseconds
+ * @param expectedDuration - The expected duration in milliseconds
+ * @param tolerance - Tolerance in milliseconds (default: 50ms)
+ */
+function assertTimingAccuracy(
+  actualDuration: number,
+  expectedDuration: number,
+  tolerance: number = DEFAULT_TIMING_TOLERANCE
+): void {
+  expect(actualDuration).toBeGreaterThanOrEqual(expectedDuration - tolerance);
+  expect(actualDuration).toBeLessThanOrEqual(expectedDuration + tolerance * 2);
+}
 
 /**
  * Mock orchestrator for simulating tool execution with precise timing control
