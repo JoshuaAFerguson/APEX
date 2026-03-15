@@ -838,13 +838,10 @@ export const commands: Command[] = [
       try {
         console.log(chalk.cyan(`\nRetrying task ${taskId}...\n`));
 
-        // Use the new handleRetry method that validates status and resets the task
+        // handleRetry validates status, resets the task, and starts execution
         await ctx.orchestrator.handleRetry(taskId);
 
         console.log(chalk.green(`Task ${taskId} retry initiated successfully`));
-
-        // Monitor execution with output
-        executeTaskWithOutput(ctx, taskId);
       } catch (error) {
         console.log(chalk.red(`Failed to retry task: ${error instanceof Error ? error.message : String(error)}`));
       }

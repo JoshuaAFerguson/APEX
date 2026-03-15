@@ -583,12 +583,19 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         return reply.status(404).send({ error: 'Task not found' });
       }
 
-      // Handle paused tasks — fire-and-forget so the HTTP response returns immediately
+      // Handle paused tasks — await to report actual outcome
       if (task.status === 'paused') {
-        orchestrator.resumePausedTask(id).catch((error: Error) => {
-          app.log.error(`Task ${id} resume failed: ${error.message}`);
-        });
-        return { ok: true, message: 'Task resume initiated', taskId: id };
+        try {
+          const resumed = await orchestrator.resumePausedTask(id);
+          if (resumed) {
+            return { ok: true, message: 'Task resume initiated', taskId: id };
+          }
+          return reply.status(409).send({ ok: false, error: 'Task could not be resumed', taskId: id });
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          app.log.error(`Task ${id} resume failed: ${message}`);
+          return reply.status(500).send({ ok: false, error: `Resume failed: ${message}`, taskId: id });
+        }
       }
 
       // Handle pending tasks (subtasks that were never started)
