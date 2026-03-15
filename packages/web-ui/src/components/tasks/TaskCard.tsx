@@ -95,6 +95,10 @@ export function TaskCard({
 
   return (
     <Card
+      data-testid={`task-card-${task.id}`}
+      data-task-status={task.status}
+      data-compact={compact}
+      data-show-progress={showProgress}
       className={cn(
         'transition-all duration-200 hover:shadow-md cursor-pointer relative group',
         'border-l-4',

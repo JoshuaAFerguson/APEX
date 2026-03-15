@@ -88,7 +88,7 @@ const createMockClient = () => {
 let mockClient: ReturnType<typeof createMockClient>
 
 vi.mock('../websocket-client', () => ({
-  ApexWebSocketClient: vi.fn(() => mockClient),
+  ApexWebSocketClient: vi.fn().mockImplementation(() => mockClient),
 }))
 
 describe('useRealtimeUpdates Edge Cases', () => {
