@@ -1,9 +1,16 @@
 import React from 'react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { BudgetGauge, BudgetGaugeMini } from '../BudgetGauge'
 
 describe('BudgetGauge - Edge Cases and Error Handling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
   describe('Numerical Edge Cases', () => {
     it('handles extremely small numbers', () => {
       render(
@@ -367,6 +374,13 @@ describe('BudgetGauge - Edge Cases and Error Handling', () => {
 })
 
 describe('BudgetGaugeMini - Edge Cases and Error Handling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
   describe('Compact Display Edge Cases', () => {
     it('handles very long currency strings in compact mode', () => {
       // Custom formatter that produces very long strings

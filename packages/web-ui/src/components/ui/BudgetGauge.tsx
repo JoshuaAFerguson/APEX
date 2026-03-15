@@ -80,12 +80,24 @@ export const BudgetGauge = forwardRef<HTMLDivElement, BudgetGaugeProps>(
 
     // Calculate percentage and determine color state
     const { percentage, colorState, displayPercentage } = useMemo(() => {
-      // Prevent division by zero
-      if (budgetLimit <= 0) {
+      // Handle NaN and invalid values
+      const safeCurrentSpend = isNaN(currentSpend) || !isFinite(currentSpend) ? 0 : currentSpend
+      const safeBudgetLimit = isNaN(budgetLimit) || !isFinite(budgetLimit) || budgetLimit <= 0 ? 1 : budgetLimit
+
+      // Prevent division by zero and handle edge cases
+      if (safeBudgetLimit <= 0) {
         return { percentage: 0, colorState: 'safe' as ColorState, displayPercentage: 0 }
       }
 
-      const pct = Math.max(0, (currentSpend / budgetLimit) * 100) // Don't allow negative percentages
+      let pct = (safeCurrentSpend / safeBudgetLimit) * 100
+
+      // Handle NaN, Infinity, and negative values
+      if (isNaN(pct) || !isFinite(pct)) {
+        pct = 0
+      } else {
+        pct = Math.max(0, pct) // Don't allow negative percentages
+      }
+
       const displayPct = Math.min(pct, 100) // Cap at 100% for display
 
       let state: ColorState = 'safe'
@@ -147,8 +159,18 @@ export const BudgetGauge = forwardRef<HTMLDivElement, BudgetGaugeProps>(
       },
     }
 
+    // Safe currency formatting with error handling
+    const safeFormatCurrency = (amount: number): string => {
+      try {
+        return formatCurrency(amount)
+      } catch (error) {
+        console.warn('formatCurrency error:', error)
+        return `$${amount.toFixed(2)}`
+      }
+    }
+
     // Accessibility properties
-    const ariaLabel = `Budget gauge: ${formatCurrency(currentSpend)} spent of ${formatCurrency(budgetLimit)} budget (${Math.round(percentage)}%)`
+    const ariaLabel = `Budget gauge: ${safeFormatCurrency(currentSpend)} spent of ${safeFormatCurrency(budgetLimit)} budget (${Math.round(percentage)}%)`
     const ariaValueNow = Math.round(percentage)
     const ariaValueText = `${Math.round(percentage)} percent of budget used`
 
@@ -224,10 +246,10 @@ export const BudgetGauge = forwardRef<HTMLDivElement, BudgetGaugeProps>(
             {showAmounts && (
               <div className={cn('text-center leading-tight', sizeConfig.fontSize)}>
                 <div className={cn('font-medium', colorClasses[colorState].text)}>
-                  {formatCurrency(currentSpend)}
+                  {safeFormatCurrency(currentSpend)}
                 </div>
                 <div className="text-foreground-secondary text-xs">
-                  of {formatCurrency(budgetLimit)}
+                  of {safeFormatCurrency(budgetLimit)}
                 </div>
               </div>
             )}
@@ -293,20 +315,37 @@ export const BudgetGaugeMini = ({
   budgetLimit,
   className,
   thresholds = {},
-  formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', {
+  formatCurrency = (amount: number) => {
+    // Handle case where Intl is not available (legacy browsers)
+    if (typeof Intl === 'undefined') {
+      return `$${amount.toFixed(1)}`
+    }
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       notation: 'compact',
       maximumFractionDigits: 1
-    }).format(amount),
+    }).format(amount)
+  },
 }: BudgetGaugeMiniProps) => {
   const mergedThresholds = useMemo(() => ({ ...DEFAULT_THRESHOLDS, ...thresholds }), [thresholds])
 
   const { percentage, colorState } = useMemo(() => {
-    if (budgetLimit <= 0) return { percentage: 0, colorState: 'safe' as ColorState }
+    // Handle NaN and invalid values
+    const safeCurrentSpend = isNaN(currentSpend) || !isFinite(currentSpend) ? 0 : currentSpend
+    const safeBudgetLimit = isNaN(budgetLimit) || !isFinite(budgetLimit) || budgetLimit <= 0 ? 1 : budgetLimit
 
-    const pct = Math.max(0, (currentSpend / budgetLimit) * 100) // Don't allow negative percentages
+    if (safeBudgetLimit <= 0) return { percentage: 0, colorState: 'safe' as ColorState }
+
+    let pct = (safeCurrentSpend / safeBudgetLimit) * 100
+
+    // Handle NaN, Infinity, and negative values
+    if (isNaN(pct) || !isFinite(pct)) {
+      pct = 0
+    } else {
+      pct = Math.max(0, pct) // Don't allow negative percentages
+    }
+
     let state: ColorState = 'safe'
 
     if (pct >= mergedThresholds.danger) {
@@ -324,6 +363,16 @@ export const BudgetGaugeMini = ({
     danger: 'bg-red-500',
   }
 
+  // Safe currency formatting with error handling
+  const safeFormatCurrency = (amount: number): string => {
+    try {
+      return formatCurrency(amount)
+    } catch (error) {
+      console.warn('formatCurrency error in BudgetGaugeMini:', error)
+      return `$${amount.toFixed(1)}`
+    }
+  }
+
   return (
     <div className={cn('flex items-center gap-2', className)}>
       <div className="flex-1 h-2 rounded-full overflow-hidden bg-background-tertiary">
@@ -338,7 +387,7 @@ export const BudgetGaugeMini = ({
         />
       </div>
       <span className="text-xs text-foreground-secondary whitespace-nowrap">
-        {formatCurrency(currentSpend)} / {formatCurrency(budgetLimit)}
+        {safeFormatCurrency(currentSpend)} / {safeFormatCurrency(budgetLimit)}
       </span>
     </div>
   )

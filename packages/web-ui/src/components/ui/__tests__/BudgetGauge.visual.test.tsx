@@ -39,15 +39,17 @@ describe('BudgetGauge - Visual Rendering Tests', () => {
 
       sizes.forEach(({ size, expectedWidth, expectedStrokeWidth }) => {
         const { container } = render(
-          <BudgetGauge
-            currentSpend={750}
-            budgetLimit={1000}
-            size={size}
-            data-testid={`gauge-${size}`}
-          />
+          <div data-testid={`test-container-${size}`}>
+            <BudgetGauge
+              currentSpend={750}
+              budgetLimit={1000}
+              size={size}
+              data-testid={`gauge-${size}`}
+            />
+          </div>
         )
 
-        const svg = screen.getByRole('img')
+        const svg = container.querySelector('svg[role="img"]')
         expect(svg).toHaveAttribute('width', expectedWidth.toString())
         expect(svg).toHaveAttribute('height', expectedWidth.toString())
 
@@ -322,13 +324,15 @@ describe('BudgetGauge - Visual Rendering Tests', () => {
         },
       ]
 
-      testCases.forEach(({ currentSpend, budgetLimit, expectedText, shouldHaveAlert }) => {
-        render(
-          <BudgetGauge currentSpend={currentSpend} budgetLimit={budgetLimit} />
+      testCases.forEach(({ currentSpend, budgetLimit, expectedText, shouldHaveAlert }, index) => {
+        const { container } = render(
+          <div data-testid={`status-test-${index}`}>
+            <BudgetGauge currentSpend={currentSpend} budgetLimit={budgetLimit} />
+          </div>
         )
 
-        const statusText = screen.getByText(expectedText)
-        expect(statusText).toBeInTheDocument()
+        const statusText = container.querySelector(`[data-testid="status-test-${index}"] span`)
+        expect(statusText).toHaveTextContent(expectedText)
 
         if (shouldHaveAlert) {
           expect(statusText).toHaveAttribute('role', 'alert')
@@ -381,12 +385,14 @@ describe('BudgetGaugeMini - Visual Rendering Tests', () => {
         { currentSpend: 1250, budgetLimit: 1000, expectedWidth: '100%' }, // Should cap at 100%
       ]
 
-      testCases.forEach(({ currentSpend, budgetLimit, expectedWidth }) => {
+      testCases.forEach(({ currentSpend, budgetLimit, expectedWidth }, index) => {
         const { container } = render(
-          <BudgetGaugeMini currentSpend={currentSpend} budgetLimit={budgetLimit} />
+          <div data-testid={`mini-width-test-${index}`}>
+            <BudgetGaugeMini currentSpend={currentSpend} budgetLimit={budgetLimit} />
+          </div>
         )
 
-        const progressBar = screen.getByRole('progressbar')
+        const progressBar = container.querySelector(`[data-testid="mini-width-test-${index}"] [role="progressbar"]`)
         expect(progressBar).toHaveStyle({ width: expectedWidth })
       })
     })
@@ -398,12 +404,14 @@ describe('BudgetGaugeMini - Visual Rendering Tests', () => {
         { currentSpend: 950, expectedClass: 'bg-red-500' },
       ]
 
-      colorStates.forEach(({ currentSpend, expectedClass }) => {
-        render(
-          <BudgetGaugeMini currentSpend={currentSpend} budgetLimit={1000} />
+      colorStates.forEach(({ currentSpend, expectedClass }, index) => {
+        const { container } = render(
+          <div data-testid={`mini-color-test-${index}`}>
+            <BudgetGaugeMini currentSpend={currentSpend} budgetLimit={1000} />
+          </div>
         )
 
-        const progressBar = screen.getByRole('progressbar')
+        const progressBar = container.querySelector(`[data-testid="mini-color-test-${index}"] [role="progressbar"]`)
         expect(progressBar).toHaveClass(expectedClass)
       })
     })
