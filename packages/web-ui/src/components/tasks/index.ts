@@ -11,5 +11,8 @@ export { LogViewer } from './LogViewer'
 
 export { SubtaskList } from './SubtaskList'
 
+export { SubtaskTree } from './SubtaskTree'
+export type { SubtaskTreeProps, SubtaskTreeNode } from './SubtaskTree'
+
 export { TaskDependencyGraph } from './TaskDependencyGraph'
 export type { TaskDependencyGraphProps } from './TaskDependencyGraph'

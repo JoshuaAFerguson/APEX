@@ -163,3 +163,10 @@ export function getProgressVariant(status: TaskStatus): 'default' | 'success' | 
       return 'default'
   }
 }
+
+/**
+ * Format a number as a percentage string
+ */
+export function formatPercentage(value: number, precision: number = 1): string {
+  return `${(value * 100).toFixed(precision)}%`
+}

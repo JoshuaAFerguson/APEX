@@ -27,3 +27,6 @@ export type { RadioGroupProps, RadioProps, RadioOption } from './RadioGroup'
 
 export { BudgetGauge, BudgetGaugeMini } from './BudgetGauge'
 export type { BudgetGaugeProps, BudgetGaugeMiniProps, BudgetGaugeThresholds, ColorState } from './BudgetGauge'
+
+export { WebSocketConnectionIndicator, WebSocketConnectionTooltip, useWebSocketConnection } from '../connection'
+export type { WebSocketConnectionIndicatorProps, WebSocketConnectionTooltipProps, WebSocketConnectionStatus, WebSocketConnectionHealth } from '../connection'
