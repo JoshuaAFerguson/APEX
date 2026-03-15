@@ -24,7 +24,7 @@ export default mergeConfig(
       setupFiles: ['../../test-setup.ts'],
 
       // Pool configuration for better async handling
-      pool: 'threads',
+      pool: 'forks',
       maxConcurrency: 5,
 
       // Package-specific coverage configuration

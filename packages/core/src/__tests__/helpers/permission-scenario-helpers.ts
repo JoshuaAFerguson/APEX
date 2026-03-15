@@ -291,14 +291,14 @@ export class PermissionScenarioHelpers {
         ...(options?.includeNestedScopeTests ? [
           { scope: baseScope + '/a/b/c/d/e', expectedAllowed: true, description: 'Deep nested path' },
           { scope: baseScope + '/../../escape', expectedAllowed: false, description: 'Path traversal attempt' },
-          { scope: baseScope + '/symlink/../target', expectedAllowed: false, description: 'Symlink traversal', riskLevel: 'high' },
+          { scope: baseScope + '/symlink/../target', expectedAllowed: false, description: 'Symlink traversal', riskLevel: 'high' as const },
         ] : []),
 
         // Edge cases
         { scope: '', expectedAllowed: false, description: 'Empty scope' },
-        { scope: '/', expectedAllowed: false, description: 'Root scope', riskLevel: 'critical' },
+        { scope: '/', expectedAllowed: false, description: 'Root scope', riskLevel: 'critical' as const },
         { scope: baseScope + '/node_modules', expectedAllowed: true, description: 'Common directory' },
-        { scope: baseScope + '/.env', expectedAllowed: false, description: 'Sensitive file', riskLevel: 'high' },
+        { scope: baseScope + '/.env', expectedAllowed: false, description: 'Sensitive file', riskLevel: 'high' as const },
       ],
       ...options,
     };
@@ -482,13 +482,6 @@ export class PermissionScenarioHelpers {
       expiry: config.expirationMs ? new Date(now.getTime() + config.expirationMs) : undefined,
       grantedBy: config.grantContext?.agentName || 'test-system',
       grantReason: config.grantContext?.reason || `Granted for testing purposes`,
-      context: {
-        taskId: config.grantContext?.taskId,
-        riskLevel: riskAssessment.level,
-        riskScore: riskAssessment.score,
-      },
-      usageCount: 0,
-      lastUsed: undefined,
       tags: ['test', 'scenario'],
     };
 
@@ -552,7 +545,7 @@ export class PermissionScenarioHelpers {
     mockManager: MockToolPermissionManager;
     testScenarios: Array<{
       name: string;
-      testCase: () => ToolPermissionResult;
+      testCase: () => ToolPermissionResult | Promise<ToolPermissionResult>;
       expectedResult: Partial<ToolPermissionResult>;
     }>;
   } {
@@ -749,8 +742,8 @@ export class PermissionScenarioHelpers {
           resolution: 'deny', // Most restrictive wins
         }],
         testCases: [
-          { tool: 'Write', scope: '/src/app.ts', expectedResult: { allowed: true, level: 'allow-always' } },
-          { tool: 'Write', scope: '/src/sensitive/secret.ts', expectedResult: { allowed: false, level: 'deny' } },
+          { tool: 'Write', scope: '/src/app.ts', expectedResult: { allowed: true, level: 'allow-always', requiresConfirmation: false } },
+          { tool: 'Write', scope: '/src/sensitive/secret.ts', expectedResult: { allowed: false, level: 'deny', requiresConfirmation: false } },
         ],
       },
 
@@ -767,8 +760,8 @@ export class PermissionScenarioHelpers {
           resolution: 'allow-once', // More specific scope wins
         }],
         testCases: [
-          { tool: 'Read', scope: '/docs/readme.md', expectedResult: { allowed: true, level: 'allow-always' } },
-          { tool: 'Read', scope: '/docs/api/endpoints.md', expectedResult: { allowed: true, level: 'allow-once' } },
+          { tool: 'Read', scope: '/docs/readme.md', expectedResult: { allowed: true, level: 'allow-always', requiresConfirmation: false } },
+          { tool: 'Read', scope: '/docs/api/endpoints.md', expectedResult: { allowed: true, level: 'allow-once', requiresConfirmation: false } },
         ],
       },
 
@@ -783,12 +776,12 @@ export class PermissionScenarioHelpers {
         ],
         expectedConflicts: [],
         testCases: [
-          { tool: 'Read', scope: '/any/file.ts', expectedResult: { allowed: true, level: 'allow-always' } },
-          { tool: 'Write', scope: '/tmp/output.log', expectedResult: { allowed: true, level: 'allow-once' } },
-          { tool: 'Write', scope: '/src/app.ts', expectedResult: { allowed: false, level: null } },
-          { tool: 'Bash', expectedResult: { allowed: false, level: 'deny' } },
-          { tool: 'Git', scope: 'status', expectedResult: { allowed: true, level: 'allow-always' } },
-          { tool: 'Git', scope: 'push', expectedResult: { allowed: false, level: null } },
+          { tool: 'Read', scope: '/any/file.ts', expectedResult: { allowed: true, level: 'allow-always', requiresConfirmation: false } },
+          { tool: 'Write', scope: '/tmp/output.log', expectedResult: { allowed: true, level: 'allow-once', requiresConfirmation: false } },
+          { tool: 'Write', scope: '/src/app.ts', expectedResult: { allowed: false, level: null, requiresConfirmation: false } },
+          { tool: 'Bash', expectedResult: { allowed: false, level: 'deny', requiresConfirmation: false } },
+          { tool: 'Git', scope: 'status', expectedResult: { allowed: true, level: 'allow-always', requiresConfirmation: false } },
+          { tool: 'Git', scope: 'push', expectedResult: { allowed: false, level: null, requiresConfirmation: false } },
         ],
       },
 
@@ -806,9 +799,9 @@ export class PermissionScenarioHelpers {
           resolution: 'allow-once', // Valid permission wins
         }],
         testCases: [
-          { tool: 'API', scope: 'api.example.com', expectedResult: { allowed: true, level: 'allow-once' } },
-          { tool: 'API', scope: 'api.malicious.com', expectedResult: { allowed: false, level: 'deny' } },
-          { tool: 'API', scope: 'api.unknown.com', expectedResult: { allowed: false, level: null } },
+          { tool: 'API', scope: 'api.example.com', expectedResult: { allowed: true, level: 'allow-once', requiresConfirmation: false } },
+          { tool: 'API', scope: 'api.malicious.com', expectedResult: { allowed: false, level: 'deny', requiresConfirmation: false } },
+          { tool: 'API', scope: 'api.unknown.com', expectedResult: { allowed: false, level: null, requiresConfirmation: false } },
         ],
       },
     ];
@@ -955,13 +948,13 @@ export class PermissionScenarioHelpers {
       Read: 'filesystem',
       Write: 'filesystem',
       Edit: 'filesystem',
-      Bash: 'execution',
-      Shell: 'execution',
-      Git: 'version-control',
-      API: 'network',
-      WebFetch: 'network',
+      Bash: 'shell',
+      Shell: 'shell',
+      Git: 'system',
+      API: 'web',
+      WebFetch: 'web',
     };
-    return categoryMap[tool] || 'other';
+    return categoryMap[tool] || 'custom';
   }
 
   private getToolPermission(tool: string): ToolPermission {
@@ -971,11 +964,11 @@ export class PermissionScenarioHelpers {
       Edit: 'write',
       Bash: 'execute',
       Shell: 'execute',
-      Git: 'version-control',
-      API: 'network-access',
-      WebFetch: 'network-access',
+      Git: 'execute',
+      API: 'network',
+      WebFetch: 'network',
     };
-    return permissionMap[tool] || 'other';
+    return permissionMap[tool] || 'read';
   }
 
   private getScopePermissionLevel(scope: string, config: ToolPermissionMockConfig): PermissionLevel {

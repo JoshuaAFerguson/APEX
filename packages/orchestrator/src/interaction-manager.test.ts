@@ -489,7 +489,7 @@ describe('InteractionManager', () => {
           status: 'in-progress',
           files: {
             created: [],
-            modified: [],
+            modified: ['src/test.ts'], // extractFileChanges puts files in modified when artifact.name doesn't include 'created'
           },
           usage: taskWithArtifacts.usage,
           artifactCount: 2,

@@ -146,22 +146,31 @@ export interface MockPermissionHandle {
 }
 
 /**
+ * Mocked Permissions API interface
+ * Extends native PermissionAPI while adding mock-specific capabilities
+ */
+export interface MockedPermissionsAPI {
+  /** Query a permission using descriptor or mock descriptor */
+  query(descriptor: PermissionDescriptor | MockPermissionDescriptor): Promise<MockPermissionStatus>;
+
+  /** Mock-specific property to identify mocked permissions */
+  readonly isMocked: true;
+
+  /** Reference to the original permissions API (stored during mocking) */
+  readonly _original?: Permissions;
+
+  /** Access to the mock handle from the navigator object */
+  readonly _mockHandle?: MockPermissionHandle;
+}
+
+/**
  * Extended Navigator interface with mocked permissions
  * Used internally to type the navigator object with mocking support
+ * Note: Uses composition to avoid LSP violations with the native PermissionsAPI
  */
-export interface NavigatorWithMockedPermissions extends Navigator {
-  permissions: {
-    query(descriptor: PermissionDescriptor | MockPermissionDescriptor): Promise<MockPermissionStatus>;
-
-    /** Mock-specific property to identify mocked permissions */
-    readonly isMocked: true;
-
-    /** Reference to the original permissions API (stored during mocking) */
-    readonly _original?: Navigator['permissions'];
-
-    /** Access to the mock handle from the navigator object */
-    readonly _mockHandle?: MockPermissionHandle;
-  };
+export interface NavigatorWithMockedPermissions extends Omit<Navigator, 'permissions'> {
+  /** Mocked permissions API */
+  readonly permissions: MockedPermissionsAPI;
 }
 
 /**
@@ -175,12 +184,13 @@ export function isMockPermissionStatus(
 
 /**
  * Type guard to check if navigator.permissions is mocked
+ * Uses a type assertion since we're checking runtime behavior
  */
 export function isPermissionsMocked(
-  navigator: Navigator
+  navigator: Navigator | NavigatorWithMockedPermissions
 ): navigator is NavigatorWithMockedPermissions {
   return 'permissions' in navigator &&
          navigator.permissions &&
          'isMocked' in navigator.permissions &&
-         navigator.permissions.isMocked === true;
+         (navigator.permissions as any).isMocked === true;
 }

@@ -46,7 +46,8 @@
 import { vi } from 'vitest';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createTestContext, type TestContext } from './test-context.js';
+import { createTestContext } from './test-context.js';
+import type { TestContext } from './types.js';
 import { createResourceLock, type ResourceLock } from './isolation-utils.js';
 
 // ============================================================================

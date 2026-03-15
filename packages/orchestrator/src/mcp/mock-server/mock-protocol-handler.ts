@@ -7,11 +7,6 @@
  * @module orchestrator/mcp/mock-server/mock-protocol-handler
  */
 
-import type {
-  MockMCPServerConfig,
-  MockBehaviorConfig,
-  MockToolHandler,
-} from '@apexcli/core';
 import {
   type JSONRPCMessage,
   type JSONRPCRequest,
@@ -26,6 +21,9 @@ import {
 } from '../types.js';
 import { MockBehaviorEngine } from './mock-behavior-engine.js';
 import type {
+  MockMCPServerConfig,
+  MockBehaviorConfig,
+  MockToolHandler,
   ProtocolState,
   RecordedRequest,
   RecordedNotification,

@@ -1,0 +1,22 @@
+{
+  "fileNaming": "mixed",
+  "functionNaming": "mixed",
+  "variableNaming": "mixed",
+  "classNaming": "mixed",
+  "indentation": {
+    "type": "mixed"
+  },
+  "imports": {
+    "style": "mixed",
+    "quotes": "mixed"
+  },
+  "documentation": {
+    "style": "inline",
+    "coverage": 20
+  },
+  "formatting": {
+    "lineLength": 100,
+    "semicolons": "required",
+    "quotes": "mixed"
+  }
+}

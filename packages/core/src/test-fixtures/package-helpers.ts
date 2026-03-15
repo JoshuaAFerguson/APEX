@@ -6,7 +6,8 @@
  */
 
 import { vi } from 'vitest';
-import { createTestSuite, type SetupTeardownHooks } from './setup-teardown.js';
+import { createTestSuite } from './setup-teardown.js';
+import type { SetupTeardownHooks } from './types.js';
 
 /**
  * Creates a test suite optimized for CLI package tests

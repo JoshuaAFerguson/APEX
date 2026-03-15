@@ -237,17 +237,17 @@ export function createIsolatedEventEmitter<
 
   // Wrap emit to capture history
   const originalEmit = emitter.emit.bind(emitter);
-  (emitter as EventEmitter<T>).emit = function <K extends keyof T>(
-    event: K,
-    ...args: Parameters<T[K]>
+  (emitter as any).emit = function (
+    event: string | symbol,
+    ...args: any[]
   ): boolean {
     eventHistory.push({
       event: String(event),
       args: [...args],
       timestamp: Date.now(),
     });
-    return originalEmit(event, ...args);
-  } as EventEmitter<T>['emit'];
+    return (originalEmit as any)(event, ...args);
+  };
 
   return {
     emitter,
@@ -269,16 +269,16 @@ export function createIsolatedEventEmitter<
     ): Promise<Parameters<T[K]>> => {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-          emitter.off(event, handler);
+          (emitter as any).off(event, handler);
           reject(new Error(`Timeout waiting for event: ${String(event)}`));
         }, timeout);
 
-        const handler = (...args: Parameters<T[K]>) => {
+        const handler = (...args: any[]) => {
           clearTimeout(timer);
-          resolve(args);
+          resolve(args as Parameters<T[K]>);
         };
 
-        emitter.once(event, handler as T[K]);
+        (emitter as any).once(event, handler);
       });
     },
 

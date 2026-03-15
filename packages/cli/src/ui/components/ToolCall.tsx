@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
 import type { DisplayMode } from '@apexcli/core';
 import { formatDuration } from '@apexcli/core';
+import { useElapsedTime } from '../hooks/useElapsedTime.js';
 
 export interface ToolCallProps {
   toolName: string;
@@ -12,6 +13,7 @@ export interface ToolCallProps {
   duration?: number;
   collapsed?: boolean;
   displayMode?: DisplayMode;
+  startTime?: Date; // Add optional startTime prop for real-time elapsed time
 }
 
 export function ToolCall({
@@ -22,7 +24,12 @@ export function ToolCall({
   duration,
   collapsed = false,
   displayMode = 'normal',
+  startTime,
 }: ToolCallProps): React.ReactElement {
+  // Use hook for real-time elapsed time during running status
+  const elapsedTime = useElapsedTime(
+    status === 'running' ? startTime : null
+  );
   const getStatusIcon = () => {
     switch (status) {
       case 'pending':
@@ -56,15 +63,17 @@ export function ToolCall({
 
   const formatInput = (input: Record<string, unknown>): string => {
     // Show a brief summary of the input
-    const keys = Object.keys(input);
+    const keys = Object.keys(input).slice(0, 5); // Limit keys reviewed
     if (keys.length === 0) return '';
 
     const firstKey = keys[0];
+    // Sanitize key to prevent terminal injection
+    const sanitizedKey = firstKey.replace(/[^\w\-:]/g, '_').substring(0, 30);
     const firstValue = input[firstKey];
 
     if (typeof firstValue === 'string') {
       const truncated = firstValue.length > 50 ? firstValue.slice(0, 50) + '...' : firstValue;
-      return `${firstKey}: "${truncated}"`;
+      return `${sanitizedKey}: "${truncated}"`;
     }
 
     return `${keys.length} params`;
@@ -90,6 +99,11 @@ export function ToolCall({
         {input && (
           <Text color="gray" dimColor>
             {formatInput(input)}
+          </Text>
+        )}
+        {status === 'running' && startTime && (
+          <Text color="gray" dimColor>
+            ({elapsedTime})
           </Text>
         )}
         {duration !== undefined && status !== 'running' && (
@@ -118,6 +132,11 @@ export function ToolCall({
         {input && (
           <Text color="gray" dimColor>
             {formatInput(input)}
+          </Text>
+        )}
+        {status === 'running' && startTime && (
+          <Text color="gray" dimColor>
+            ({elapsedTime})
           </Text>
         )}
         {duration !== undefined && status !== 'running' && (

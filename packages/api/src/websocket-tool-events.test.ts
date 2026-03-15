@@ -92,12 +92,14 @@ vi.mock('@apexcli/orchestrator', () => {
 
     // Tool event simulation methods
     simulateToolStart(taskId: string, toolName: string, input: Record<string, unknown>) {
+      const timestamp = new Date();
       const event = {
         taskId,
         toolName,
         input,
-        timestamp: new Date(),
-        callId: `call_${Date.now()}`
+        timestamp,
+        callId: `call_${Date.now()}`,
+        startTime: timestamp // Add explicit startTime field
       };
       this.emit('tool:start', event);
     }

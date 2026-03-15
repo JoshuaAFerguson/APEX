@@ -1,0 +1,168 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Packages to benchmark (comma-separated or "all")'
+        required: false
+        default: 'all'
+
+env:
+  CI: true
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+        working-directory: packages/browser
+
+      - name: Run all benchmarks
+        if: ${{ github.event.inputs.packages == 'all' || github.event.inputs.packages == '' }}
+        run: npm run benchmark
+        timeout-minutes: 30
+        continue-on-error: true
+        id: benchmark-all
+
+      - name: Run browser benchmarks
+        if: ${{ contains(github.event.inputs.packages, 'browser') }}
+        run: npm run benchmark:browser
+        timeout-minutes: 15
+        continue-on-error: true
+        id: benchmark-browser
+
+      - name: Run core benchmarks
+        if: ${{ contains(github.event.inputs.packages, 'core') }}
+        run: npm run benchmark:core
+        timeout-minutes: 10
+        continue-on-error: true
+        id: benchmark-core
+
+      - name: Run orchestrator benchmarks
+        if: ${{ contains(github.event.inputs.packages, 'orchestrator') }}
+        run: npm run benchmark:orchestrator
+        timeout-minutes: 10
+        continue-on-error: true
+        id: benchmark-orchestrator
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ matrix.node-version }}
+          path: |
+            benchmark-results.json
+            packages/*/benchmark-results.json
+          retention-days: 30
+
+      - name: Check thresholds
+        run: npm run benchmark:check
+        continue-on-error: true
+        id: threshold-check
+
+      - name: Create benchmark summary
+        if: always()
+        run: |
+          echo "## Performance Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Environment" >> $GITHUB_STEP_SUMMARY
+          echo "- Node.js: ${{ matrix.node-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- OS: ubuntu-latest" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f benchmark-results.json ]; then
+            echo "### Results Summary" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            cat benchmark-results.json | head -100 >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## 📊 Performance Benchmark Results\n\n';
+
+            // Check for threshold failures
+            const thresholdPassed = '${{ steps.threshold-check.outcome }}' === 'success';
+
+            if (thresholdPassed) {
+              body += '✅ All benchmarks passed threshold checks.\n\n';
+            } else {
+              body += '⚠️ Some benchmarks may have exceeded thresholds. Check the workflow logs for details.\n\n';
+            }
+
+            body += `**Commit:** \`${{ github.sha }}\`\n`;
+            body += `**Node.js:** ${{ matrix.node-version }}\n\n`;
+            body += 'See [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for full details.';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  compare-baseline:
+    name: Compare with Baseline
+    runs-on: ubuntu-latest
+    needs: benchmark
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download current results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results-20.x
+          path: current-results
+
+      - name: Download baseline results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: benchmark-results-20.x
+          path: baseline-results
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.pull_request.base.sha }}
+
+      - name: Compare results
+        if: success()
+        run: |
+          echo "## Baseline Comparison" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Comparison with main branch baseline will be displayed here." >> $GITHUB_STEP_SUMMARY

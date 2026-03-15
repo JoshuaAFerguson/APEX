@@ -151,7 +151,7 @@ export function createTestSuite(config: TestSuiteConfig = {}): SetupTeardownHook
     // Setup fake timers if requested
     if (useFakeTimers) {
       vi.useFakeTimers();
-      globalTestEnvironment.cleanupTasks.push(() => vi.useRealTimers());
+      globalTestEnvironment.cleanupTasks.push(() => { vi.useRealTimers(); });
     }
 
     // Setup mocks if requested
@@ -165,7 +165,7 @@ export function createTestSuite(config: TestSuiteConfig = {}): SetupTeardownHook
     }
 
     // Set default timeout
-    vi.setTimeout(timeout);
+    vi.setConfig({ testTimeout: timeout });
   };
 
   const teardownHook = async () => {
@@ -223,7 +223,7 @@ export async function setupTestMocks(config: MockConfig): Promise<void> {
   // Mock timers
   if (mockTimers) {
     vi.useFakeTimers();
-    addCleanupTask(() => vi.useRealTimers());
+    addCleanupTask(() => { vi.useRealTimers(); });
   }
 
   // Setup custom mocks
@@ -240,7 +240,7 @@ export async function setupTestMocks(config: MockConfig): Promise<void> {
     Object.entries(mockData.envVars).forEach(([key, value]) => {
       vi.stubEnv(key, value);
     });
-    addCleanupTask(() => vi.unstubAllEnvs());
+    addCleanupTask(() => { vi.unstubAllEnvs(); });
   }
 }
 
@@ -254,7 +254,7 @@ export function setupFileSystemMocks(fileData: Record<string, string>): void {
     return {
       ...actual,
       readFile: vi.fn().mockImplementation(async (filePath: string) => {
-        const normalizedPath = typeof filePath === 'string' ? filePath : filePath.toString();
+        const normalizedPath = String(filePath);
         if (fileData[normalizedPath]) {
           return fileData[normalizedPath];
         }
@@ -265,7 +265,7 @@ export function setupFileSystemMocks(fileData: Record<string, string>): void {
       unlink: vi.fn().mockResolvedValue(undefined),
       readdir: vi.fn().mockResolvedValue([]),
       stat: vi.fn().mockImplementation(async (filePath: string) => {
-        const normalizedPath = typeof filePath === 'string' ? filePath : filePath.toString();
+        const normalizedPath = String(filePath);
         if (fileData[normalizedPath]) {
           return {
             isFile: () => true,
@@ -416,7 +416,7 @@ export async function advanceTimers(ms: number): Promise<void> {
 /**
  * Creates a spy on a module function
  */
-export function createModuleSpy<T>(
+export function createModuleSpy<T extends (...args: any[]) => any>(
   modulePath: string,
   functionName: string,
   implementation?: T

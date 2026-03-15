@@ -413,7 +413,7 @@ export class LoadingStateFixture implements ILoadingStateFixture {
     // Set up fake timers if requested
     if (config.useFakeTimers) {
       vi.useFakeTimers();
-      this.addCleanupTask(() => vi.useRealTimers());
+      this.addCleanupTask(() => { vi.useRealTimers(); });
     }
 
     // Create initial browser state based on loading scenario
@@ -1020,26 +1020,3 @@ export function createMultiLoadingFixture(scenarios: LoadingScenario[]) {
 
 // Main exports
 export { LoadingStateFixture as default };
-
-// Type exports for external use
-export type {
-  ILoadingStateFixture,
-  LoadingFixtureConfig,
-  LoadingFixtureState,
-  LoadingScenario,
-  LoadingOptions,
-  LoadingResult,
-  PendingRequest,
-  LoadingProgress,
-  LoadingStep,
-};
-
-// Preset configurations
-export { LOADING_SCENARIOS };
-
-// Integration helpers
-export {
-  createLoadingFixtureHooks,
-  withLoadingFixture,
-  createMultiLoadingFixture,
-};

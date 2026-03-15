@@ -469,6 +469,7 @@ function createHunks(diff: Change[], context: number): Hunk[] {
 
   // Convert diff to lines with line numbers
   diff.forEach(change => {
+    if (!change.value) return; // Skip empty or undefined values
     const content = change.value.replace(/\n$/, ''); // Remove trailing newline
     const changeLines = content.split('\n');
 

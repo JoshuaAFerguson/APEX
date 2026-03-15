@@ -27,7 +27,7 @@ import type {
   MockMalformedResponseConfig,
   MockNetworkConditions,
   MockErrorScenarioPreset,
-} from '@apexcli/core';
+} from './types.js';
 import { MockMCPServerFacade } from './mock-server-facade.js';
 import { MockMCPServer } from './mock-mcp-server.js';
 

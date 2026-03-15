@@ -13,31 +13,35 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 // Mock child_process for git commands
-vi.mock('child_process', () => ({
-  exec: vi.fn((cmd: string, opts: unknown, callback?: unknown) => {
-    if (typeof opts === 'function') {
-      callback = opts;
-    }
-    const cb = callback as (error: Error | null, result?: { stdout: string }) => void;
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    exec: vi.fn((cmd: string, opts: unknown, callback?: unknown) => {
+      if (typeof opts === 'function') {
+        callback = opts;
+      }
+      const cb = callback as (error: Error | null, result?: { stdout: string }) => void;
 
-    // Mock git worktree commands
-    if (cmd.includes('git worktree add')) {
-      cb(null, { stdout: '' });
-    } else if (cmd.includes('git worktree list --porcelain')) {
-      cb(null, { stdout: 'worktree /tmp/test-project\nHEAD abcd1234\nbranch refs/heads/main\n' });
-    } else if (cmd.includes('git worktree remove')) {
-      cb(null, { stdout: '' });
-    } else if (cmd.includes('git worktree prune')) {
-      cb(null, { stdout: '' });
-    } else if (cmd.includes('gh --version')) {
-      cb(null, { stdout: 'gh version 2.0.0' });
-    } else if (cmd.includes('git remote get-url origin')) {
-      cb(null, { stdout: 'https://github.com/test/repo.git' });
-    } else {
-      cb(null, { stdout: '' });
-    }
-  }),
-}));
+      // Mock git worktree commands
+      if (cmd.includes('git worktree add')) {
+        cb(null, { stdout: '' });
+      } else if (cmd.includes('git worktree list --porcelain')) {
+        cb(null, { stdout: 'worktree /tmp/test-project\nHEAD abcd1234\nbranch refs/heads/main\n' });
+      } else if (cmd.includes('git worktree remove')) {
+        cb(null, { stdout: '' });
+      } else if (cmd.includes('git worktree prune')) {
+        cb(null, { stdout: '' });
+      } else if (cmd.includes('gh --version')) {
+        cb(null, { stdout: 'gh version 2.0.0' });
+      } else if (cmd.includes('git remote get-url origin')) {
+        cb(null, { stdout: 'https://github.com/test/repo.git' });
+      } else {
+        cb(null, { stdout: '' });
+      }
+    }),
+  };
+});
 
 const mockedQuery = vi.mocked(query);
 const mockedExec = vi.mocked(exec);

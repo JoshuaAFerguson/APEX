@@ -506,16 +506,14 @@ class BrowserTool {
             throw new core_1.ApexError('Cannot launch browser: BrowserTool instance has been destroyed', core_1.ApexErrorCode.BROWSER_SESSION_INVALID, {
                 sessionId: this.sessionId,
                 operation: 'ensurePage',
-                state: this.state,
-                metadata: { resourceState: this.resourceState }
+                metadata: { state: this.state, resourceState: this.resourceState }
             });
         }
         if (this.state === 'cleaning_up') {
             throw new core_1.ApexError('Cannot launch browser: BrowserTool instance is currently cleaning up', core_1.ApexErrorCode.BROWSER_SESSION_INVALID, {
                 sessionId: this.sessionId,
                 operation: 'ensurePage',
-                state: this.state,
-                metadata: { resourceState: this.resourceState }
+                metadata: { state: this.state, resourceState: this.resourceState }
             });
         }
         // If already active, return existing page
@@ -1783,9 +1781,9 @@ class BrowserTool {
             // If cleanup fails, throw a resource leak error instead
             throw new core_1.ApexError(`Permission denied for ${operation} and subsequent resource cleanup failed`, core_1.ApexErrorCode.BROWSER_RESOURCE_LEAK, {
                 operation,
-                target,
                 sessionId: this.sessionId,
                 metadata: {
+                    target,
                     originalDenialReason: denialReason,
                     resourceState: this.resourceState,
                     cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)

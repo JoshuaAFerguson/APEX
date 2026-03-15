@@ -6,13 +6,18 @@ import { TaskStore } from './store';
 import { ThoughtCapture } from '@apexcli/core';
 
 // Mock fs module
-vi.mock('fs', () => ({
-  promises: {
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-    mkdir: vi.fn(),
-  },
-}));
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    default: actual,
+    promises: {
+      readFile: vi.fn(),
+      writeFile: vi.fn(),
+      mkdir: vi.fn(),
+    },
+  };
+});
 
 // Mock TaskStore
 vi.mock('./store', () => ({

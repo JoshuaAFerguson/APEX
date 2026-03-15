@@ -22,6 +22,9 @@ import {
   ApprovalDeniedEventData,
   AutoFixEvent,
   MCPInstallation,
+  safeSerialize,
+  truncatePayload,
+  serializeMCPError,
 } from '@apexcli/core';
 import {
   ApexOrchestrator,
@@ -29,7 +32,13 @@ import {
   HealthMonitor,
   ToolCallStartEvent,
   ToolCallProgressEvent,
-  ToolCallCompleteEvent
+  ToolCallCompleteEvent,
+  MCPErrorEventData,
+  MCPConnectionEventData,
+  MCPDisconnectionEventData,
+  MCPReconnectingEventData,
+  MCPHealthCheckEventData,
+  MCPStateChangeEventData,
 } from '@apexcli/orchestrator';
 
 import { registerScreenshotRoutes } from './routes/screenshot.js';
@@ -295,7 +304,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // ============================================================================
 
   app.get('/health', async () => {
-    return { status: 'ok', version: '0.1.0' };
+    return { status: 'ok', version: '0.6.0' };
   });
 
   // Comprehensive daemon health endpoint
@@ -574,15 +583,19 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         return reply.status(404).send({ error: 'Task not found' });
       }
 
-      // Handle paused tasks
+      // Handle paused tasks — await to report actual outcome
       if (task.status === 'paused') {
-        const resumed = await orchestrator.resumePausedTask(id);
-        if (!resumed) {
-          return reply.status(500).send({
-            error: 'Failed to resume task. Check if the task has a valid checkpoint.'
-          });
+        try {
+          const resumed = await orchestrator.resumePausedTask(id);
+          if (resumed) {
+            return { ok: true, message: 'Task resume initiated', taskId: id };
+          }
+          return reply.status(409).send({ ok: false, error: 'Task could not be resumed', taskId: id });
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          app.log.error(`Task ${id} resume failed: ${message}`);
+          return reply.status(500).send({ ok: false, error: `Resume failed: ${message}`, taskId: id });
         }
-        return { ok: true, message: 'Task resumed from paused state', taskId: id };
       }
 
       // Handle pending tasks (subtasks that were never started)
@@ -2006,7 +2019,7 @@ function broadcast(taskId: string, event: ApexEvent): void {
   const taskClients = clients.get(taskId);
   if (!taskClients) return;
 
-  const message = JSON.stringify(event);
+  const message = safeSerialize(event);
   for (const client of taskClients) {
     // Check if client has event filters and if this event should be sent
     if (client.eventFilters && !client.eventFilters.has(event.type)) {
@@ -2093,11 +2106,20 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
   });
 
   orchestrator.on('agent:tool-use', (taskId: string, tool: string, input: unknown) => {
+    const truncatedData = truncatePayload({
+      tool,
+      input,
+    }, {
+      maxArrayItems: 1000,
+      maxStringLength: 50 * 1024,
+    });
+
     broadcast(taskId, {
       type: 'agent:tool-use',
       taskId,
       timestamp: new Date(),
-      data: { tool, input },
+      data: truncatedData.data,
+      _truncation: truncatedData._truncation,
     });
   });
 
@@ -2115,11 +2137,12 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     broadcast(event.taskId, {
       type: 'tool:start',
       taskId: event.taskId,
-      timestamp: new Date(),
+      timestamp: event.timestamp,
       data: {
         toolName: event.toolName,
         input: event.input,
         callId: event.callId,
+        startTime: event.startTime.toISOString(), // Include startTime in data
       },
     });
   });
@@ -2128,7 +2151,7 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
     broadcast(event.taskId, {
       type: 'tool:progress',
       taskId: event.taskId,
-      timestamp: new Date(),
+      timestamp: event.timestamp,
       data: {
         toolName: event.toolName,
         callId: event.callId,
@@ -2138,16 +2161,26 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
   });
 
   orchestrator.on('tool:complete', (event: ToolCallCompleteEvent) => {
+    const truncatedData = truncatePayload({
+      toolName: event.toolName,
+      callId: event.callId,
+      result: event.result,
+      timing: {
+        startTime: event.timing.startTime.toISOString(), // Serialize startTime
+        endTime: event.timing.endTime.toISOString(),     // Serialize endTime
+        duration: event.timing.duration,
+      },
+    }, {
+      maxArrayItems: 1000,
+      maxStringLength: 50 * 1024,
+    });
+
     broadcast(event.taskId, {
       type: 'tool:complete',
       taskId: event.taskId,
-      timestamp: new Date(),
-      data: {
-        toolName: event.toolName,
-        callId: event.callId,
-        result: event.result,
-        timing: event.timing,
-      },
+      timestamp: event.timestamp,
+      data: truncatedData.data,
+      _truncation: truncatedData._truncation,
     });
   });
 
@@ -2596,6 +2629,225 @@ function setupEventBroadcasting(orchestrator: ApexOrchestrator): void {
         reason: eventData.reason,
         comment: eventData.comment,
         timestamp: eventData.timestamp,
+      },
+    });
+  });
+
+  // MCP Connection Lifecycle Events (v0.6.0) - Real-time MCP server monitoring
+  // These events use a special 'mcp-events' taskId channel for global MCP server status
+
+  orchestrator.on('mcp:connected', (eventData: MCPConnectionEventData) => {
+    broadcast('mcp-events', {
+      type: 'mcp:connected',
+      taskId: 'mcp-events',
+      timestamp: eventData.timestamp,
+      data: {
+        serverId: eventData.serverId,
+        serverName: eventData.serverName,
+        config: eventData.config,
+        connectedAt: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('mcp:disconnected', (eventData: MCPDisconnectionEventData) => {
+    broadcast('mcp-events', {
+      type: 'mcp:disconnected',
+      taskId: 'mcp-events',
+      timestamp: eventData.timestamp,
+      data: {
+        serverId: eventData.serverId,
+        serverName: eventData.serverName,
+        reason: eventData.reason,
+        disconnectedAt: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('mcp:error', (eventData: MCPErrorEventData) => {
+    // Use enhanced MCP error serialization for safe transmission
+    const serializedError = serializeMCPError({
+      message: eventData.error,
+      name: eventData.code || 'MCPError',
+      code: eventData.code,
+      category: eventData.category,
+      recoverable: eventData.recoverable,
+      stack: eventData.stack,
+      metadata: eventData.metadata,
+    });
+
+    broadcast('mcp-events', {
+      type: 'mcp:error',
+      taskId: 'mcp-events',
+      timestamp: eventData.timestamp,
+      data: {
+        serverId: eventData.serverId,
+        serverName: eventData.serverName,
+        error: serializedError,
+        recovery: eventData.recovery,
+        errorOccurredAt: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('mcp:reconnecting', (eventData: MCPReconnectingEventData) => {
+    broadcast('mcp-events', {
+      type: 'mcp:reconnecting',
+      taskId: 'mcp-events',
+      timestamp: eventData.timestamp,
+      data: {
+        serverId: eventData.serverId,
+        serverName: eventData.serverName,
+        attempt: eventData.attempt,
+        maxAttempts: eventData.maxAttempts,
+        reconnectingAt: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('mcp:health-check', (eventData: MCPHealthCheckEventData) => {
+    broadcast('mcp-events', {
+      type: 'mcp:health-check',
+      taskId: 'mcp-events',
+      timestamp: eventData.timestamp,
+      data: {
+        serverId: eventData.serverId,
+        serverName: eventData.serverName,
+        success: eventData.success,
+        latencyMs: eventData.latencyMs,
+        error: eventData.error,
+        consecutiveFailures: eventData.consecutiveFailures,
+        isHealthy: eventData.isHealthy,
+        checkedAt: eventData.timestamp,
+      },
+    });
+  });
+
+  orchestrator.on('mcp:state-change', (eventData: MCPStateChangeEventData) => {
+    broadcast('mcp-events', {
+      type: 'mcp:state-change',
+      taskId: 'mcp-events',
+      timestamp: eventData.timestamp,
+      data: {
+        serverId: eventData.serverId,
+        serverName: eventData.serverName,
+        previousState: eventData.previousState,
+        newState: eventData.newState,
+        stateChangedAt: eventData.timestamp,
+      },
+    });
+  });
+
+  // MCP Installation Events (v0.6.0) - Real-time MCP server installation monitoring
+  // These events use 'mcp-installation' taskId channel for MCP server installation status
+  // NOTE: These event types will be properly defined in OrchestratorEvents interface when orchestrator is updated
+
+  (orchestrator as any).on('mcp:install-start', (event: any) => {
+    broadcast('mcp-installation', {
+      type: 'mcp:install-start' as any,
+      taskId: 'mcp-installation',
+      timestamp: event.timestamp || new Date(),
+      data: {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        stage: event.stage,
+        progress: event.progress,
+        message: event.message,
+      },
+    });
+  });
+
+  (orchestrator as any).on('mcp:install-progress', (event: any) => {
+    broadcast('mcp-installation', {
+      type: 'mcp:install-progress' as any,
+      taskId: 'mcp-installation',
+      timestamp: event.timestamp || new Date(),
+      data: {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        stage: event.stage,
+        progress: event.progress,
+        message: event.message,
+      },
+    });
+  });
+
+  (orchestrator as any).on('mcp:install-complete', (event: any) => {
+    broadcast('mcp-installation', {
+      type: 'mcp:install-complete' as any,
+      taskId: 'mcp-installation',
+      timestamp: event.timestamp || new Date(),
+      data: {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        stage: event.stage,
+        progress: event.progress,
+        message: event.message,
+        config: event.config,
+      },
+    });
+  });
+
+  (orchestrator as any).on('mcp:install-error', (event: any) => {
+    broadcast('mcp-installation', {
+      type: 'mcp:install-error' as any,
+      taskId: 'mcp-installation',
+      timestamp: event.timestamp || new Date(),
+      data: {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        stage: event.stage,
+        progress: event.progress,
+        message: event.message,
+        error: event.error,
+      },
+    });
+  });
+
+  // MCP Uninstallation Events (v0.6.0)
+
+  (orchestrator as any).on('mcp:uninstall-start', (event: any) => {
+    broadcast('mcp-installation', {
+      type: 'mcp:uninstall-start' as any,
+      taskId: 'mcp-installation',
+      timestamp: event.timestamp || new Date(),
+      data: {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        stage: event.stage,
+        progress: event.progress,
+        message: event.message,
+      },
+    });
+  });
+
+  (orchestrator as any).on('mcp:uninstall-complete', (event: any) => {
+    broadcast('mcp-installation', {
+      type: 'mcp:uninstall-complete' as any,
+      taskId: 'mcp-installation',
+      timestamp: event.timestamp || new Date(),
+      data: {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        stage: event.stage,
+        progress: event.progress,
+        message: event.message,
+      },
+    });
+  });
+
+  (orchestrator as any).on('mcp:uninstall-error', (event: any) => {
+    broadcast('mcp-installation', {
+      type: 'mcp:uninstall-error' as any,
+      taskId: 'mcp-installation',
+      timestamp: event.timestamp || new Date(),
+      data: {
+        serverId: event.serverId,
+        serverName: event.serverName,
+        stage: event.stage,
+        progress: event.progress,
+        message: event.message,
+        error: event.error,
       },
     });
   });

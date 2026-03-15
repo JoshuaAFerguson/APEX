@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, act } from '../../__tests__/test-utils';
+import { render as rawRender } from '@testing-library/react';
 import { ThemeProvider, useTheme, ThemeContext } from '../ThemeContext';
 import { darkTheme, lightTheme } from '../../themes';
 
@@ -79,7 +80,7 @@ describe('ThemeContext', () => {
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       expect(() => {
-        render(<TestComponent />);
+        rawRender(<TestComponent />);
       }).toThrow('useTheme must be used within a ThemeProvider');
 
       consoleError.mockRestore();
@@ -196,7 +197,7 @@ describe('ThemeContext', () => {
     });
 
     it('colors are valid hex/color values', () => {
-      const colorPattern = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$|^[a-z]+$/;
+      const colorPattern = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$|^[a-zA-Z]+$/;
 
       Object.values(darkTheme.colors).forEach(colorValue => {
         if (typeof colorValue === 'string') {

@@ -402,37 +402,72 @@ export async function loadAgents(
  * ```
  */
 export function parseAgentMarkdown(content: string): AgentDefinition | null {
-  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  try {
+    // Remove UTF-8 BOM if present
+    const cleanContent = content.replace(/^\uFEFF/, '');
 
-  if (!frontmatterMatch) {
+    // Normalize line endings to \n for consistent parsing
+    const normalizedContent = cleanContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // More flexible frontmatter regex that handles whitespace around delimiters
+    const frontmatterMatch = normalizedContent.match(/^\s*---\s*\n([\s\S]*?)\n\s*---\s*\n([\s\S]*)$/);
+
+    if (!frontmatterMatch) {
+      return null;
+    }
+
+    const [, frontmatter, body] = frontmatterMatch;
+
+    // Parse YAML frontmatter
+    let metadata;
+    try {
+      metadata = yaml.parse(frontmatter);
+    } catch (yamlError) {
+      // Invalid YAML should return null
+      return null;
+    }
+
+    // Validate that metadata is an object
+    if (!metadata || typeof metadata !== 'object') {
+      return null;
+    }
+
+    // Parse tools from comma-separated string if needed
+    let tools = metadata.tools;
+    if (typeof tools === 'string') {
+      if (tools.trim() === '') {
+        tools = undefined;
+      } else {
+        tools = tools.split(',').map((t: string) => t.trim()).filter(Boolean);
+      }
+    }
+
+    // Parse skills from comma-separated string if needed
+    let skills = metadata.skills;
+    if (typeof skills === 'string') {
+      if (skills.trim() === '') {
+        skills = undefined;
+      } else {
+        skills = skills.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+    }
+
+    const agentDef = {
+      name: metadata.name,
+      description: metadata.description,
+      prompt: body.trim(),
+      tools,
+      model: metadata.model,
+      skills,
+    };
+
+    // Use safeParse to handle validation errors gracefully
+    const result = AgentDefinitionSchema.safeParse(agentDef);
+    return result.success ? result.data : null;
+  } catch (error) {
+    // Any unexpected error should return null
     return null;
   }
-
-  const [, frontmatter, body] = frontmatterMatch;
-  const metadata = yaml.parse(frontmatter);
-
-  // Parse tools from comma-separated string if needed
-  let tools = metadata.tools;
-  if (typeof tools === 'string') {
-    tools = tools.split(',').map((t: string) => t.trim());
-  }
-
-  // Parse skills from comma-separated string if needed
-  let skills = metadata.skills;
-  if (typeof skills === 'string') {
-    skills = skills.split(',').map((s: string) => s.trim());
-  }
-
-  const agentDef = {
-    name: metadata.name,
-    description: metadata.description,
-    prompt: body.trim(),
-    tools,
-    model: metadata.model,
-    skills,
-  };
-
-  return AgentDefinitionSchema.parse(agentDef);
 }
 
 /**
@@ -1101,6 +1136,15 @@ export function getEffectiveConfig(config: ApexConfig): Required<ApexConfig> {
       planning: config.models?.planning || 'opus',
       implementation: config.models?.implementation || 'sonnet',
       review: config.models?.review || 'haiku',
+    },
+    providers: {
+      primary: config.providers?.primary || 'anthropic',
+      configs: config.providers?.configs || {
+        anthropic: { enabled: true, authMethod: 'oauth' },
+        openai: { enabled: true, authMethod: 'openauth' },
+        gemini: { enabled: true, authMethod: 'oauth' },
+        agnostic: { enabled: true, authMethod: 'api_key' },
+      },
     },
     gates: config.gates || [],
     git: {

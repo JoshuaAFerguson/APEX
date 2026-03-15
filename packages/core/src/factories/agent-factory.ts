@@ -7,6 +7,7 @@ import type {
   AgentModel,
   AgentTool,
   AgentMessage,
+  AgentContentBlock,
   AgentAutonomyOverride,
 } from '../types.js';
 
@@ -76,12 +77,8 @@ When implementing features:
 // ============================================================================
 
 export interface AgentMessageOverrides {
-  role?: 'user' | 'assistant';
-  content?: string;
-  timestamp?: Date;
-  agent?: string;
-  stage?: string;
-  metadata?: Record<string, unknown>;
+  type?: 'assistant' | 'user' | 'system';
+  content?: AgentContentBlock[];
 }
 
 /**
@@ -89,16 +86,8 @@ export interface AgentMessageOverrides {
  */
 export function createAgentMessage(overrides: AgentMessageOverrides = {}): AgentMessage {
   const defaults: AgentMessage = {
-    role: 'assistant',
-    content: 'I understand the requirements and will begin implementation.',
-    timestamp: new Date(),
-    agent: 'developer',
-    stage: 'implementation',
-    metadata: {
-      confidence: 0.9,
-      thinking: 'The user wants me to create a login component with validation.',
-      toolsUsed: ['Read', 'Write'],
-    },
+    type: 'assistant',
+    content: [{ type: 'text', text: 'I understand the requirements and will begin implementation.' }],
   };
 
   return { ...defaults, ...overrides };
@@ -109,11 +98,9 @@ export function createAgentMessage(overrides: AgentMessageOverrides = {}): Agent
 // ============================================================================
 
 export interface AgentAutonomyOverrideOverrides {
-  agent?: string;
-  level?: 'full' | 'supervised' | 'ask-first';
-  reason?: string;
-  expiresAt?: Date;
-  createdAt?: Date;
+  level?: 'full-auto' | 'review-before-commit' | 'review-all';
+  approvalTimeout?: number;
+  rejectionBehavior?: 'abort' | 'skip';
 }
 
 /**
@@ -121,11 +108,8 @@ export interface AgentAutonomyOverrideOverrides {
  */
 export function createAgentAutonomyOverride(overrides: AgentAutonomyOverrideOverrides = {}): AgentAutonomyOverride {
   const defaults: AgentAutonomyOverride = {
-    agent: 'developer',
-    level: 'supervised',
-    reason: 'Working in production environment - require approval for changes',
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-    createdAt: new Date(),
+    level: 'review-before-commit',
+    approvalTimeout: 60,
   };
 
   return { ...defaults, ...overrides };
@@ -332,10 +316,8 @@ export function createAgentConversation(length: number = 5): AgentMessage[] {
 
   // Start with user message
   messages.push(createAgentMessage({
-    role: 'user',
-    content: 'Please implement a login component with form validation.',
-    agent: undefined,
-    stage: undefined,
+    type: 'user',
+    content: [{ type: 'text', text: 'Please implement a login component with form validation.' }],
   }));
 
   for (let i = 0; i < length; i++) {
@@ -343,11 +325,8 @@ export function createAgentConversation(length: number = 5): AgentMessage[] {
     const stage = ['planning', 'implementation', 'testing', 'review'][i % 4];
 
     messages.push(createAgentMessage({
-      role: 'assistant',
-      content: `As the ${agent} agent, I'll handle the ${stage} phase of this request.`,
-      agent,
-      stage,
-      timestamp: new Date(Date.now() + i * 60000), // 1 minute apart
+      type: 'assistant',
+      content: [{ type: 'text', text: `As the ${agent} agent, I'll handle the ${stage} phase of this request.` }],
     }));
   }
 

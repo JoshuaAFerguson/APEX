@@ -14,12 +14,15 @@ import type {
 // ============================================================================
 
 export interface WorkflowGateOverrides {
-  type?: 'approval' | 'checkpoint' | 'condition';
-  condition?: string;
-  timeout?: number;
-  approvers?: string[];
+  id?: string;
+  name?: string;
+  description?: string;
+  trigger?: string;
+  required?: boolean;
   autoApprove?: boolean;
-  metadata?: Record<string, unknown>;
+  approvers?: string[];
+  timeout?: number;
+  tags?: string[];
 }
 
 /**
@@ -27,16 +30,15 @@ export interface WorkflowGateOverrides {
  */
 export function createWorkflowGate(overrides: WorkflowGateOverrides = {}): WorkflowGate {
   const defaults: WorkflowGate = {
-    type: 'approval',
-    condition: 'stage.success && coverage >= 80',
-    timeout: 3600000, // 1 hour in milliseconds
-    approvers: ['tech-lead@company.com', 'senior-dev@company.com'],
+    id: `gate_${Date.now()}`,
+    name: 'Code Review Gate',
+    description: 'Code review required before production deployment',
+    trigger: 'stage:implementation:completed',
+    required: true,
     autoApprove: false,
-    metadata: {
-      description: 'Code review required before production deployment',
-      severity: 'high',
-      category: 'quality-gate',
-    },
+    approvers: ['tech-lead@company.com', 'senior-dev@company.com'],
+    timeout: 60, // 60 minutes
+    tags: ['quality-gate'],
   };
 
   return { ...defaults, ...overrides };
@@ -52,15 +54,12 @@ export interface WorkflowStageOverrides {
   description?: string;
   dependsOn?: string[];
   parallel?: boolean;
-  optional?: boolean;
-  retryable?: boolean;
+  inputs?: string[];
+  outputs?: string[];
+  condition?: string;
+  actions?: string[];
+  gate?: string | null;
   maxRetries?: number;
-  timeout?: number;
-  onFailure?: 'stop' | 'continue' | 'retry';
-  gates?: WorkflowGate[];
-  tools?: string[];
-  environment?: Record<string, string>;
-  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -73,22 +72,7 @@ export function createWorkflowStage(overrides: WorkflowStageOverrides = {}): Wor
     description: 'Implement the requested feature according to specifications',
     dependsOn: ['planning'],
     parallel: false,
-    optional: false,
-    retryable: true,
-    maxRetries: 3,
-    timeout: 1800000, // 30 minutes
-    onFailure: 'stop',
-    gates: [],
-    tools: ['Read', 'Write', 'Edit', 'Bash'],
-    environment: {
-      NODE_ENV: 'development',
-      LOG_LEVEL: 'info',
-    },
-    metadata: {
-      category: 'development',
-      estimatedDuration: 900000, // 15 minutes
-      requiredSkills: ['typescript', 'testing'],
-    },
+    maxRetries: 2,
   };
 
   return { ...defaults, ...overrides };
@@ -99,23 +83,9 @@ export function createWorkflowStage(overrides: WorkflowStageOverrides = {}): Wor
 // ============================================================================
 
 export interface IsolationConfigOverrides {
-  enabled?: boolean;
-  type?: 'process' | 'container' | 'vm';
-  resources?: {
-    cpu?: number;
-    memory?: string;
-    storage?: string;
-  };
-  network?: {
-    isolated?: boolean;
-    allowedHosts?: string[];
-    ports?: number[];
-  };
-  filesystem?: {
-    readOnly?: string[];
-    writable?: string[];
-    mount?: Record<string, string>;
-  };
+  mode?: 'full' | 'worktree' | 'shared';
+  cleanupOnComplete?: boolean;
+  preserveOnFailure?: boolean;
 }
 
 /**
@@ -123,26 +93,9 @@ export interface IsolationConfigOverrides {
  */
 export function createIsolationConfig(overrides: IsolationConfigOverrides = {}): IsolationConfig {
   const defaults: IsolationConfig = {
-    enabled: true,
-    type: 'container',
-    resources: {
-      cpu: 2,
-      memory: '4Gi',
-      storage: '10Gi',
-    },
-    network: {
-      isolated: true,
-      allowedHosts: ['api.github.com', 'registry.npmjs.org'],
-      ports: [3000, 8080],
-    },
-    filesystem: {
-      readOnly: ['/usr', '/lib', '/bin'],
-      writable: ['/tmp', '/workspace'],
-      mount: {
-        '/workspace': '/host/project',
-        '/tmp': '/host/tmp',
-      },
-    },
+    mode: 'worktree',
+    cleanupOnComplete: true,
+    preserveOnFailure: false,
   };
 
   return { ...defaults, ...overrides };
@@ -155,19 +108,10 @@ export function createIsolationConfig(overrides: IsolationConfigOverrides = {}):
 export interface WorkflowDefinitionOverrides {
   name?: string;
   description?: string;
-  version?: string;
+  trigger?: string[];
   stages?: WorkflowStage[];
-  defaultAgent?: string;
+  gates?: WorkflowGate[];
   isolation?: IsolationConfig;
-  timeout?: number;
-  retryPolicy?: {
-    maxAttempts?: number;
-    backoffStrategy?: 'linear' | 'exponential' | 'fixed';
-    baseDelay?: number;
-  };
-  triggers?: string[];
-  outputs?: string[];
-  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -196,69 +140,52 @@ export function createWorkflow(overrides: WorkflowDefinitionOverrides = {}): Wor
   const defaults: WorkflowDefinition = {
     name: 'feature-development',
     description: 'Complete feature development workflow from planning to deployment',
-    version: '1.0.0',
+    trigger: ['api-change', 'feature-request'],
     stages: [
       createWorkflowStage({
         name: 'planning',
         agent: 'planner',
         description: 'Analyze requirements and create implementation plan',
         dependsOn: [],
-        tools: ['Read', 'Grep', 'WebSearch'],
       }),
       createWorkflowStage({
         name: 'architecture',
         agent: 'architect',
         description: 'Design system architecture and technical approach',
         dependsOn: ['planning'],
-        tools: ['Read', 'Write', 'Grep'],
       }),
       createWorkflowStage({
         name: 'implementation',
         agent: 'developer',
         description: 'Implement the feature according to specifications',
         dependsOn: ['architecture'],
-        tools: ['Read', 'Write', 'Edit', 'Bash', 'LSP'],
       }),
       createWorkflowStage({
         name: 'testing',
         agent: 'tester',
         description: 'Create and run comprehensive tests',
         dependsOn: ['implementation'],
-        tools: ['Read', 'Write', 'Edit', 'Bash'],
       }),
       createWorkflowStage({
         name: 'review',
         agent: 'reviewer',
         description: 'Review code for quality and security',
         dependsOn: ['testing'],
-        tools: ['Read', 'Grep'],
-        gates: [createWorkflowGate({ type: 'approval' })],
+        gate: 'approval-gate',
       }),
       createWorkflowStage({
         name: 'deployment',
         agent: 'devops',
         description: 'Deploy the feature to production',
         dependsOn: ['review'],
-        tools: ['Bash', 'Read'],
-        gates: [createWorkflowGate({ type: 'checkpoint' })],
+        gate: 'deployment-gate',
       }),
     ],
-    defaultAgent: 'developer',
+    gates: [
+      createWorkflowGate({ id: 'approval-gate', name: 'Approval Gate', trigger: 'stage:review:completed' }),
+      createWorkflowGate({ id: 'deployment-gate', name: 'Deployment Gate', trigger: 'stage:deployment:started' }),
+    ],
     isolation: createIsolationConfig(),
-    timeout: 3600000, // 1 hour
-    retryPolicy: {
-      maxAttempts: 3,
-      backoffStrategy: 'exponential',
-      baseDelay: 1000,
-    },
-    triggers: ['api-change', 'feature-request'],
-    outputs: ['code-changes', 'test-results', 'deployment-artifacts'],
-    metadata: {
-      category: 'development',
-      complexity: 'medium',
-      estimatedDuration: 2700000, // 45 minutes
-      requiredTools: ['Read', 'Write', 'Edit', 'Bash'],
-    },
   };
 
   return { ...defaults, ...overrides };
@@ -280,21 +207,14 @@ export function createCodeOnlyWorkflow(overrides: WorkflowDefinitionOverrides = 
         name: 'implementation',
         agent: 'developer',
         dependsOn: [],
-        tools: ['Read', 'Write', 'Edit'],
       }),
       createWorkflowStage({
         name: 'testing',
         agent: 'tester',
         dependsOn: ['implementation'],
-        tools: ['Bash', 'Read'],
       }),
     ],
-    timeout: 900000, // 15 minutes
-    metadata: {
-      category: 'development',
-      complexity: 'low',
-      estimatedDuration: 600000, // 10 minutes
-    },
+    gates: [],
     ...overrides,
   });
 }
@@ -312,29 +232,21 @@ export function createResearchWorkflow(overrides: WorkflowDefinitionOverrides = 
         agent: 'researcher',
         description: 'Research the topic and gather information',
         dependsOn: [],
-        tools: ['WebSearch', 'WebFetch', 'Read', 'Grep'],
       }),
       createWorkflowStage({
         name: 'analysis',
         agent: 'analyst',
         description: 'Analyze findings and create recommendations',
         dependsOn: ['investigation'],
-        tools: ['Read', 'Write'],
       }),
       createWorkflowStage({
         name: 'documentation',
         agent: 'technical-writer',
         description: 'Document research findings and recommendations',
         dependsOn: ['analysis'],
-        tools: ['Write', 'Edit'],
       }),
     ],
-    timeout: 1800000, // 30 minutes
-    metadata: {
-      category: 'research',
-      complexity: 'medium',
-      estimatedDuration: 1200000, // 20 minutes
-    },
+    gates: [],
     ...overrides,
   });
 }
@@ -352,34 +264,21 @@ export function createBugFixWorkflow(overrides: WorkflowDefinitionOverrides = {}
         agent: 'debugger',
         description: 'Investigate and diagnose the bug',
         dependsOn: [],
-        tools: ['Read', 'Grep', 'Bash'],
       }),
       createWorkflowStage({
         name: 'fix',
         agent: 'developer',
         description: 'Implement the bug fix',
         dependsOn: ['diagnosis'],
-        tools: ['Read', 'Write', 'Edit'],
       }),
       createWorkflowStage({
         name: 'verification',
         agent: 'tester',
         description: 'Verify the fix works and doesn\'t break anything',
         dependsOn: ['fix'],
-        tools: ['Bash', 'Read'],
       }),
     ],
-    timeout: 1800000, // 30 minutes
-    retryPolicy: {
-      maxAttempts: 2, // Bugs might need multiple attempts
-      backoffStrategy: 'linear',
-      baseDelay: 2000,
-    },
-    metadata: {
-      category: 'maintenance',
-      complexity: 'variable',
-      priority: 'high',
-    },
+    gates: [],
     ...overrides,
   });
 }
@@ -434,10 +333,6 @@ export function createWorkflows(count: number, baseOverrides: WorkflowDefinition
       name: `${template.name}-workflow-${index + 1}`,
       description: `${template.name} workflow with ${template.stageCount} stages`,
       stages,
-      metadata: {
-        template: template.name,
-        complexity: template.stageCount <= 2 ? 'low' : template.stageCount <= 4 ? 'medium' : 'high',
-      },
     });
   });
 }

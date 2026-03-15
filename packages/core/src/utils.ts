@@ -232,9 +232,17 @@ export function formatDuration(ms: number): string {
  * console.log(formatElapsed(new Date(Date.now() - 5000))); // '5s'
  * ```
  */
-export function formatElapsed(startTime: Date, currentTime: Date = new Date()): string {
+export function formatElapsed(startTime: Date, currentTime?: Date): string {
+  // Handle null/undefined inputs - if either is explicitly null (not just undefined), return 0s
+  if (!startTime || (arguments.length > 1 && currentTime == null)) {
+    return '0s';
+  }
+
+  // Assign default for undefined currentTime (but not null)
+  const actualCurrentTime = currentTime || new Date();
+
   const startMs = startTime?.getTime?.();
-  const currentMs = currentTime?.getTime?.();
+  const currentMs = actualCurrentTime?.getTime?.();
 
   if (!Number.isFinite(startMs) || !Number.isFinite(currentMs)) {
     return '0s';
@@ -634,20 +642,30 @@ export interface ConventionalCommit {
  * ```
  */
 export function parseConventionalCommit(message: string): ConventionalCommit | null {
+  // Handle null/undefined input
+  if (!message || typeof message !== 'string') return null;
+
   const match = message.match(
-    /^(\w+)(?:\(([^)]+)\))?(!)?:\s*(.+?)(?:\n\n([\s\S]*))?$/
+    /^([a-z]+)(?:\(([^)]+)\))?(!)?:\s*(.+?)(?:\n\n([\s\S]*))?$/
   );
 
   if (!match) return null;
 
   const [, type, scope, breaking, description, body] = match;
 
+  // Reject empty scope
+  if (scope !== undefined && scope.trim() === '') return null;
+
+  // Check for breaking change in body (BREAKING CHANGE: footer)
+  const isBreakingFromExclamation = !!breaking;
+  const isBreakingFromBody = body ? /\bBREAKING CHANGE:\s/.test(body) : false;
+
   return {
     type,
     scope: scope || undefined,
-    description,
+    description: description.trim(),
     body: body?.trim() || undefined,
-    breaking: !!breaking,
+    breaking: isBreakingFromExclamation || isBreakingFromBody,
   };
 }
 
@@ -1400,9 +1418,18 @@ export function parseGitLog(logOutput: string): GitLogEntry[] {
  * ```
  */
 export function groupCommitsByType(entries: GitLogEntry[]): ChangelogGroup[] {
+  // Input validation
+  if (!entries || !Array.isArray(entries)) {
+    return [];
+  }
+
   const groups = new Map<CommitType | 'other', GitLogEntry[]>();
 
   for (const entry of entries) {
+    // Skip invalid entries
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
     const type = entry.conventional?.type as CommitType;
     const groupType = type && type in COMMIT_TYPES ? type : 'other';
 
@@ -1486,6 +1513,17 @@ export function generateChangelogMarkdown(
     repoUrl?: string;
   }
 ): string {
+  // Input validation
+  if (!version || typeof version !== 'string') {
+    version = '0.0.0';
+  }
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+    date = new Date();
+  }
+  if (!groups || !Array.isArray(groups)) {
+    groups = [];
+  }
+
   const { includeHashes = true, includeAuthors = false, repoUrl } = options || {};
 
   let markdown = `## [${version}] - ${date.toISOString().split('T')[0]}\n\n`;
@@ -1499,19 +1537,28 @@ export function generateChangelogMarkdown(
     markdown += `### ${emoji} ${group.title}\n\n`;
 
     for (const commit of group.commits) {
-      const description = commit.conventional?.description || commit.message.split('\n')[0];
+      // Safely extract description with proper null checks
+      let description: string;
+      if (commit.conventional?.description) {
+        description = commit.conventional.description;
+      } else if (commit.message && typeof commit.message === 'string') {
+        description = commit.message.split('\n')[0];
+      } else {
+        description = '(no description)';
+      }
+
       const scope = commit.conventional?.scope ? `**${commit.conventional.scope}:** ` : '';
       const breaking = commit.conventional?.breaking ? '⚠️ BREAKING: ' : '';
 
       let line = `- ${breaking}${scope}${description}`;
 
-      if (includeHashes && repoUrl) {
+      if (includeHashes && repoUrl && commit.shortHash && commit.hash) {
         line += ` ([${commit.shortHash}](${repoUrl}/commit/${commit.hash}))`;
-      } else if (includeHashes) {
+      } else if (includeHashes && commit.shortHash) {
         line += ` (${commit.shortHash})`;
       }
 
-      if (includeAuthors) {
+      if (includeAuthors && commit.author) {
         line += ` - ${commit.author}`;
       }
 
@@ -1547,7 +1594,7 @@ export function generateChangelogMarkdown(
  */
 export function suggestCommitType(files: string[]): CommitType {
   const patterns: Array<{ pattern: RegExp; type: CommitType }> = [
-    { pattern: /\.test\.|\.spec\.|__tests__|\/tests?\//i, type: 'test' },
+    { pattern: /\.test\.|\.spec\.|__tests__|\/tests?\/|^tests?\//i, type: 'test' },
     { pattern: /\.md$|docs\//i, type: 'docs' },
     { pattern: /\.css$|\.scss$|\.less$|\.styled\./i, type: 'style' },
     { pattern: /package\.json$|yarn\.lock$|package-lock\.json$/i, type: 'build' },
@@ -1578,10 +1625,16 @@ export function suggestCommitType(files: string[]): CommitType {
     }
   }
 
-  // Default to 'feat' for new features or 'fix' if files suggest bug fixes
+  // Default to 'feat' for empty lists or unknown files, 'chore' only for specific misc file types
   if (maxCount === 0) {
-    const hasNewFiles = files.some((f) => !f.includes('/'));
-    return hasNewFiles ? 'feat' : 'chore';
+    // If no files or files that could be features, suggest 'feat'
+    // Only suggest 'chore' for clearly non-source files like config, data files
+    const hasMiscFiles = files.some((f) =>
+      /\.(txt|json|xml|yaml|yml|ini|conf|log|csv)$/i.test(f) ||
+      /config\//i.test(f) ||
+      /random.*file/i.test(f)
+    );
+    return hasMiscFiles ? 'chore' : 'feat';
   }
 
   return suggestedType;
@@ -1870,4 +1923,376 @@ export function truncateToolOutput(output: string, options: TruncateOptions = {}
     originalLength,
     truncatedLength: finalOutput.length,
   };
+}
+
+// ============================================================================
+// Payload Truncation for WebSocket Events
+// ============================================================================
+
+/**
+ * Configuration for payload truncation
+ */
+export interface TruncatePayloadOptions {
+  /** Maximum number of items in arrays (default: 1000) */
+  maxArrayItems?: number;
+  /** Maximum string length in bytes (default: 50KB = 51200) */
+  maxStringLength?: number;
+  /** Whether to include truncation metadata (default: true) */
+  includeMetadata?: boolean;
+}
+
+/**
+ * Metadata about truncation operations
+ */
+export interface TruncationMetadata {
+  /** Whether any truncation occurred */
+  truncated: boolean;
+  /** Details about what was truncated */
+  truncations: TruncationDetail[];
+}
+
+export interface TruncationDetail {
+  /** Path to truncated property (e.g., "data.output.items") */
+  path: string;
+  /** Type of truncation applied */
+  type: 'array' | 'string';
+  /** Original size before truncation */
+  originalSize: number;
+  /** Size after truncation */
+  truncatedSize: number;
+}
+
+/**
+ * Result of payload truncation
+ */
+export interface TruncatedPayload<T> {
+  /** The truncated data */
+  data: T;
+  /** Metadata about truncation operations */
+  _truncation?: TruncationMetadata;
+}
+
+/**
+ * Truncate payload data to prevent large WebSocket events from overwhelming clients.
+ *
+ * Recursively traverses the payload and truncates arrays and strings that exceed
+ * the configured limits. Returns the truncated data with optional metadata about
+ * what was truncated.
+ *
+ * @param payload - The payload data to truncate
+ * @param options - Configuration options for truncation limits
+ * @returns TruncatedPayload with the processed data and truncation metadata
+ *
+ * @example
+ * ```typescript
+ * const largePayload = {
+ *   items: new Array(2000).fill('item'),
+ *   description: 'A'.repeat(100000)
+ * };
+ *
+ * const result = truncatePayload(largePayload, {
+ *   maxArrayItems: 1000,
+ *   maxStringLength: 50 * 1024
+ * });
+ *
+ * console.log(result.data.items.length); // 1000
+ * console.log(result._truncation.truncated); // true
+ * console.log(result._truncation.truncations.length); // 2
+ * ```
+ */
+export function truncatePayload<T>(
+  payload: T,
+  options: TruncatePayloadOptions = {}
+): TruncatedPayload<T> {
+  const {
+    maxArrayItems = 1000,
+    maxStringLength = 50 * 1024,
+    includeMetadata = true,
+  } = options;
+
+  const truncations: TruncationDetail[] = [];
+  const seen = new WeakSet();
+
+  function truncateValue(value: unknown, path: string): unknown {
+    // Handle nullish values
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    // Handle strings
+    if (typeof value === 'string') {
+      if (value.length > maxStringLength) {
+        truncations.push({
+          path,
+          type: 'string',
+          originalSize: value.length,
+          truncatedSize: maxStringLength,
+        });
+        return value.slice(0, maxStringLength) + '... [truncated]';
+      }
+      return value;
+    }
+
+    // Handle primitives
+    if (typeof value !== 'object') {
+      return value;
+    }
+
+    // Handle circular references
+    if (seen.has(value as object)) {
+      return '[Circular]';
+    }
+    seen.add(value as object);
+
+    // Handle arrays
+    if (Array.isArray(value)) {
+      const originalLength = value.length;
+      const truncatedArray = value.slice(0, maxArrayItems);
+
+      if (originalLength > maxArrayItems) {
+        truncations.push({
+          path,
+          type: 'array',
+          originalSize: originalLength,
+          truncatedSize: maxArrayItems,
+        });
+      }
+
+      return truncatedArray.map((item, index) =>
+        truncateValue(item, `${path}[${index}]`)
+      );
+    }
+
+    // Handle objects
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = truncateValue(val, path ? `${path}.${key}` : key);
+    }
+    return result;
+  }
+
+  try {
+    const truncatedData = truncateValue(payload, '') as T;
+
+    if (includeMetadata && truncations.length > 0) {
+      return {
+        data: truncatedData,
+        _truncation: {
+          truncated: true,
+          truncations,
+        },
+      };
+    }
+
+    return { data: truncatedData };
+  } catch (error) {
+    // Fail-safe: return original payload if truncation fails
+    console.warn('Payload truncation failed, returning original:', error);
+    return { data: payload };
+  }
+}
+
+// ============================================================================
+// Safe JSON Serialization
+// ============================================================================
+
+/**
+ * Safely serialize objects to JSON, handling circular references with a WeakSet-based replacer.
+ * Circular references are replaced with '[Circular]' markers to prevent JSON.stringify errors.
+ *
+ * @param obj - The object to serialize
+ * @param space - Optional spacing for pretty-printing (passed to JSON.stringify)
+ * @returns JSON string with circular references replaced by '[Circular]' markers
+ *
+ * @example
+ * ```typescript
+ * const obj = { name: 'test' };
+ * obj.self = obj; // Creates circular reference
+ *
+ * const result = safeSerialize(obj);
+ * console.log(result); // '{"name":"test","self":"[Circular]"}'
+ *
+ * // With pretty printing
+ * const prettyResult = safeSerialize(obj, 2);
+ * // {
+ * //   "name": "test",
+ * //   "self": "[Circular]"
+ * // }
+ * ```
+ */
+export function safeSerialize(obj: any, space?: string | number): string {
+  const seen = new WeakSet();
+
+  try {
+    return JSON.stringify(obj, function(key, value) {
+      // Handle null and non-object values
+      if (value === null || typeof value !== 'object') {
+        return value;
+      }
+
+      // Special handling for the root object
+      if (key === '' && !seen.has(value)) {
+        seen.add(value);
+        return value;
+      }
+
+      // Check for circular reference
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+
+      // Add to seen set for future reference
+      seen.add(value);
+
+      return value;
+    }, space);
+  } catch (error) {
+    // Fallback for any unexpected serialization errors
+    return JSON.stringify({
+      error: 'Serialization failed',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+/**
+ * Interface for serialized MCP error data
+ */
+export interface SerializedMCPError {
+  /** Original error message */
+  message: string;
+  /** Error name/constructor */
+  name: string;
+  /** Error code (if available) */
+  code?: string;
+  /** Error category for UI handling */
+  category?: 'connection' | 'protocol' | 'transport' | 'timeout' | 'auth' | 'unknown';
+  /** Whether error is recoverable */
+  recoverable?: boolean;
+  /** Sanitized stack trace (dev mode only) */
+  stack?: string;
+  /** Underlying cause error (if any) */
+  cause?: {
+    message: string;
+    name: string;
+    stack?: string;
+  };
+  /** Additional error metadata */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Safely serialize MCP errors for transmission over WebSocket
+ * Handles Error objects, stack traces, and circular references
+ *
+ * @param error - The error to serialize (Error object, MCPErrorEventData, or any error-like object)
+ * @param includeStack - Whether to include stack traces (default: NODE_ENV !== 'production')
+ * @param sanitizeStack - Whether to sanitize file paths in stack traces (default: true)
+ * @returns Serialized error object safe for JSON transmission
+ *
+ * @example
+ * ```typescript
+ * const mcpError = new MCPTransportError('Connection failed', 'CONNECTION_FAILED');
+ * const serialized = serializeMCPError(mcpError);
+ * console.log(serialized);
+ * // {
+ * //   message: 'Connection failed',
+ * //   name: 'MCPTransportError',
+ * //   code: 'CONNECTION_FAILED',
+ * //   category: 'connection',
+ * //   recoverable: true,
+ * //   stack: '...' // In dev mode
+ * // }
+ * ```
+ */
+export function serializeMCPError(
+  error: any,
+  includeStack: boolean = process.env.NODE_ENV !== 'production',
+  sanitizeStack: boolean = true
+): SerializedMCPError {
+  // Handle null/undefined errors
+  if (!error) {
+    return {
+      message: 'Unknown error occurred',
+      name: 'UnknownError'
+    };
+  }
+
+  // Handle string errors
+  if (typeof error === 'string') {
+    return {
+      message: error,
+      name: 'StringError'
+    };
+  }
+
+  // Extract basic error properties
+  const serialized: SerializedMCPError = {
+    message: error.message || String(error),
+    name: error.name || error.constructor?.name || 'Error'
+  };
+
+  // Add error code if available
+  if (error.code) {
+    serialized.code = String(error.code);
+  }
+
+  // Add category and recoverable status if available
+  if (error.category) {
+    serialized.category = error.category;
+  }
+  if (typeof error.recoverable === 'boolean') {
+    serialized.recoverable = error.recoverable;
+  }
+
+  // Handle stack trace
+  if (includeStack && error.stack) {
+    let stack = String(error.stack);
+
+    if (sanitizeStack) {
+      // Remove absolute file paths for security
+      stack = stack.replace(/\/[^:\s]*\//g, '.../');
+      // Remove user home directory paths
+      stack = stack.replace(/\/Users\/[^\/]+/g, '/Users/***');
+      stack = stack.replace(/C:\\Users\\[^\\]+/g, 'C:\\Users\\***');
+    }
+
+    serialized.stack = stack;
+  }
+
+  // Handle cause error
+  if (error.cause) {
+    const cause = error.cause;
+    serialized.cause = {
+      message: cause.message || String(cause),
+      name: cause.name || cause.constructor?.name || 'Error'
+    };
+
+    if (includeStack && cause.stack) {
+      let causeStack = String(cause.stack);
+      if (sanitizeStack) {
+        causeStack = causeStack.replace(/\/[^:\s]*\//g, '.../');
+        causeStack = causeStack.replace(/\/Users\/[^\/]+/g, '/Users/***');
+        causeStack = causeStack.replace(/C:\\Users\\[^\\]+/g, 'C:\\Users\\***');
+      }
+      serialized.cause.stack = causeStack;
+    }
+  }
+
+  // Add additional metadata, excluding sensitive or circular data
+  if (error.metadata && typeof error.metadata === 'object') {
+    try {
+      // Use safeSerialize to handle circular references, then parse back
+      const metadataJson = safeSerialize(error.metadata);
+      serialized.metadata = JSON.parse(metadataJson);
+    } catch {
+      // If metadata can't be serialized, create a safe description
+      serialized.metadata = {
+        type: typeof error.metadata,
+        hasProperties: Object.keys(error.metadata).length > 0
+      };
+    }
+  }
+
+  return serialized;
 }

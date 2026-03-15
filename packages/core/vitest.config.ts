@@ -36,9 +36,11 @@ export default mergeConfig(
 
       // Parallel execution for faster testing
       pool: 'forks',
+      singleFork: false,
       poolOptions: {
         forks: {
-          singleFork: false,
+          maxForks: Math.max(2, Math.floor(require('os').cpus().length / 4)),
+          minForks: 1,
         },
       },
     },

@@ -184,13 +184,36 @@ async function isProcessRunningCrossPlatform(pid: number): Promise<boolean> {
  * @param pid - Process ID to terminate
  * @returns Promise<void>
  */
+/**
+ * Kill an entire process group using the negative PID trick.
+ * The daemon is forked with `detached: true`, giving it its own process group.
+ * Sending a signal to -pid kills every process in that group (children,
+ * grandchildren — including SDK `claude` subprocesses and Next.js servers).
+ * Falls back to killing just the single PID if the group kill fails.
+ */
+function killProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    // Kill the entire process group (negative PID)
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    // Process group kill failed (e.g., process is not a group leader).
+    // Fall back to killing just the process itself.
+    try {
+      process.kill(pid, signal);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 async function terminateProcessCrossPlatform(pid: number): Promise<void> {
   if (process.platform === 'win32') {
-    // On Windows, use taskkill for graceful termination
-    await execAsync(`taskkill /pid ${pid}`);
+    // On Windows, use taskkill with /T to kill the process tree
+    await execAsync(`taskkill /pid ${pid} /T`);
   } else {
-    // On Unix-like systems, use SIGTERM
-    process.kill(pid, 'SIGTERM');
+    killProcessGroup(pid, 'SIGTERM');
   }
 }
 
@@ -201,11 +224,10 @@ async function terminateProcessCrossPlatform(pid: number): Promise<void> {
  */
 async function forceKillProcessCrossPlatform(pid: number): Promise<void> {
   if (process.platform === 'win32') {
-    // On Windows, use taskkill with /f flag for force kill
-    await execAsync(`taskkill /f /pid ${pid}`);
+    // On Windows, use taskkill with /f and /T flags for force kill of tree
+    await execAsync(`taskkill /f /pid ${pid} /T`);
   } else {
-    // On Unix-like systems, use SIGKILL
-    process.kill(pid, 'SIGKILL');
+    killProcessGroup(pid, 'SIGKILL');
   }
 }
 

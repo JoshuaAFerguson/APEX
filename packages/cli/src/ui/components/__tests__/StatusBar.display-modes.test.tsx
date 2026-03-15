@@ -3,6 +3,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '../../__tests__/test-utils';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 
+// Mock useStdoutDimensions hook
+const useStdoutDimensionsMock = vi.hoisted(() =>
+  vi.fn(() => ({
+    width: 200,
+    height: 30,
+    breakpoint: 'wide' as const,
+    isNarrow: false,
+    isCompact: false,
+    isNormal: false,
+    isWide: true,
+    isAvailable: true,
+  }))
+);
+
+vi.mock('../../hooks/useStdoutDimensions', () => ({
+  useStdoutDimensions: useStdoutDimensionsMock,
+}));
+
 // Mock useStdout from ink
 vi.mock('ink', async () => {
   const actual = await vi.importActual('ink');
@@ -13,8 +31,13 @@ vi.mock('ink', async () => {
 });
 
 describe('StatusBar - Display Modes', () => {
+  // Use fixed dates for timer testing
+  const currentTime = new Date('2023-01-01T10:02:00Z'); // 2 minutes after start
+  const baseStartTime = new Date('2023-01-01T10:00:00Z');
+
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(currentTime); // Set system time to 2 minutes after start
   });
 
   afterEach(() => {
@@ -32,13 +55,14 @@ describe('StatusBar - Display Modes', () => {
     workflowStage: 'implementation',
     apiUrl: 'http://localhost:4000',
     webUrl: 'http://localhost:3000',
-    sessionStartTime: new Date(Date.now() - 120000), // 2 minutes ago
+    sessionStartTime: baseStartTime, // Fixed start time (2 minutes before currentTime)
     subtaskProgress: { completed: 3, total: 5 },
     sessionName: 'Test Session',
   };
 
   describe('Normal Mode (Default)', () => {
     it('should show all available information in normal mode', () => {
+      // Default mock already returns wide terminal (200 cols) - use it directly
       render(<StatusBar {...baseProps} displayMode="normal" />);
 
       // Should show all the detailed information
@@ -66,9 +90,16 @@ describe('StatusBar - Display Modes', () => {
     });
 
     it('should show complete layout in normal mode with wide terminal', () => {
-      // Mock wide terminal
-      vi.mocked(require('ink').useStdout).mockReturnValue({
-        stdout: { columns: 200 }
+      // Mock extra-wide terminal
+      useStdoutDimensionsMock.mockReturnValueOnce({
+        width: 250,
+        height: 50,
+        breakpoint: 'wide' as const,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+        isAvailable: true,
       });
 
       render(<StatusBar {...baseProps} displayMode="normal" />);
@@ -140,8 +171,10 @@ describe('StatusBar - Display Modes', () => {
 
     it('should handle compact mode in narrow terminal', () => {
       // Mock narrow terminal
-      vi.mocked(require('ink').useStdout).mockReturnValue({
-        stdout: { columns: 40 }
+      useStdoutDimensionsMock.mockReturnValueOnce({
+        width: 40,
+        height: 20,
+        breakpoint: 'narrow' as const,
       });
 
       render(<StatusBar {...baseProps} displayMode="compact" />);
@@ -183,8 +216,10 @@ describe('StatusBar - Display Modes', () => {
 
     it('should ignore terminal width constraints in verbose mode', () => {
       // Mock very narrow terminal
-      vi.mocked(require('ink').useStdout).mockReturnValue({
-        stdout: { columns: 30 }
+      useStdoutDimensionsMock.mockReturnValueOnce({
+        width: 30,
+        height: 10,
+        breakpoint: 'narrow' as const,
       });
 
       render(<StatusBar {...baseProps} displayMode="verbose" />);
@@ -301,8 +336,10 @@ describe('StatusBar - Display Modes', () => {
     });
 
     it('should handle missing terminal width in all modes', () => {
-      vi.mocked(require('ink').useStdout).mockReturnValue({
-        stdout: undefined
+      useStdoutDimensionsMock.mockReturnValue({
+        width: 80,
+        height: 24,
+        breakpoint: 'normal' as const,
       });
 
       ['normal', 'compact', 'verbose'].forEach(mode => {
@@ -353,18 +390,20 @@ describe('StatusBar - Display Modes', () => {
     });
 
     it('should maintain timer accuracy across mode changes', () => {
-      const startTime = new Date(Date.now() - 65000); // 1 minute 5 seconds ago
-      vi.setSystemTime(new Date());
+      // Use fixed dates: 1 minute 5 seconds elapsed
+      const timerStartTime = new Date('2023-01-01T10:00:00Z');
+      const timerCurrentTime = new Date('2023-01-01T10:01:05Z'); // 1 minute 5 seconds later
+      vi.setSystemTime(timerCurrentTime);
 
       const { rerender } = render(
-        <StatusBar {...baseProps} sessionStartTime={startTime} displayMode="normal" />
+        <StatusBar {...baseProps} sessionStartTime={timerStartTime} displayMode="normal" />
       );
 
       expect(screen.getByText('01:05')).toBeInTheDocument();
 
       // Switch to compact mode
       rerender(
-        <StatusBar {...baseProps} sessionStartTime={startTime} displayMode="compact" />
+        <StatusBar {...baseProps} sessionStartTime={timerStartTime} displayMode="compact" />
       );
 
       // Timer should not be shown in compact mode (shows branch and cost instead)
@@ -374,7 +413,7 @@ describe('StatusBar - Display Modes', () => {
 
       // Switch to verbose mode
       rerender(
-        <StatusBar {...baseProps} sessionStartTime={startTime} displayMode="verbose" />
+        <StatusBar {...baseProps} sessionStartTime={timerStartTime} displayMode="verbose" />
       );
 
       // Timer should still be accurate

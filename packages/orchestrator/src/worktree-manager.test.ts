@@ -18,15 +18,20 @@ vi.mock('@apexcli/core', () => ({
     prunable: 'prunable',
   },
 }));
-vi.mock('fs', () => ({
-  promises: {
-    mkdir: vi.fn(),
-    rm: vi.fn(),
-    access: vi.fn(),
-    stat: vi.fn(),
-    utimes: vi.fn(),
-  },
-}));
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    default: actual,
+    promises: {
+      mkdir: vi.fn(),
+      rm: vi.fn(),
+      access: vi.fn(),
+      stat: vi.fn(),
+      utimes: vi.fn(),
+    },
+  };
+});
 
 const mockExec = exec as any;
 const mockFs = fs as any;

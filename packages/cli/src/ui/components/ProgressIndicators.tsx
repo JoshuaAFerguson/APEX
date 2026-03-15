@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Text } from 'ink';
-import Spinner from 'ink-spinner';
+import InkSpinner from 'ink-spinner';
 import { useStdoutDimensions } from '../hooks/useStdoutDimensions.js';
 
 export interface ProgressBarProps {
@@ -8,7 +8,7 @@ export interface ProgressBarProps {
   width?: number;
   showPercentage?: boolean;
   label?: string;
-  color?: string;
+  color?: string | 'success' | 'warning' | 'error' | 'info';
   backgroundColor?: string;
   animated?: boolean;
   /** Enable responsive width adaptation (default: true) */
@@ -19,6 +19,10 @@ export interface ProgressBarProps {
   maxWidth?: number;
   /** Reserved space to account for in responsive calculations (default: 0) */
   reservedSpace?: number;
+  /** ARIA label for accessibility */
+  ariaLabel?: string;
+  /** Announce progress changes to screen readers */
+  announceChanges?: boolean;
 }
 
 /**
@@ -36,6 +40,8 @@ export function ProgressBar({
   minWidth = 10,
   maxWidth = 80,
   reservedSpace = 0,
+  ariaLabel,
+  announceChanges = false,
 }: ProgressBarProps): React.ReactElement {
   const { width: terminalWidth, breakpoint } = useStdoutDimensions();
 
@@ -105,12 +111,25 @@ export function ProgressBar({
     return () => clearInterval(interval);
   }, [progress, animated]); // removed animatedProgress to prevent loop
 
-  const clampedProgress = Math.max(0, Math.min(100, animatedProgress));
+  const clampedProgress = Math.max(0, Math.min(100, isNaN(progress) ? 0 : animatedProgress));
   const filledWidth = Math.floor((clampedProgress / 100) * calculatedWidth);
   const emptyWidth = calculatedWidth - filledWidth;
 
   const filled = '█'.repeat(filledWidth);
   const empty = '░'.repeat(emptyWidth);
+
+  // Map semantic color names to actual colors
+  const getProgressColor = (colorValue: string): string => {
+    switch (colorValue) {
+      case 'success': return 'green';
+      case 'warning': return 'yellow';
+      case 'error': return 'red';
+      case 'info': return 'blue';
+      default: return colorValue;
+    }
+  };
+
+  const progressColor = getProgressColor(color);
 
   return (
     <Box flexDirection="column">
@@ -118,10 +137,12 @@ export function ProgressBar({
         <Text>{label}</Text>
       )}
       <Box>
-        <Text color={color}>{filled}</Text>
+        <Text color={progressColor}>{filled}</Text>
         <Text color={backgroundColor}>{empty}</Text>
         {showPercentage && (
-          <Text color="gray"> {Math.round(clampedProgress)}%</Text>
+          <Text color={progressColor}>
+            {Math.round(clampedProgress)}%
+          </Text>
         )}
       </Box>
     </Box>
@@ -129,33 +150,93 @@ export function ProgressBar({
 }
 
 export interface CircularProgressProps {
-  progress: number; // 0-100
-  size?: number;
+  progress?: number; // 0-100
+  size?: 'small' | 'medium' | 'large' | number;
   showPercentage?: boolean;
   color?: string;
   backgroundColor?: string;
+  indeterminate?: boolean;
+  children?: React.ReactNode;
 }
 
 /**
  * Circular progress indicator
  */
 export function CircularProgress({
-  progress,
-  size = 8,
+  progress = 0,
+  size = 'medium',
   showPercentage = true,
   color = 'cyan',
   backgroundColor = 'gray',
+  indeterminate = false,
+  children,
 }: CircularProgressProps): React.ReactElement {
-  const clampedProgress = Math.max(0, Math.min(100, progress));
+  const [spinnerStep, setSpinnerStep] = useState(0);
   const steps = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  const stepIndex = Math.floor((clampedProgress / 100) * (steps.length - 1));
-  const spinner = steps[stepIndex];
+
+  useEffect(() => {
+    if (!indeterminate) return;
+
+    const interval = setInterval(() => {
+      setSpinnerStep(prev => (prev + 1) % steps.length);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [indeterminate, steps.length]);
+
+  const clampedProgress = Math.max(0, Math.min(100, progress));
+  const displayStep = indeterminate
+    ? steps[spinnerStep]
+    : steps[Math.floor((clampedProgress / 100) * (steps.length - 1))];
+
+  const getSizeClass = (sizeValue: 'small' | 'medium' | 'large' | number): string => {
+    if (typeof sizeValue === 'number') return '';
+    return sizeValue;
+  };
 
   return (
     <Box>
-      <Text color={color}>{spinner}</Text>
-      {showPercentage && (
-        <Text color="gray"> {Math.round(clampedProgress)}%</Text>
+      <Text color={color}>
+        {displayStep}
+      </Text>
+      {children ? (
+        <Box marginLeft={1}>{children}</Box>
+      ) : (
+        showPercentage && !indeterminate && (
+          <Text color="gray"> {Math.round(clampedProgress)}%</Text>
+        )
+      )}
+    </Box>
+  );
+}
+
+export interface SpinnerProps {
+  type?: 'dots' | 'line' | 'pipe' | 'star' | 'flip' | 'hamburger' | 'growVertical';
+  text?: string;
+  color?: string;
+  size?: 'small' | 'medium' | 'large';
+  hidden?: boolean;
+}
+
+/**
+ * Basic spinner component
+ */
+export function Spinner({
+  type = 'dots',
+  text,
+  color = 'cyan',
+  size = 'medium',
+  hidden = false,
+}: SpinnerProps): React.ReactElement | null {
+  if (hidden) return null;
+
+  return (
+    <Box>
+      <Text color={color}>
+        <InkSpinner type={type} />
+      </Text>
+      {text && (
+        <Text color="gray"> {text}</Text>
       )}
     </Box>
   );
@@ -228,7 +309,7 @@ export function SpinnerWithText({
   return (
     <Box>
       <Text color={color}>
-        <Spinner type={type} />
+        <InkSpinner type={type} />
       </Text>
       {displayText && (
         <Text color={textColor}> {displayText}</Text>
@@ -269,7 +350,7 @@ export function LoadingSpinner({
   return (
     <Box>
       <Text color={color}>
-        <Spinner type={type} />
+        <InkSpinner type={type} />
       </Text>
       {text && (
         <Text color="gray"> {text}</Text>
@@ -287,6 +368,12 @@ export interface StepProgressProps {
   orientation?: 'horizontal' | 'vertical';
   showDescriptions?: boolean;
   compact?: boolean;
+  currentStep?: number;
+  showIcons?: boolean;
+  showProgress?: boolean;
+  allowNavigation?: boolean;
+  onStepClick?: (index: number) => void;
+  ariaLabel?: string;
 }
 
 /**
@@ -297,20 +384,55 @@ export function StepProgress({
   orientation = 'vertical',
   showDescriptions = true,
   compact = false,
+  currentStep,
+  showIcons = false,
+  showProgress = false,
+  allowNavigation = false,
+  onStepClick,
+  ariaLabel,
 }: StepProgressProps): React.ReactElement {
-  const getStepIcon = (status: string): { icon: string; color: string } => {
+  const getStepIcon = (status: string, isShowIcons: boolean): { icon: string; color: string } => {
+    if (!isShowIcons) {
+      switch (status) {
+        case 'completed':
+          return { icon: '✅', color: 'green' };
+        case 'in-progress':
+          return { icon: '🔄', color: 'cyan' };
+        case 'failed':
+          return { icon: '❌', color: 'red' };
+        case 'skipped':
+          return { icon: '⏭️', color: 'yellow' };
+        default:
+          return { icon: '⚪', color: 'gray' };
+      }
+    }
+
     switch (status) {
       case 'completed':
-        return { icon: '✅', color: 'green' };
+        return { icon: '✓', color: 'green' };
       case 'in-progress':
-        return { icon: '🔄', color: 'cyan' };
+        return { icon: '●', color: 'cyan' };
       case 'failed':
-        return { icon: '❌', color: 'red' };
+        return { icon: '✗', color: 'red' };
       case 'skipped':
-        return { icon: '⏭️', color: 'yellow' };
+        return { icon: '➤', color: 'yellow' };
       default:
-        return { icon: '⚪', color: 'gray' };
+        return { icon: '○', color: 'gray' };
     }
+  };
+
+  // Calculate progress for showProgress
+  const calculateProgress = (): number => {
+    const totalSteps = steps.length;
+    if (totalSteps === 0) return 0;
+
+    let progressScore = 0;
+    steps.forEach(step => {
+      if (step.status === 'completed') progressScore += 1;
+      else if (step.status === 'in-progress') progressScore += 0.5;
+    });
+
+    return (progressScore / totalSteps) * 100;
   };
 
   const getConnector = (index: number): string => {
@@ -318,15 +440,36 @@ export function StepProgress({
     return orientation === 'horizontal' ? '──' : '│';
   };
 
+  const handleStepClick = (index: number) => {
+    if (allowNavigation && onStepClick) {
+      onStepClick(index);
+    }
+  };
+
+  // Note: Ink doesn't support ARIA attributes directly - they need to be handled at the terminal/screen reader level
+  const containerProps = {};
+
   if (orientation === 'horizontal') {
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" {...containerProps}>
+        {showProgress && (
+          <Box marginBottom={1}>
+            <Text>{Math.round(calculateProgress())}%</Text>
+          </Box>
+        )}
         <Box>
           {steps.map((step, index) => {
-            const { icon, color } = getStepIcon(step.status);
+            const { icon, color } = getStepIcon(step.status, showIcons);
+            const isCurrent = currentStep === index;
             return (
               <Box key={index}>
-                <Text color={color}>{icon}</Text>
+                <Text
+                  color={color}
+                  data-current={isCurrent || undefined}
+                  bold={isCurrent}
+                >
+                  {icon}
+                </Text>
                 <Text color={color}>{getConnector(index)}</Text>
               </Box>
             );
@@ -346,14 +489,24 @@ export function StepProgress({
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" {...containerProps}>
+      {showProgress && (
+        <Box marginBottom={1}>
+          <Text>{Math.round(calculateProgress())}%</Text>
+        </Box>
+      )}
       {steps.map((step, index) => {
-        const { icon, color } = getStepIcon(step.status);
+        const { icon, color } = getStepIcon(step.status, showIcons);
+        const isCurrent = currentStep === index;
         return (
           <Box key={index} flexDirection="column">
             <Box>
               <Text color={color}>{icon} </Text>
-              <Text color={step.status === 'in-progress' ? 'cyan' : 'white'} bold={step.status === 'in-progress'}>
+              <Text
+                color={step.status === 'in-progress' ? 'cyan' : 'white'}
+                bold={step.status === 'in-progress' || isCurrent}
+                data-current={isCurrent || undefined}
+              >
                 {step.name}
               </Text>
               {step.status === 'in-progress' && !compact && (
@@ -471,6 +624,8 @@ export interface MultiTaskProgressProps {
   }>;
   title?: string;
   compact?: boolean;
+  showSummary?: boolean;
+  showStatus?: boolean;
 }
 
 /**
@@ -480,10 +635,20 @@ export function MultiTaskProgress({
   tasks,
   title = 'Tasks',
   compact = false,
+  showSummary = false,
+  showStatus = false,
 }: MultiTaskProgressProps): React.ReactElement {
   const completedTasks = tasks.filter(t => t.status === 'completed').length;
   const totalTasks = tasks.length;
   const overallProgress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+  if (tasks.length === 0) {
+    return (
+      <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1}>
+        <Text color="gray">No tasks available</Text>
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1}>
@@ -492,6 +657,13 @@ export function MultiTaskProgress({
         <Text bold color="cyan">{title}</Text>
         <Text color="gray">{completedTasks}/{totalTasks} completed</Text>
       </Box>
+
+      {/* Overall progress summary */}
+      {showSummary && (
+        <Box marginBottom={1}>
+          <Text>Overall: {Math.round(overallProgress)}% ({completedTasks}/{totalTasks})</Text>
+        </Box>
+      )}
 
       {/* Overall progress */}
       {!compact && (
@@ -533,6 +705,9 @@ export function MultiTaskProgress({
               {task.progress !== undefined && task.status === 'in-progress' && !compact && (
                 <Text color="gray"> ({Math.round(task.progress)}%)</Text>
               )}
+              {showStatus && (
+                <Text color="gray"> - {task.status}</Text>
+              )}
             </Box>
           );
         })}
@@ -542,5 +717,5 @@ export function MultiTaskProgress({
 }
 
 export {
-  Spinner as InkSpinner,
+  InkSpinner,
 };

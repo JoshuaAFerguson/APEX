@@ -12,7 +12,7 @@
 import type {
   MockErrorScenarioPreset,
   MockErrorSimulationConfig,
-} from '@apexcli/core';
+} from './types.js';
 
 /**
  * Map of preset names to their configurations.

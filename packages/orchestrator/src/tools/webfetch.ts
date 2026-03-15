@@ -147,6 +147,7 @@ export class WebFetchTool {
   private readonly defaultCacheTtl: number = 900000; // 15 minutes
   private readonly cache = new Map<string, WebFetchCacheEntry>();
   private readonly cleanupInterval: NodeJS.Timeout;
+  private static exitListenerAdded = false;
 
   constructor() {
     // Set up automatic cache cleanup every 5 minutes
@@ -154,11 +155,12 @@ export class WebFetchTool {
       this.cleanupExpiredEntries();
     }, 300000); // 5 minutes
 
-    // Cleanup on process exit
-    if (typeof process !== 'undefined') {
+    // Cleanup on process exit - only add listener once globally
+    if (typeof process !== 'undefined' && !WebFetchTool.exitListenerAdded) {
       process.on('exit', () => {
         clearInterval(this.cleanupInterval);
       });
+      WebFetchTool.exitListenerAdded = true;
     }
   }
 

@@ -101,6 +101,7 @@ function runValidationTests(): void {
   const complexityAnalysis = createBaseProjectAnalysis();
   const criticalHotspot: ComplexityHotspot = {
     file: 'src/critical.ts',
+    functionName: 'criticalFunction',
     cyclomaticComplexity: 55, // Critical
     cognitiveComplexity: 65, // Critical
     lineCount: 2500 // Critical
@@ -121,12 +122,14 @@ function runValidationTests(): void {
   const hotspots: ComplexityHotspot[] = [
     {
       file: 'src/low.ts',
+      functionName: 'lowComplexityFunction',
       cyclomaticComplexity: 10,
       cognitiveComplexity: 15,
       lineCount: 200
     },
     {
       file: 'src/high.ts',
+      functionName: 'highComplexityFunction',
       cyclomaticComplexity: 40,
       cognitiveComplexity: 50,
       lineCount: 1500
@@ -193,6 +196,7 @@ function runValidationTests(): void {
   const manyHotspotsAnalysis = createBaseProjectAnalysis();
   const manyHotspots: ComplexityHotspot[] = Array.from({ length: 5 }, (_, i) => ({
     file: `src/file${i}.ts`,
+    functionName: `complexFunction${i}`,
     cyclomaticComplexity: 20,
     cognitiveComplexity: 25,
     lineCount: 400

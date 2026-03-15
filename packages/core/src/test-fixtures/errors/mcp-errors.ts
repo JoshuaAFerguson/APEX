@@ -5,13 +5,49 @@
  * Extends the existing error-presets.ts with additional scenarios and better integration.
  */
 
-import type {
-  MockErrorScenarioPreset,
-  MockErrorSimulationConfig,
-  JsonRpcError,
-  JsonRpcErrorResponse
-} from '../../types.js';
 import type { ErrorSimulationOptions } from '../types.js';
+
+/**
+ * JSON-RPC error object (defined locally as not exported from core types)
+ */
+export interface JsonRpcError {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+/**
+ * JSON-RPC error response (defined locally as not exported from core types)
+ */
+export interface JsonRpcErrorResponse {
+  jsonrpc: '2.0';
+  id: string | number | null;
+  error: JsonRpcError;
+}
+
+/**
+ * Mock error scenario preset (defined locally as not exported from core types)
+ */
+export interface MockErrorScenarioPreset {
+  mode: string;
+  methodPattern?: string;
+  category: string;
+  customError: JsonRpcError;
+  description: string;
+}
+
+/**
+ * Mock error simulation config (defined locally as not exported from core types)
+ */
+export interface MockErrorSimulationConfig {
+  mode: string;
+  methodPattern?: string;
+  errorProbability?: number;
+  sequence?: Array<{ type: string; count: number }>;
+  category: string;
+  customError: JsonRpcError;
+  description: string;
+}
 
 /**
  * Standard JSON-RPC error codes
@@ -280,7 +316,7 @@ export const createMCPError = (
 ): JsonRpcError => ({
   ...baseError,
   data: {
-    ...baseError.data,
+    ...(baseError.data as Record<string, unknown>),
     category: options.category || 'protocol',
     severity: options.severity || 'medium',
     retryable: options.retryable ?? true,

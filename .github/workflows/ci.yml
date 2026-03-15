@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node-version: [18.x, 20.x]
+        node-version: [20.x, 22.x]
 
     steps:
       - name: Checkout
@@ -39,6 +39,7 @@ jobs:
 
       - name: Test
         run: npm test
+        timeout-minutes: 15
 
   e2e:
     name: E2E Tests

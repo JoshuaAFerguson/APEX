@@ -256,6 +256,8 @@ export interface MockUrlBehavior {
   withTitle(title: string): MockUrlBehavior;
   /** Return to scenario builder */
   and(): MockScenarioBuilder;
+  /** Build the final scenario configuration */
+  build(): MockScenarioConfig;
 }
 
 /**
@@ -274,6 +276,8 @@ export interface MockElementBehavior {
   withValue(value: string): MockElementBehavior;
   /** Return to scenario builder */
   and(): MockScenarioBuilder;
+  /** Build the final scenario configuration */
+  build(): MockScenarioConfig;
 }
 
 /**
@@ -286,6 +290,8 @@ export interface MockOperationBehavior {
   fails(error: string): MockOperationBehavior;
   /** Set operation delay */
   withDelay(ms: number): MockOperationBehavior;
+  /** Build the scenario configuration */
+  build(): MockScenarioConfig;
   /** Return to scenario builder */
   and(): MockScenarioBuilder;
 }

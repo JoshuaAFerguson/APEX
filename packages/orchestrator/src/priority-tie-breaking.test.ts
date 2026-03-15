@@ -260,12 +260,19 @@ describe('Priority Tie-Breaking Logic', () => {
         createdAt: baseTime,
       });
 
-      // Create blocked task with higher priority (should not appear)
+      // Create a blocking task (in-progress, so will block dependents)
+      const blockingTask = createTestTask({
+        id: 'blocking_task',
+        status: 'in-progress',
+      });
+      await store.createTask(blockingTask);
+
+      // Create blocked task with higher priority (should not appear because it depends on blocking_task)
       const blockedTask = createTestTask({
         id: 'blocked_urgent',
         priority: 'urgent',
         effort: 'xs',
-        dependsOn: ['non_existent_task'],
+        dependsOn: ['blocking_task'],
       });
 
       await store.createTask(readyLargeTask);

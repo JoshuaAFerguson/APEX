@@ -24,6 +24,7 @@
 
 import { defineConfig } from 'vitest/config';
 import * as path from 'path';
+import * as os from 'os';
 
 /**
  * Test environment options
@@ -76,12 +77,21 @@ export function createSharedConfig(
     additionalExcludes = [],
   } = options;
 
+  // Cap workers to avoid CPU exhaustion when multiple vitest runs execute
+  // concurrently (e.g. daemon running parallel tasks that each run npm test).
+  // Half the CPU cores is a safe default — leaves headroom for the daemon,
+  // Claude subprocesses, and the user's own work.
+  const maxWorkers = Math.max(2, Math.floor(os.cpus().length / 4));
+
   return defineConfig({
     test: {
       globals,
       environment,
       testTimeout,
       hookTimeout,
+      pool: 'forks',
+      maxForks: maxWorkers,
+      minForks: 1,
 
       // Standard include patterns for all test types
       include: [

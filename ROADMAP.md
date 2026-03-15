@@ -66,8 +66,16 @@ This document outlines the planned development roadmap for APEX. Our goal is to 
 - 🟢 Unit test suite (>80% coverage) - *560 tests, 89% coverage*
 - 🟢 Integration tests
 - 🟢 End-to-end tests - *21 CLI E2E tests*
-- ⚪ Performance benchmarks
-- ⚪ Load testing
+- 🟢 Performance benchmarks - *Package-specific benchmarks for @apexcli/browser, @apexcli/core, and @apexcli/orchestrator*
+- 🟢 Load testing - *Comprehensive load testing with 10k+ scale tests, documented baselines, and threshold framework*
+
+> **Verification Note (2026-03-14):** Performance and load testing is now complete with:
+> - **Centralized Threshold Framework**: `benchmarks/shared/thresholds.ts` with P95/P99 percentiles and throughput metrics
+> - **SQLite Load Tests**: `sqlite-performance-load.test.ts` and `sqlite-large-volume-load.test.ts` (10k+ task scale)
+> - **Workflow Performance**: `workflow-performance.test.ts` (5000-stage workflows, 200+ bulk loading)
+> - **Threshold Validation**: `benchmark-thresholds-load-testing-integration.test.ts`
+> - **Documentation**: `docs/load-testing-results.md` with methodology, baselines, and recommendations
+> - **Package Coverage**: 41+ benchmark files, 161+ stress test files across all packages
 
 ### CLI Enhancements
 
@@ -245,7 +253,7 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.4.0 - Sleepless Mode & Autonomy
+## v0.4.0 - Sleepless Mode & Autonomy (Complete)
 
 *24/7 autonomous operation with intelligent scheduling - inspired by [sleepless-agent](https://github.com/context-machine-lab/sleepless-agent)*
 
@@ -462,79 +470,88 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.6.0 - Context & Memory
+## v0.6.0 - Context & Memory (Complete)
 
 *Intelligent context management and project understanding*
 
 ### Project Context
 
-- ⚪ **Git status awareness** - Branch, uncommitted changes, recent commits
-- ⚪ **Project structure analysis** - Understand directory layout
-- ⚪ **Dependency detection** - Identify project dependencies
-- ⚪ **Framework detection** - Auto-detect frameworks and conventions
-- ⚪ **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
-- ⚪ **Test framework detection** - Know how to run tests
-- ⚪ **Workspace health checks** - `apex doctor` validates toolchain and config per package
-- ⚪ **Update available checker** - Check npm registry for newer APEX versions on CLI startup with non-intrusive notification
+- 🟢 **Git status awareness** - Branch, uncommitted changes, recent commits
+- 🟢 **Project structure analysis** - Understand directory layout
+- 🟢 **Dependency detection** - Identify project dependencies
+- 🟢 **Framework detection** - Auto-detect frameworks and conventions
+- 🟢 **Configuration awareness** - Understand project configs (tsconfig, package.json, etc.)
+- 🟢 **Test framework detection** - Know how to run tests
+- 🟢 **Workspace health checks** - `apex doctor` validates toolchain and config per package
+- 🟢 **Update available checker** - Check npm registry for newer APEX versions on CLI startup with non-intrusive notification
 
 ### Brownfield Codebase Analysis (inspired by [GSD](https://github.com/glittercowboy/get-shit-done))
 
-- ⚪ **`apex map-codebase`** - Spawn parallel agents to analyze existing codebases
-- ⚪ **Stack documentation** - Auto-generate stack/technology documentation
-- ⚪ **Architecture documentation** - Auto-document architecture patterns
-- ⚪ **Convention extraction** - Extract and document coding conventions
-- ⚪ **Testing patterns** - Document existing test patterns and coverage
-- ⚪ **Integration mapping** - Map third-party integrations and APIs
-- ⚪ **Technical concerns** - Identify technical debt and concerns
+- 🟢 **`apex map-codebase`** - Spawn parallel agents to analyze existing codebases
+- 🟢 **Stack documentation** - Auto-generate stack/technology documentation
+- 🟢 **Architecture documentation** - Auto-document architecture patterns
+- 🟢 **Convention extraction** - Extract and document coding conventions
+- 🟢 **Testing patterns** - Document existing test patterns and coverage
+- 🟢 **Integration mapping** - Map third-party integrations and APIs
+- 🟢 **Technical concerns** - Identify technical debt and concerns
 
 ### Codebase Intelligence (inspired by [Aider](https://github.com/Aider-AI/aider))
 
-- ⚪ **Repository map** - AST-aware map of entire codebase (functions, classes, signatures)
-- ⚪ **Codebase indexing** - Build searchable index of code
-- ⚪ **Semantic code search** - Find code by meaning, not just text
-- ⚪ **Symbol resolution** - Understand function/class definitions and usages
-- ⚪ **Import graph** - Understand module dependencies
-- ⚪ **Type awareness** - Leverage TypeScript/type information
-- ⚪ **Documentation extraction** - Parse JSDoc, docstrings, comments
-- ⚪ **Tree-sitter integration** - Language-aware parsing for all major languages
+- 🟢 **Repository map** - AST-aware map of entire codebase (functions, classes, signatures)
+- 🟢 **Codebase indexing** - Build searchable index of code
+- 🟢 **Semantic code search** - Find code by meaning, not just text
+- 🟢 **Symbol resolution** - Understand function/class definitions and usages
+- 🟢 **Import graph** - Understand module dependencies
+- 🟢 **Type awareness** - Leverage TypeScript/type information
+- 🟢 **Documentation extraction** - Parse JSDoc, docstrings, comments
+- 🟢 **Tree-sitter integration** - Language-aware parsing for all major languages
 
 ### Multimodal Input (inspired by [Aider](https://github.com/Aider-AI/aider) & [SWE-agent](https://github.com/SWE-agent/SWE-agent))
 
-- ⚪ **Image context** - Add screenshots, diagrams to provide visual context
-- ⚪ **Web page context** - Fetch and include web pages as reference
-- ⚪ **GitHub issue images** - Process images attached to GitHub issues
-- ⚪ **Design mockup input** - Accept Figma/design mockups as input
-- ⚪ **Error screenshot analysis** - Analyze screenshots of errors/bugs
+- 🟢 **Image context** - Add screenshots, diagrams to provide visual context
+- 🟢 **Web page context** - Fetch and include web pages as reference
+- 🟢 **GitHub issue images** - Process images attached to GitHub issues
+- 🟢 **Design mockup input** - Accept Figma/design mockups as input
+- 🟢 **Error screenshot analysis** - Analyze screenshots of errors/bugs
 
 ### Conversation Memory (inspired by [GSD](https://github.com/glittercowboy/get-shit-done) & [Auto-Claude](https://github.com/AndyMik90/Auto-Claude))
 
-- ⚪ **Session context** - Remember everything in current session
-- ⚪ **Run replay bundles** - Capture inputs, tool calls, and diffs for reproducible reruns
-- ⚪ **Long-term memory** - Persistent project and user memory across sessions
-- ⚪ **RAG over repo/docs/issues** - Retrieval-augmented context for answers and plans
-- ⚪ **Context summarization** - Compress old context intelligently
-- ⚪ **Memory persistence** - Remember across sessions
-- ⚪ **Explicit memory** - User can tell APEX to remember things
-- ⚪ **Memory search** - Search through remembered information
-- ⚪ **Memory management UI** - View, edit, delete memories
-- ⚪ **Living memory files** - STATE.md-style living memory for multi-session continuity (GSD)
-- ⚪ **Cross-session agent insights** - Agents retain insights and patterns across sessions (Auto-Claude)
+- 🟢 **Session context** - Remember everything in current session
+- 🟢 **Run replay bundles** - Capture inputs, tool calls, and diffs for reproducible reruns
+- 🟢 **Long-term memory** - Persistent project and user memory across sessions
+- 🟢 **RAG over repo/docs/issues** - Retrieval-augmented context for answers and plans
+- 🟢 **Context summarization** - Compress old context intelligently
+- 🟢 **Memory persistence** - Remember across sessions
+- 🟢 **Explicit memory** - User can tell APEX to remember things
+- 🟢 **Memory search** - Search through remembered information
+- 🟢 **Memory management UI** - View, edit, delete memories
+- 🟢 **Living memory files** - STATE.md-style living memory for multi-session continuity (GSD)
+- 🟢 **Cross-session agent insights** - Agents retain insights and patterns across sessions (Auto-Claude)
 
 ### Cross-Task Context
 
-- ⚪ **Task history** - Learn from previous tasks
-- ⚪ **Pattern learning** - Recognize repeated patterns
-- ⚪ **Preference learning** - Remember user preferences
-- ⚪ **Style learning** - Adapt to coding style over time
-- ⚪ **Project conventions** - Learn and follow project conventions
+- 🟢 **Task history** - Learn from previous tasks
+- 🟢 **Pattern learning** - Recognize repeated patterns
+- 🟢 **Preference learning** - Remember user preferences
+- 🟢 **Style learning** - Adapt to coding style over time
+- 🟢 **Project conventions** - Learn and follow project conventions
 
 ### Smart Context Management
 
-- ⚪ **Relevant file detection** - Auto-include relevant files
-- ⚪ **Context prioritization** - Most relevant context first
-- ⚪ **Token-aware truncation** - Smart truncation when context is full
-- ⚪ **Context refresh** - Detect when files have changed externally
-- ⚪ **Context visualization** - Show what's in current context
+- 🟢 **Relevant file detection** - Auto-include relevant files
+- 🟢 **Context prioritization** - Most relevant context first
+- 🟢 **Token-aware truncation** - Smart truncation when context is full
+- 🟢 **Context refresh** - Detect when files have changed externally
+- 🟢 **Context visualization** - Show what's in current context
+
+### AI Platform Agnostic Orchestration
+
+- 🟢 **Multi-provider Driver Architecture** - Modular system for switching AI backends
+- 🟢 **Claude Code MAX Support** - Support for Anthropic's premium subscription via OAuth
+- 🟢 **OpenAI Codex Support** - Support for OpenAI's premium subscription via OpenAuth
+- 🟢 **Gemini Code Assist Support** - Support for Google's premium subscription via OAuth
+- 🟢 **Agnostic API Driver** - Generic support for any LLM via Vercel AI SDK
+- 🟢 **Standalone MCP Integration** - Provider-independent Tool discovery and execution
 
 ---
 
@@ -1258,7 +1275,7 @@ telemetry:
 | **LSP integration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
 | **Desktop app** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ⚪ |
 | **Cloud platform** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Brownfield codebase mapping** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ⚪ |
+| **Brownfield codebase mapping** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | 🟢 |
 | **Automated changelog** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
 | **GitHub Actions trigger** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚪ |
 

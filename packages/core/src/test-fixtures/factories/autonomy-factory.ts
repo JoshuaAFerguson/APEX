@@ -50,11 +50,11 @@ function createDefaultApprovalGates(count: number = 2): ApprovalGate[] {
       id: 'pre-commit-review',
       name: 'Pre-commit Review',
       description: 'Review changes before committing to repository',
-      stage: 'implementation',
-      type: 'manual',
+      trigger: 'stage:implementation:completed',
+      type: 'before-commit',
       timeout: 30,
       required: true,
-      conditions: ['code-changes'],
+      tags: ['code-changes'],
     },
   ];
 
@@ -63,11 +63,11 @@ function createDefaultApprovalGates(count: number = 2): ApprovalGate[] {
       id: 'deployment-approval',
       name: 'Deployment Approval',
       description: 'Approve deployment of changes to production',
-      stage: 'deployment',
-      type: 'manual',
+      trigger: 'stage:deployment:started',
+      type: 'deployment',
       timeout: 15,
       required: true,
-      conditions: ['deploy-ready'],
+      tags: ['deploy-ready'],
     });
   }
 
@@ -76,11 +76,11 @@ function createDefaultApprovalGates(count: number = 2): ApprovalGate[] {
       id: 'security-review',
       name: 'Security Review',
       description: 'Security review for sensitive changes',
-      stage: 'review',
-      type: 'manual',
+      trigger: 'stage:review:started',
+      type: 'custom',
       timeout: 60,
       required: false,
-      conditions: ['security-sensitive'],
+      tags: ['security-sensitive'],
     });
   }
 
@@ -92,12 +92,12 @@ function createDefaultApprovalGates(count: number = 2): ApprovalGate[] {
  */
 function createDefaultResourceLimits(): TaskResourceLimits {
   return {
-    maxDuration: 60, // 60 minutes
+    maxTimeMs: 60 * 60 * 1000, // 60 minutes in ms
     maxTokens: 100000,
     maxCost: 10.00,
-    maxRetries: 3,
-    maxFileSize: 10485760, // 10MB
-    maxFiles: 100,
+    maxTurns: 3,
+    maxFilesCreated: 100,
+    maxFilesModified: 100,
   };
 }
 
@@ -204,11 +204,11 @@ export const createApprovalGate: FixtureFactory<ApprovalGate> = (
   id: `gate-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
   name: 'Test Approval Gate',
   description: 'Test approval gate for validation',
-  stage: 'implementation',
-  type: 'manual',
+  trigger: 'stage:implementation:completed',
+  type: 'custom',
   timeout: 30,
   required: true,
-  conditions: ['test-condition'],
+  tags: ['test-condition'],
   ...overrides,
 });
 
@@ -218,12 +218,12 @@ export const createApprovalGate: FixtureFactory<ApprovalGate> = (
 export const createResourceLimits: FixtureFactory<TaskResourceLimits> = (
   overrides = {}
 ) => ({
-  maxDuration: 60,
+  maxTimeMs: 60 * 60 * 1000,
   maxTokens: 100000,
   maxCost: 10.00,
-  maxRetries: 3,
-  maxFileSize: 10485760, // 10MB
-  maxFiles: 100,
+  maxTurns: 3,
+  maxFilesCreated: 100,
+  maxFilesModified: 100,
   ...overrides,
 });
 
@@ -284,12 +284,12 @@ export const createTestAutonomyConfig: FixtureFactory<AutonomyConfig> = (overrid
   createAutonomyConfig({
     level: 'full-auto',
     limits: {
-      maxDuration: 5, // Short duration for tests
+      maxTimeMs: 5 * 60 * 1000, // Short duration for tests
       maxTokens: 1000,
       maxCost: 0.50,
-      maxRetries: 1,
-      maxFileSize: 1048576, // 1MB
-      maxFiles: 10,
+      maxTurns: 1,
+      maxFilesCreated: 10,
+      maxFilesModified: 10,
     },
     approvalTimeout: 5, // Quick timeouts for tests
     ...overrides,
@@ -305,12 +305,12 @@ export const createRestrictiveConfig: FixtureFactory<AutonomyConfig> = (override
   createAutonomyConfig({
     level: 'review-all',
     limits: {
-      maxDuration: 10,
+      maxTimeMs: 10 * 60 * 1000,
       maxTokens: 10000,
       maxCost: 1.00,
-      maxRetries: 1,
-      maxFileSize: 1048576, // 1MB
-      maxFiles: 5,
+      maxTurns: 1,
+      maxFilesCreated: 5,
+      maxFilesModified: 5,
     },
     ...overrides,
   }, {
@@ -328,12 +328,12 @@ export const createPermissiveConfig: FixtureFactory<AutonomyConfig> = (overrides
   createAutonomyConfig({
     level: 'full-auto',
     limits: {
-      maxDuration: 240, // 4 hours
+      maxTimeMs: 240 * 60 * 1000, // 4 hours
       maxTokens: 1000000,
       maxCost: 100.00,
-      maxRetries: 10,
-      maxFileSize: 104857600, // 100MB
-      maxFiles: 1000,
+      maxTurns: 10,
+      maxFilesCreated: 1000,
+      maxFilesModified: 1000,
     },
     ...overrides,
   }, {

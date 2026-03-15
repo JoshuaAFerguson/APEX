@@ -100,13 +100,8 @@ export class HealthMonitor {
       const daemonMetrics = daemonRunner.getMetrics();
       taskCounts = this.convertTaskMetrics(daemonMetrics);
     } else {
-      // Fallback to basic counts if no DaemonRunner provided
-      taskCounts = {
-        processed: 0,
-        succeeded: 0,
-        failed: 0,
-        active: 0,
-      };
+      // Use internal task counts
+      taskCounts = this.taskCounts;
     }
 
     return {
@@ -166,4 +161,33 @@ export class HealthMonitor {
   hasWatchdogRestarts(): boolean {
     return this.restartHistory.some(restart => restart.triggeredByWatchdog);
   }
+
+  /**
+   * Record a health check result and update counters
+   * @param success - Whether the health check passed
+   */
+  recordHealthCheckResult(success: boolean): void {
+    this.lastHealthCheck = new Date();
+
+    if (success) {
+      this.healthChecksPassed++;
+    } else {
+      this.healthChecksFailed++;
+    }
+  }
+
+  /**
+   * Update task count metrics
+   * @param taskCounts - New task count values
+   */
+  updateTaskCounts(taskCounts: DaemonTaskCounts): void {
+    this.taskCounts = taskCounts;
+  }
+
+  private taskCounts: DaemonTaskCounts = {
+    processed: 0,
+    succeeded: 0,
+    failed: 0,
+    active: 0
+  };
 }

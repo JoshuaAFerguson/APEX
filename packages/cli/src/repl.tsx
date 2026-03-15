@@ -39,6 +39,7 @@ import {
   type SessionContext
 } from './handlers/session-handlers.js';
 import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
+import { checkAndNotifyUpdates } from './utils/update-checker.js';
 
 // ============================================================================
 // Context
@@ -592,6 +593,16 @@ async function handleCancel(args: string[]): Promise<void> {
     return;
   }
 
+  // First check if the task exists and get its status for better error messages
+  const task = await ctx.orchestrator.getTask(taskId);
+  if (!task) {
+    ctx.app?.addMessage({
+      type: 'error',
+      content: `Task not found: ${taskId}`,
+    });
+    return;
+  }
+
   const cancelled = await ctx.orchestrator.cancelTask(taskId);
   if (cancelled) {
     ctx.app?.addMessage({
@@ -599,9 +610,23 @@ async function handleCancel(args: string[]): Promise<void> {
       content: `Task ${taskId} cancelled.`,
     });
   } else {
+    // Provide specific error message based on task status
+    const status = task.status;
+    let errorMessage = `Could not cancel task ${taskId}.`;
+
+    if (status === 'completed') {
+      errorMessage += ' Task is already completed.';
+    } else if (status === 'failed') {
+      errorMessage += ' Task has already failed.';
+    } else if (status === 'cancelled') {
+      errorMessage += ' Task is already cancelled.';
+    } else {
+      errorMessage += ` Task status: ${status}`;
+    }
+
     ctx.app?.addMessage({
       type: 'error',
-      content: `Could not cancel task ${taskId}. It may already be completed or not exist.`,
+      content: errorMessage,
     });
   }
 }
@@ -1895,6 +1920,11 @@ export async function startInkREPL(): Promise<void> {
   }
 
   const gitBranch = getGitBranch();
+
+  // Check for available updates (non-blocking)
+  checkAndNotifyUpdates().catch(() => {
+    // Silently fail - update checking is non-critical
+  });
 
   // Start the Ink app
   ctx.app = await startInkApp({

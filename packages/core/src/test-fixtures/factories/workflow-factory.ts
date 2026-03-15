@@ -86,15 +86,9 @@ function createDefaultTriggers(): string[] {
  */
 function createDefaultIsolation(): IsolationConfig {
   return {
-    mode: 'sandbox',
+    mode: 'worktree',
     preserveOnFailure: false,
-    allowNetworkAccess: false,
-    allowFileSystemAccess: true,
-    resourceLimits: {
-      maxMemoryMb: 512,
-      maxCpuPercent: 50,
-      maxExecutionTimeMs: 300000, // 5 minutes
-    },
+    cleanupOnComplete: true,
   };
 }
 

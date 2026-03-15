@@ -4,12 +4,16 @@ import { render, screen } from '../../__tests__/test-utils';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 
 // Mock useStdoutDimensions hook
-vi.mock('../../hooks/useStdoutDimensions', () => ({
-  useStdoutDimensions: vi.fn(() => ({
+const useStdoutDimensionsMock = vi.hoisted(() =>
+  vi.fn(() => ({
     width: 120,
     height: 30,
     breakpoint: 'wide' as const,
-  })),
+  }))
+);
+
+vi.mock('../../hooks/useStdoutDimensions', () => ({
+  useStdoutDimensions: useStdoutDimensionsMock,
 }));
 
 // Mock ink
@@ -272,8 +276,7 @@ describe('StatusBar - Verbose Mode Features', () => {
 
     it('should show all segments in narrow terminal width', () => {
       // Mock very narrow terminal
-      const useStdoutDimensionsMock = vi.mocked(require('../../hooks/useStdoutDimensions').useStdoutDimensions);
-      useStdoutDimensionsMock.mockReturnValue({
+      useStdoutDimensionsMock.mockReturnValueOnce({
         width: 60,
         height: 20,
         breakpoint: 'narrow' as const,
@@ -287,7 +290,8 @@ describe('StatusBar - Verbose Mode Features', () => {
       expect(screen.getByText('implementation')).toBeInTheDocument();
       expect(screen.getByText('4000')).toBeInTheDocument(); // API URL
       expect(screen.getByText('3000')).toBeInTheDocument(); // Web URL
-      expect(screen.getByText(/Very Long Session Name/)).toBeInTheDocument();
+      // Note: Session names > 15 chars are always truncated to 12 chars + '...'
+      expect(screen.getByText('Very Long Se...')).toBeInTheDocument();
       expect(screen.getByText('[3/7]')).toBeInTheDocument();
       expect(screen.getByText('📋 PREVIEW')).toBeInTheDocument();
       expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();

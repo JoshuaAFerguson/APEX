@@ -741,21 +741,3 @@ export function createMultiScenarioFixture(scenarios: ErrorScenario[]) {
 
 // Main exports
 export { ErrorPageFixture as default };
-
-// Type exports for external use
-export type {
-  IErrorPageFixture,
-  ErrorFixtureConfig,
-  ErrorFixtureState,
-  ErrorScenario,
-};
-
-// Preset configurations
-export { ERROR_SCENARIOS };
-
-// Integration helpers
-export {
-  createErrorFixtureHooks,
-  withErrorFixture,
-  createMultiScenarioFixture,
-};

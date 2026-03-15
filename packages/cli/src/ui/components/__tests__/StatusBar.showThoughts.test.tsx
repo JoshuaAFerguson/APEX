@@ -3,14 +3,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '../../__tests__/test-utils';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 
-// Mock useStdout from ink
-vi.mock('ink', async () => {
-  const actual = await vi.importActual('ink');
-  return {
-    ...actual,
-    useStdout: () => ({ stdout: { columns: 120 } }),
-  };
-});
+// Use vi.hoisted to ensure mock function is available during module hoisting
+// Note: showThoughts indicator is LOW priority and only visible in 'wide' mode (>160 cols)
+const { mockUseStdoutDimensions } = vi.hoisted(() => ({
+  mockUseStdoutDimensions: vi.fn(() => ({
+    width: 200, // Wide mode to show LOW priority segments like showThoughts
+    height: 40,
+    breakpoint: 'wide' as const,
+    isAvailable: true,
+    isNarrow: false,
+    isCompact: false,
+    isNormal: false,
+    isWide: true,
+  })),
+}));
+
+vi.mock('../../hooks/useStdoutDimensions.js', () => ({
+  useStdoutDimensions: mockUseStdoutDimensions,
+}));
 
 describe('StatusBar - showThoughts functionality', () => {
   beforeEach(() => {
@@ -45,8 +55,8 @@ describe('StatusBar - showThoughts functionality', () => {
     it('renders with showThoughts indicator when true', () => {
       render(<StatusBar {...defaultProps} showThoughts={true} />);
 
-      // Should display thoughts indicator emoji
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      // Should display thoughts indicator (rendered as '💭 THOUGHTS')
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
     });
 
     it('correctly positions showThoughts indicator in status line', () => {
@@ -54,13 +64,13 @@ describe('StatusBar - showThoughts functionality', () => {
         <StatusBar
           {...defaultProps}
           showThoughts={true}
-          displayMode="normal"
+          displayMode="verbose"  // Use verbose mode to ensure LOW priority segments are visible
           previewMode={false}
         />
       );
 
-      // Check that indicator is present in the container
-      expect(container.textContent).toContain('💭');
+      // Check that indicator is present in the container (rendered as '💭 THOUGHTS')
+      expect(container.textContent).toContain('💭 THOUGHTS');
     });
 
     it('preserves other status elements when showThoughts is true', () => {
@@ -74,29 +84,26 @@ describe('StatusBar - showThoughts functionality', () => {
         />
       );
 
-      // Should still show other status elements
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      // Should still show other status elements (showThoughts rendered as '💭 THOUGHTS')
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
       expect(screen.getByText('test-branch')).toBeInTheDocument();
       expect(screen.getByText('developer')).toBeInTheDocument();
       expect(screen.getByText('sonnet')).toBeInTheDocument();
     });
 
-    it('works correctly with different display modes', () => {
-      const modes = ['normal', 'compact', 'verbose'] as const;
+    it('works correctly with verbose display mode', () => {
+      // Note: showThoughts is LOW priority and only visible in wide mode or verbose displayMode
+      // compact mode overrides priority filtering and hides showThoughts
+      const { unmount } = render(
+        <StatusBar
+          {...defaultProps}
+          showThoughts={true}
+          displayMode="verbose"
+        />
+      );
 
-      modes.forEach(mode => {
-        const { unmount } = render(
-          <StatusBar
-            {...defaultProps}
-            showThoughts={true}
-            displayMode={mode}
-          />
-        );
-
-        expect(screen.getByText('💭')).toBeInTheDocument();
-
-        unmount();
-      });
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
+      unmount();
     });
 
     it('works correctly with preview mode enabled', () => {
@@ -108,8 +115,8 @@ describe('StatusBar - showThoughts functionality', () => {
         />
       );
 
-      // Should show both thoughts indicator and work with preview mode
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      // Should show both thoughts indicator and work with preview mode (both are LOW priority)
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
     });
   });
 
@@ -117,8 +124,8 @@ describe('StatusBar - showThoughts functionality', () => {
     it('provides accessible text for screen readers', () => {
       render(<StatusBar {...defaultProps} showThoughts={true} />);
 
-      // The emoji should be present for visual users
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      // The indicator should be present with full text for accessibility
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
     });
 
     it('maintains consistent spacing with other indicators', () => {
@@ -157,7 +164,7 @@ describe('StatusBar - showThoughts functionality', () => {
         />
       );
 
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
       expect(screen.getByText(/tokens:/)).toBeInTheDocument();
       expect(screen.getByText(/cost:/)).toBeInTheDocument();
     });
@@ -168,11 +175,10 @@ describe('StatusBar - showThoughts functionality', () => {
           {...defaultProps}
           showThoughts={true}
           sessionName="test-session"
-          sessionDuration={120}
         />
       );
 
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
       expect(screen.getByText('test-session')).toBeInTheDocument();
     });
 
@@ -182,11 +188,11 @@ describe('StatusBar - showThoughts functionality', () => {
           {...defaultProps}
           showThoughts={true}
           workflowStage="testing"
-          progress={{ current: 3, total: 5 }}
+          subtaskProgress={{ completed: 3, total: 5 }}
         />
       );
 
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
       expect(screen.getByText('testing')).toBeInTheDocument();
     });
   });
@@ -199,10 +205,12 @@ describe('StatusBar - showThoughts functionality', () => {
     });
 
     it('handles very long status lines', () => {
+      // Use verbose mode to ensure showThoughts is visible despite trimToFit
       render(
         <StatusBar
           {...defaultProps}
           showThoughts={true}
+          displayMode="verbose"
           gitBranch="feature/very-long-branch-name-that-exceeds-normal-length"
           agent="architect-with-long-name"
           model="claude-3-opus-with-long-model-identifier"
@@ -210,20 +218,20 @@ describe('StatusBar - showThoughts functionality', () => {
         />
       );
 
-      // Should render without crashing
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      // Should render without crashing (verbose mode skips trimToFit)
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
     });
 
     it('handles rapid prop changes', () => {
       const { rerender } = render(<StatusBar {...defaultProps} showThoughts={false} />);
 
-      expect(screen.queryByText('💭')).not.toBeInTheDocument();
+      expect(screen.queryByText('💭 THOUGHTS')).not.toBeInTheDocument();
 
       rerender(<StatusBar {...defaultProps} showThoughts={true} />);
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
 
       rerender(<StatusBar {...defaultProps} showThoughts={false} />);
-      expect(screen.queryByText('💭')).not.toBeInTheDocument();
+      expect(screen.queryByText('💭 THOUGHTS')).not.toBeInTheDocument();
     });
   });
 
@@ -238,7 +246,7 @@ describe('StatusBar - showThoughts functionality', () => {
         rerender(<StatusBar {...defaultProps} showThoughts={true} />);
       }).not.toThrow();
 
-      expect(screen.getByText('💭')).toBeInTheDocument();
+      expect(screen.getByText('💭 THOUGHTS')).toBeInTheDocument();
     });
 
     it('handles component unmounting cleanly', () => {

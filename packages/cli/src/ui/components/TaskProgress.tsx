@@ -205,7 +205,7 @@ export function TaskProgress({
 
   const formatTokens = (input: number, output: number): string => {
     const total = input + output;
-    if (total >= 1000) return `${(total / 1000).toFixed(1)}k`;
+    if (total >= 1000) return `${(total / 1000).toFixed(1)}`;
     return `${total}`;
   };
 
@@ -283,7 +283,7 @@ export function TaskProgress({
         {tokens && (
           <Text>
             <Text color="gray">tokens:</Text>
-            <Text color="cyan">{formatTokens(tokens.input, tokens.output)}</Text>
+            <Text color="cyan">{formatTokens(tokens.input, tokens.output)}k</Text>
           </Text>
         )}
         {cost !== undefined && (

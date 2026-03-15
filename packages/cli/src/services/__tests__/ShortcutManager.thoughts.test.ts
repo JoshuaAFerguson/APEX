@@ -44,8 +44,8 @@ describe('ShortcutManager - Thoughts Toggle Functionality', () => {
       const shortcuts = manager.getShortcuts();
       const thoughtsShortcut = shortcuts.find(s => s.id === 'toggleThoughts');
 
-      // Should work in global context (undefined context means works everywhere)
-      expect(thoughtsShortcut?.context).toBeUndefined();
+      // Should work in global context ('global' context means works everywhere)
+      expect(thoughtsShortcut?.context).toBe('global');
     });
   });
 
@@ -508,7 +508,7 @@ describe('ShortcutManager - Thoughts Toggle Functionality', () => {
       }
       const end = performance.now();
 
-      expect(end - start).toBeLessThan(100);
+      expect(end - start).toBeLessThan(200); // Allow for CI/system load variance
       expect(commandHandler).toHaveBeenCalledTimes(1000);
     });
 

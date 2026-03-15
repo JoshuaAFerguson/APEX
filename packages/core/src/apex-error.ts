@@ -75,6 +75,18 @@ export enum ApexErrorCode {
   BROWSER_PERMISSION_DENIED = 'APEX_1850',
   BROWSER_RESOURCE_LEAK = 'APEX_1851',
   BROWSER_SESSION_INVALID = 'APEX_1852',
+
+  // MCP Installation errors (1900-1949)
+  MCP_INSTALLATION_FAILED = 'APEX_1900',
+  MCP_PACKAGE_INSTALL_FAILED = 'APEX_1901',
+  MCP_CONFIG_CREATION_FAILED = 'APEX_1902',
+  MCP_DATABASE_RECORD_FAILED = 'APEX_1903',
+  MCP_ROLLBACK_FAILED = 'APEX_1904',
+  MCP_VERIFICATION_FAILED = 'APEX_1905',
+  MCP_SERVER_NOT_FOUND = 'APEX_1906',
+  MCP_ALREADY_INSTALLED = 'APEX_1907',
+  MCP_UNINSTALL_FAILED = 'APEX_1908',
+  MCP_CORRUPTED_INSTALLATION = 'APEX_1909',
 }
 
 // ============================================================================
@@ -511,10 +523,8 @@ export class PermissionRevokedError extends ApexError {
     Object.setPrototypeOf(this, PermissionRevokedError.prototype);
   }
 
-  /** Legacy code property for backward compatibility with tests */
-  get code(): 'PERMISSION_REVOKED' {
-    return 'PERMISSION_REVOKED';
-  }
+  /** Override code to be the specific PERMISSION_REVOKED value */
+  public override readonly code: ApexErrorCode = ApexErrorCode.PERMISSION_REVOKED;
 }
 
 /**
@@ -522,4 +532,73 @@ export class PermissionRevokedError extends ApexError {
  */
 export function isPermissionRevokedError(error: unknown): error is PermissionRevokedError {
   return error instanceof PermissionRevokedError;
+}
+
+// ============================================================================
+// MCP Installation Error Classes
+// ============================================================================
+
+/**
+ * Extended context for MCP installation errors
+ */
+export interface MCPInstallationErrorContext extends ApexErrorContext {
+  /** Server ID being installed */
+  serverId?: string;
+  /** Installation ID if created */
+  installationId?: string;
+  /** Package name being installed */
+  packageName?: string;
+  /** Installation step that failed */
+  failedStep?: 'npm_install' | 'config_creation' | 'database_record' | 'verification';
+  /** Rollback actions attempted */
+  rollbackAttempts?: {
+    step: string;
+    success: boolean;
+    error?: string;
+  }[];
+  /** Recommended recovery actions */
+  recoverySteps?: string[];
+}
+
+/**
+ * Specific error class for MCP installation operations
+ *
+ * This error provides detailed context about MCP installation failures,
+ * including rollback information and recovery steps.
+ */
+export class MCPInstallationError extends ApexError {
+  public readonly installationContext: MCPInstallationErrorContext;
+
+  constructor(
+    message: string,
+    code: ApexErrorCode,
+    context: MCPInstallationErrorContext,
+    cause?: Error
+  ) {
+    super(message, code, context, cause);
+    this.name = 'MCPInstallationError';
+    this.installationContext = context;
+
+    // Set the prototype explicitly for proper instanceof checks
+    Object.setPrototypeOf(this, MCPInstallationError.prototype);
+  }
+
+  /** Format user-friendly error message with recovery steps */
+  public formatUserMessage(): string {
+    let msg = this.message;
+    if (this.installationContext.recoverySteps?.length) {
+      msg += '\n\nSuggested recovery steps:\n';
+      this.installationContext.recoverySteps.forEach((step, i) => {
+        msg += `  ${i + 1}. ${step}\n`;
+      });
+    }
+    return msg;
+  }
+}
+
+/**
+ * Type guard to check if an error is an MCPInstallationError
+ */
+export function isMCPInstallationError(error: unknown): error is MCPInstallationError {
+  return error instanceof MCPInstallationError;
 }

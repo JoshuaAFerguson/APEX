@@ -687,7 +687,7 @@ export class BrowserTool extends BaseTool<BrowserToolInput, BrowserToolOutput> i
     context?: ToolExecutionContext
   ): Promise<{ granted: boolean; level?: string }> {
     // Generate cache key
-    const cacheKey = `${operation}-${context?.userId || 'default'}`;
+    const cacheKey = `${operation}-${context?.agentName || 'default'}`;
 
     // Check cache first (with 5-minute expiry)
     const cached = this.permissionCache.get(cacheKey);

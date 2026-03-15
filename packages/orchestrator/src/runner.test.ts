@@ -6,9 +6,14 @@ import { ApexOrchestrator } from './index';
 import { TaskStore } from './store';
 
 // Mock dependencies
-vi.mock('fs', () => ({
-  createWriteStream: vi.fn(),
-}));
+vi.mock(import('fs'), async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    default: actual,
+    createWriteStream: vi.fn(),
+  };
+});
 
 vi.mock('./index', () => ({
   ApexOrchestrator: vi.fn(),

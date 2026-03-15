@@ -1,6 +1,7 @@
 import { createWriteStream, WriteStream, promises as fs } from 'fs';
 import { join } from 'path';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execFileSync, ChildProcess } from 'child_process';
+import * as os from 'os';
 import { ApexOrchestrator, TaskSessionResumedEvent } from './index';
 import { TaskStore } from './store';
 import { loadConfig, getEffectiveConfig, ApexConfig, Task, TaskStatus, DaemonConfig, TaskSessionData } from '@apexcli/core';
@@ -127,6 +128,48 @@ export interface DaemonLogEntry {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Capacity information for the daemon state.
+ * Tracks usage limits and pause/resume status.
+ */
+export interface CapacityInfo {
+  mode: string;
+  capacityThreshold: number;
+  currentUsagePercent: number;
+  isAutoPaused: boolean;
+  pauseReason: string | null;
+  nextModeSwitch: string;
+  timeBasedUsageEnabled: boolean;
+}
+
+/**
+ * Health information for the daemon state.
+ * Tracks uptime, memory usage, and restart history.
+ */
+export interface HealthInfo {
+  uptime: number;
+  memoryUsage: {
+    heapUsed: number;
+    heapTotal: number;
+    rss: number;
+  };
+  taskCounts: {
+    processed: number;
+    succeeded: number;
+    failed: number;
+    active: number;
+  };
+  lastHealthCheck: string;
+  healthChecksPassed: number;
+  healthChecksFailed: number;
+  restartHistory: Array<{
+    timestamp: string;
+    reason: string;
+    exitCode?: number;
+    triggeredByWatchdog: boolean;
+  }>;
+}
+
 // ============================================================================
 // DaemonRunner Implementation
 // ============================================================================
@@ -209,6 +252,7 @@ export class DaemonRunner {
   private stateUpdateInterval: NodeJS.Timeout | null = null;
   private orphanCheckInterval: NodeJS.Timeout | null = null;
   private pausedTaskCheckInterval: NodeJS.Timeout | null = null;
+  private processCleanupInterval: NodeJS.Timeout | null = null;
 
   // Metrics
   private startedAt: Date | null = null;
@@ -229,6 +273,12 @@ export class DaemonRunner {
   private static readonly MAX_SERVICE_RESTARTS = 3;
 
   constructor(options: DaemonRunnerOptions) {
+    if (!options.projectPath || options.projectPath === 'undefined') {
+      throw new Error(
+        'DaemonRunner requires a valid projectPath. Received: ' +
+        JSON.stringify(options.projectPath)
+      );
+    }
     // Store the raw options - we'll resolve defaults in start() after loading config
     this.options = {
       projectPath: options.projectPath,
@@ -374,6 +424,9 @@ export class DaemonRunner {
       // Setup periodic stuck task auto-triage
       this.setupPeriodicStuckTaskCheck();
 
+      // Setup periodic orphaned OS process cleanup
+      this.startProcessCleanupInterval();
+
       // Initial check for paused tasks on startup
       await this.checkAndResumePausedTasks();
 
@@ -466,6 +519,14 @@ export class DaemonRunner {
       clearInterval(this.pausedTaskCheckInterval);
       this.pausedTaskCheckInterval = null;
     }
+
+    if (this.processCleanupInterval) {
+      clearInterval(this.processCleanupInterval);
+      this.processCleanupInterval = null;
+    }
+
+    // Final orphaned process cleanup before shutdown
+    this.cleanupOrphanedProcesses();
 
     // Write final state file with running: false
     try {
@@ -781,8 +842,43 @@ export class DaemonRunner {
       const allPausedTasks = await this.store.getPausedTasksForResume();
       const resumedParentIds = new Set(pausedParentTasks.map(p => p.id));
 
-      // Filter out already-resumed parent tasks
-      const remainingTasks = allPausedTasks.filter(task => !resumedParentIds.has(task.id));
+      // Filter out already-resumed parent tasks AND subtasks of sequential parents.
+      // Sequential subtasks must not be individually resumed — their parent's
+      // continuePendingSubtasks() handles them in order. Individually resuming
+      // them here bypasses sequential ordering and causes out-of-order execution.
+      const sequentialParentIds = new Set<string>();
+      for (const pt of pausedParentTasks) {
+        const strategy = pt.subtaskStrategy || 'sequential';
+        if (strategy === 'sequential') {
+          sequentialParentIds.add(pt.id);
+        }
+      }
+      // Also check non-paused sequential parents (a subtask may be paused
+      // while its parent is in-progress or pending)
+      const remainingTasksPreFilter = allPausedTasks.filter(task => !resumedParentIds.has(task.id));
+      const remainingTasks: Task[] = [];
+      for (const task of remainingTasksPreFilter) {
+        if (task.parentTaskId) {
+          // Check if this subtask's parent uses sequential strategy
+          if (sequentialParentIds.has(task.parentTaskId)) {
+            this.log('debug', `Skipping individual resume of subtask ${task.id} - parent ${task.parentTaskId} uses sequential strategy`);
+            continue;
+          }
+          // Check parent strategy if not already cached
+          if (this.store) {
+            const parent = await this.store.getTask(task.parentTaskId);
+            if (parent) {
+              const parentStrategy = parent.subtaskStrategy || 'sequential';
+              if (parentStrategy === 'sequential') {
+                sequentialParentIds.add(task.parentTaskId);
+                this.log('debug', `Skipping individual resume of subtask ${task.id} - parent ${task.parentTaskId} uses sequential strategy`);
+                continue;
+              }
+            }
+          }
+        }
+        remainingTasks.push(task);
+      }
 
       if (remainingTasks.length > 0) {
         this.log('info', `Found ${remainingTasks.length} remaining paused task(s) for resume`);
@@ -861,6 +957,16 @@ export class DaemonRunner {
         return;
       }
 
+      // For sequential parents, do NOT individually resume subtasks.
+      // The parent's resumed workflow will call continuePendingSubtasks()
+      // which handles sequential ordering. Individually resuming subtasks
+      // here would bypass that ordering and cause out-of-order execution.
+      const strategy = parentTask.subtaskStrategy || 'sequential';
+      if (strategy === 'sequential') {
+        this.log('info', `Parent task ${parentTaskId} uses sequential strategy - skipping individual subtask resume (continuePendingSubtasks will handle ordering)`);
+        return;
+      }
+
       this.log('info', `Checking ${parentTask.subtaskIds.length} subtask(s) for auto-resume after parent task ${parentTaskId} resumed`);
 
       let subtasksResumedCount = 0;
@@ -935,24 +1041,44 @@ export class DaemonRunner {
       this.setPaused(false);
     }
 
-    // Check available concurrent task slots
-    const availableSlots = this.options.maxConcurrentTasks - this.runningTasks.size;
+    // Check available concurrent task slots using TOTAL in-progress task count
+    // (not just top-level runningTasks), so subtask trees are counted against the limit.
+    // This prevents memory exhaustion from having too many in-flight task trees.
+    const inProgressCount = this.store.countInProgressTasks(/* excludeParentsWithRunningChildren */ true);
+    const availableSlots = this.options.maxConcurrentTasks - inProgressCount;
     if (availableSlots <= 0) {
-      this.log('debug', `At capacity (${this.runningTasks.size}/${this.options.maxConcurrentTasks})`);
+      this.log('debug', `At capacity (${inProgressCount} in-progress tasks, limit ${this.options.maxConcurrentTasks})`);
       return;
     }
 
-    // Get next tasks
+    // Also check the orchestrator's global semaphore — if all Claude API slots
+    // are occupied plus waiters, there's no point starting more work.
+    if (this.orchestrator) {
+      const activeSlots = this.orchestrator.getGlobalActiveTaskCount();
+      const waiters = this.orchestrator.getGlobalWaiterCount();
+      if (activeSlots + waiters >= this.options.maxConcurrentTasks) {
+        this.log('debug', `Global semaphore saturated (${activeSlots} active + ${waiters} waiting, limit ${this.options.maxConcurrentTasks})`);
+        return;
+      }
+    }
+
+    // Start at most ONE new parent task per poll cycle.
+    // Each parent task can expand into a tree of subtasks internally, and
+    // those subtasks take time to register as in-progress in the DB.
+    // Starting multiple parents per poll creates a "stampede" where each
+    // parent launches subtask batches before the capacity check catches up.
+    // The next poll cycle (typically 5s later) will start another parent
+    // if capacity permits — this is safe and avoids the explosion.
     try {
-      // Check if we should only restart parent tasks (default: true)
       const restartParentOnly = this.config?.daemon?.taskRestart?.restartParentOnly ?? true;
 
-      for (let i = 0; i < availableSlots; i++) {
-        const task = await this.store.getNextQueuedTask();
-        if (!task) {
-          break; // No more tasks
-        }
+      // Fetch candidates and pick the first eligible one
+      const candidates = await this.store.getReadyTasks({
+        limit: 10,
+        orderByPriority: true,
+      });
 
+      for (const task of candidates) {
         // Skip if already running
         if (this.runningTasks.has(task.id)) {
           continue;
@@ -965,8 +1091,9 @@ export class DaemonRunner {
           continue;
         }
 
-        // Start task
+        // Start ONE task and return — next poll will start more if capacity permits
         this.startTask(task.id);
+        break;
       }
     } catch (error) {
       this.log('error', `Failed to get tasks: ${(error as Error).message}`);
@@ -1024,6 +1151,8 @@ export class DaemonRunner {
       })
       .finally(() => {
         this.runningTasks.delete(taskId);
+        // Clean up orphaned child processes after each task ends
+        this.cleanupOrphanedProcesses();
       });
 
     this.runningTasks.set(taskId, taskPromise);
@@ -1105,7 +1234,7 @@ export class DaemonRunner {
     const stateFilePath = join(this.options.projectPath, '.apex', 'daemon-state.json');
 
     try {
-      let capacityInfo: any = undefined;
+      let capacityInfo: CapacityInfo | undefined = undefined;
 
       // Get capacity information if daemon is running and scheduler is available
       if (running && this.daemonScheduler) {
@@ -1123,7 +1252,7 @@ export class DaemonRunner {
       }
 
       // Get health information if daemon is running and healthMonitor is available
-      let healthInfo: any = undefined;
+      let healthInfo: HealthInfo | undefined = undefined;
       if (running && this.healthMonitor) {
         try {
           const healthReport = this.healthMonitor.getHealthReport(this);
@@ -1245,7 +1374,11 @@ export class DaemonRunner {
         // @ts-ignore - __dirname is available at runtime in CommonJS
         const apiPath = join(__dirname, '..', '..', 'api', 'dist', 'index.js');
 
-        this.apiProcess = spawn('node', [apiPath], {
+        const serviceNice = daemonConfig.processLimits?.serviceNiceLevel ?? 15;
+        const useNice = process.platform !== 'win32' && serviceNice > 0;
+        const apiCmd = useNice ? 'nice' : 'node';
+        const apiArgs = useNice ? ['-n', String(serviceNice), 'node', apiPath] : [apiPath];
+        this.apiProcess = spawn(apiCmd, apiArgs, {
           cwd: this.options.projectPath,
           env: {
             ...process.env,
@@ -1304,7 +1437,13 @@ export class DaemonRunner {
         const webuiPath = join(__dirname, '..', '..', 'web-ui');
 
         // Use npm exec with -- separator for command arguments
-        this.webuiProcess = spawn('npm', ['exec', '--', 'next', 'start', '-p', String(webuiPort), '-H', webuiHost], {
+        const webuiNice = daemonConfig.processLimits?.serviceNiceLevel ?? 15;
+        const useWebuiNice = process.platform !== 'win32' && webuiNice > 0;
+        const webuiCmd = useWebuiNice ? 'nice' : 'npm';
+        const webuiArgs = useWebuiNice
+          ? ['-n', String(webuiNice), 'npm', 'exec', '--', 'next', 'start', '-p', String(webuiPort), '-H', webuiHost]
+          : ['exec', '--', 'next', 'start', '-p', String(webuiPort), '-H', webuiHost];
+        this.webuiProcess = spawn(webuiCmd, webuiArgs, {
           cwd: webuiPath,
           env: {
             ...process.env,
@@ -1354,17 +1493,46 @@ export class DaemonRunner {
    * Stop integrated services
    */
   private async stopIntegratedServices(): Promise<void> {
+    const killWithTimeout = (proc: ChildProcess, name: string) => {
+      return new Promise<void>((resolve) => {
+        if (!proc || proc.killed) { resolve(); return; }
+
+        const forceKillTimer = setTimeout(() => {
+          try {
+            // Force kill if SIGTERM didn't work after 3 seconds
+            proc.kill('SIGKILL');
+          } catch { /* already dead */ }
+          resolve();
+        }, 3000);
+
+        proc.once('exit', () => {
+          clearTimeout(forceKillTimer);
+          resolve();
+        });
+
+        this.log('info', `Stopping ${name}...`);
+        try {
+          proc.kill('SIGTERM');
+        } catch {
+          clearTimeout(forceKillTimer);
+          resolve();
+        }
+      });
+    };
+
+    const promises: Promise<void>[] = [];
+
     if (this.apiProcess) {
-      this.log('info', 'Stopping API server...');
-      this.apiProcess.kill('SIGTERM');
+      promises.push(killWithTimeout(this.apiProcess, 'API server'));
       this.apiProcess = null;
     }
 
     if (this.webuiProcess) {
-      this.log('info', 'Stopping Web UI...');
-      this.webuiProcess.kill('SIGTERM');
+      promises.push(killWithTimeout(this.webuiProcess, 'Web UI'));
       this.webuiProcess = null;
     }
+
+    await Promise.all(promises);
   }
 
   /**
@@ -1619,84 +1787,119 @@ export class DaemonRunner {
     }
 
     try {
-      // Get only paused tasks (lightweight to avoid OOM with large task counts)
       const pausedTasks = await this.store.listTasks({ status: 'paused', lightweight: true });
 
       if (pausedTasks.length === 0) {
         return;
       }
 
-      const pausedTaskIds = new Set(pausedTasks.map(t => t.id));
+      const pausedTaskMap = new Map(pausedTasks.map(t => [t.id, t]));
       const rateLimitResetMs = 3600000; // 1 hour
       const now = Date.now();
 
-      // Find root paused tasks - tasks whose parent is NOT paused (or have no parent)
-      // These are the tasks we should resume; orchestrator will handle their subtasks
-      const rootPausedTasks = pausedTasks.filter(task => {
-        // If task has no parent, it's a root
-        if (!task.parentTaskId) {
+      // Find LEAF paused tasks — tasks that are directly blocked by usage_limit
+      // (not blocked because a subtask is paused). These are what actually need resuming.
+      const leafPausedTasks = pausedTasks.filter(task => {
+        // Direct usage limit or rate limit — this is a leaf
+        if (task.pauseReason === 'usage_limit' || task.pauseReason === 'rate_limit') {
           return true;
         }
-        // If task's parent is not in the paused set, this task is a root of its paused hierarchy
-        return !pausedTaskIds.has(task.parentTaskId);
+        // Not a subtask_paused reason — also a leaf
+        if (!task.pauseReason?.startsWith('subtask_paused:')) {
+          return true;
+        }
+        // Has subtask_paused reason — NOT a leaf, skip it
+        return false;
       });
 
-      if (rootPausedTasks.length === 0) {
-        this.log('debug', `Found ${pausedTasks.length} paused task(s), but no root paused tasks to resume`);
+      if (leafPausedTasks.length === 0) {
+        this.log('debug', `Found ${pausedTasks.length} paused task(s), but no leaf tasks to resume`);
         return;
       }
 
-      this.log('debug', `Found ${rootPausedTasks.length} root paused task(s) out of ${pausedTasks.length} total`);
-
       let resumedCount = 0;
+      const maxToResume = this.options.maxConcurrentTasks || 3;
 
-      // Only resume root paused tasks that meet the criteria
-      for (const task of rootPausedTasks) {
-        // Check if this task can be resumed based on pause reason
-        let shouldResume = false;
-        let resumeReason = '';
-
-        if (task.pausedAt) {
-          const pausedDuration = now - new Date(task.pausedAt).getTime();
-          if (pausedDuration >= rateLimitResetMs) {
-            shouldResume = true;
-            const reason = task.pauseReason ?? 'unknown';
-            resumeReason = `${reason} expired (${Math.round(pausedDuration / 60000)} minutes)`;
-          }
+      for (const task of leafPausedTasks) {
+        // Use DB-level in-progress count to respect total capacity including subtasks
+        const inProgressCount = this.store!.countInProgressTasks(true);
+        if (inProgressCount + resumedCount >= maxToResume) {
+          break;
         }
 
-        if (shouldResume) {
-          this.log('info', `Attempting to resume root task ${task.id}: ${resumeReason}`, { taskId: task.id });
+        // Check if enough time has passed since pausing
+        if (!task.pausedAt) continue;
+        const pausedDuration = now - new Date(task.pausedAt).getTime();
+        if (pausedDuration < rateLimitResetMs) continue;
 
-          try {
-            const resumed = await this.orchestrator.resumePausedTask(task.id);
-            if (resumed) {
-              resumedCount++;
-              this.log('info', `Auto-resumed root task ${task.id}`, { taskId: task.id });
-              // Stop if we've hit the max concurrent task limit
-              const currentRunning = this.runningTasks.size + resumedCount;
-              if (currentRunning >= (this.options.maxConcurrentTasks || 3)) {
-                break;
-              }
-            }
-          } catch (error) {
-            const errMsg = (error as Error).message ?? String(error);
-            this.log('warn', `Failed to resume task ${task.id}: ${errMsg}`, { taskId: task.id });
-            // If this is a usage limit error, stop trying other tasks —
-            // the limit is global so all subsequent attempts will also fail
-            if (errMsg.includes('usage limit') || errMsg.includes('Usage limit') || errMsg.includes("hit your limit")) {
-              this.log('info', `Usage limit active, skipping remaining ${rootPausedTasks.length - rootPausedTasks.indexOf(task) - 1} paused task(s) this cycle`);
-              break;
-            }
+        const resumeReason = `${task.pauseReason ?? 'unknown'} expired (${Math.round(pausedDuration / 60000)}m)`;
+        this.log('info', `Resuming leaf task ${task.id}: ${resumeReason}`, { taskId: task.id });
+
+        try {
+          // Resume the leaf task directly — this bypasses the subtask_paused check
+          // in resumePausedTask that was causing the infinite loop
+          const resumed = await this.orchestrator.resumePausedTask(task.id);
+          if (resumed) {
+            resumedCount++;
+            this.log('info', `Auto-resumed leaf task ${task.id}`, { taskId: task.id });
+
+            // Also resume ancestor chain: clear subtask_paused state from parents
+            // so they can pick up where they left off once this subtask finishes
+            await this.resumeAncestorChain(task);
+          }
+        } catch (error) {
+          const errMsg = (error as Error).message ?? String(error);
+          this.log('warn', `Failed to resume task ${task.id}: ${errMsg}`, { taskId: task.id });
+          if (errMsg.includes('usage limit') || errMsg.includes('Usage limit') || errMsg.includes("hit your limit")) {
+            this.log('info', 'Usage limit still active, stopping resume cycle');
+            break;
           }
         }
       }
 
       if (resumedCount > 0) {
-        this.log('info', `Auto-resumed ${resumedCount} root paused task(s)`);
+        this.log('info', `Auto-resumed ${resumedCount} leaf paused task(s)`);
       }
     } catch (error) {
       this.log('error', `Failed to check paused tasks: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Walk up the parent chain and clear subtask_paused state so parents can
+   * re-enter their subtask execution loop once the resumed child finishes.
+   */
+  private async resumeAncestorChain(task: Task): Promise<void> {
+    if (!this.store) return;
+
+    let currentId = task.parentTaskId;
+    const visited = new Set<string>();
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const parent = await this.store.getTask(currentId);
+      if (!parent) break;
+
+      // Only touch parents that are paused due to subtask_paused
+      if (parent.status !== 'paused' || !parent.pauseReason?.startsWith('subtask_paused:')) {
+        break;
+      }
+
+      // Clear the pause state so the parent can re-enter subtask execution
+      await this.store.updateTask(currentId, {
+        status: 'in-progress',
+        pausedAt: undefined,
+        pauseReason: undefined,
+        resumeAfter: undefined,
+        updatedAt: new Date(),
+      });
+
+      await this.store.addLog(currentId, {
+        level: 'info',
+        message: `Parent unpaused: child ${task.id} was resumed`,
+      });
+
+      currentId = parent.parentTaskId;
     }
   }
 
@@ -1750,7 +1953,7 @@ export class DaemonRunner {
         let needsRepair = false;
         let repairReason = '';
 
-        // Check 1: Parent task with pending subtasks that's stuck
+        // Check 1: Parent task with subtasks that's stuck
         if (task.subtaskIds && task.subtaskIds.length > 0 && timeSinceUpdate > stuckThresholdMs) {
           if (!this.runningTasks.has(task.id)) {
             // Query subtask statuses directly instead of loading all tasks
@@ -1758,25 +1961,63 @@ export class DaemonRunner {
             const pendingCount = subtaskStatuses.filter(s => s.status === 'pending').length;
             const inProgressCount = subtaskStatuses.filter(s => s.status === 'in-progress').length;
             const failedCount = subtaskStatuses.filter(s => s.status === 'failed').length;
+            const completedCount = subtaskStatuses.filter(s => s.status === 'completed').length;
 
-            if (pendingCount > 0 && inProgressCount === 0) {
+            if (completedCount === subtaskStatuses.length) {
+              // All subtasks completed — mark parent as completed too
+              this.log('info', `[AutoTriage] All ${completedCount} subtasks of ${task.id} completed, marking parent as completed`);
+              this.orchestrator!.abortTaskProcess(task.id);
+              await this.store.updateTask(task.id, {
+                status: 'completed',
+                error: undefined,
+                completedAt: new Date(),
+                updatedAt: new Date(),
+              });
+              repairedCount++;
+              continue;
+            } else if (failedCount > 0 && inProgressCount === 0 && pendingCount === 0) {
+              // Some subtasks failed, none pending or in-progress — parent should fail
+              this.log('warn', `[AutoTriage] Task ${task.id} has ${failedCount} failed subtask(s) with none remaining, marking as failed`);
+              this.orchestrator!.abortTaskProcess(task.id);
+              await this.store.updateTask(task.id, {
+                status: 'failed',
+                error: `${failedCount} subtask(s) failed`,
+                updatedAt: new Date(),
+              });
+              repairedCount++;
+              continue;
+            } else if (pendingCount > 0 && inProgressCount === 0) {
               needsRepair = true;
               repairReason = `Parent task stuck with ${pendingCount} pending subtasks (${failedCount} failed)`;
             }
+            // If subtasks are in-progress, do nothing — let them finish
           }
         }
 
         // Check 2: Task stuck in checkpoint resume loop — mark as failed to break the cycle
+        // Skip if the task has subtasks still in-progress (they may just need more time)
         if (!needsRepair && task.resumeAttempts && task.resumeAttempts >= 3) {
           if (timeSinceUpdate > stuckThresholdMs && !this.runningTasks.has(task.id)) {
-            this.log('warn', `[AutoTriage] Task ${task.id} hit max resume attempts (${task.resumeAttempts}), marking as failed`);
-            await this.store.updateTask(task.id, {
-              status: 'failed',
-              error: `AutoTriage: Task stuck after ${task.resumeAttempts} resume/repair attempts. Last error: ${(task.error ?? 'none').substring(0, 200)}`,
-              updatedAt: new Date(),
-            });
-            repairedCount++;
-            continue;
+            // Don't fail parent tasks that have in-progress or pending subtasks
+            let hasActiveSubtasks = false;
+            if (task.subtaskIds && task.subtaskIds.length > 0) {
+              const subtaskStatuses = this.store.getSubtaskStatuses(task.subtaskIds);
+              hasActiveSubtasks = subtaskStatuses.some(s => s.status === 'in-progress' || s.status === 'pending');
+            }
+
+            if (hasActiveSubtasks) {
+              this.log('info', `[AutoTriage] Task ${task.id} has ${task.resumeAttempts} resume attempts but still has active subtasks, skipping failure`);
+            } else {
+              this.log('warn', `[AutoTriage] Task ${task.id} hit max resume attempts (${task.resumeAttempts}), marking as failed`);
+              this.orchestrator!.abortTaskProcess(task.id);
+              await this.store.updateTask(task.id, {
+                status: 'failed',
+                error: `AutoTriage: Task stuck after ${task.resumeAttempts} resume/repair attempts. Last error: ${(task.error ?? 'none').substring(0, 200)}`,
+                updatedAt: new Date(),
+              });
+              repairedCount++;
+              continue;
+            }
           }
         }
 
@@ -1789,6 +2030,7 @@ export class DaemonRunner {
               // Task has been repaired multiple times but keeps ending up with checkpoint error.
               // Mark it as failed to break the infinite loop.
               this.log('warn', `[AutoTriage] Task ${task.id} stuck in checkpoint repair loop (${task.resumeAttempts} attempts), marking as failed`);
+              this.orchestrator!.abortTaskProcess(task.id);
               await this.store.updateTask(task.id, {
                 status: 'failed',
                 error: `AutoTriage: Task stuck in checkpoint resume loop after ${task.resumeAttempts} repair attempts. Original: ${task.error.substring(0, 200)}`,
@@ -1870,5 +2112,217 @@ export class DaemonRunner {
     }, interval);
 
     this.log('info', `Periodic stuck task auto-triage enabled (interval: ${interval}ms)`);
+  }
+
+  /**
+   * Kill orphaned OS processes left behind by completed/failed/paused tasks.
+   *
+   * When the Claude Agent SDK spawns `claude` subprocesses, those run Bash
+   * commands (like `npm test`) that spawn deep process trees:
+   *   claude → zsh → npm → vitest → worker forks
+   *
+   * When `claude` dies, the zsh shell gets reparented to PID 1, but the rest
+   * of the tree (npm → vitest → workers) keeps valid parent chains and
+   * continues burning CPU. We must:
+   *
+   * 1. Build a set of legitimate daemon-descendant PIDs
+   * 2. Kill any vitest/npm/zsh processes NOT in that set
+   */
+  private cleanupOrphanedProcesses(): void {
+    if (process.platform === 'win32') {
+      return;
+    }
+
+    try {
+      const result = execFileSync('ps', ['-eo', 'pid,ppid,args'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+
+      const daemonPid = process.pid;
+      const lines = result.split('\n');
+
+      // Parse all processes into a lookup structure
+      const procMap = new Map<number, { ppid: number; args: string }>();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const parts = trimmed.split(/\s+/);
+        const pid = parseInt(parts[0], 10);
+        const ppid = parseInt(parts[1], 10);
+        if (isNaN(pid) || isNaN(ppid)) continue;
+        procMap.set(pid, { ppid, args: parts.slice(2).join(' ') });
+      }
+
+      // Build set of legitimate daemon descendants by walking the tree
+      const legitimatePids = new Set<number>();
+      legitimatePids.add(daemonPid);
+      // Iteratively expand — walk children until no new ones found
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const [pid, info] of procMap) {
+          if (!legitimatePids.has(pid) && legitimatePids.has(info.ppid)) {
+            legitimatePids.add(pid);
+            changed = true;
+          }
+        }
+      }
+
+      // Find processes to kill: anything matching our patterns that is NOT
+      // a legitimate descendant of the daemon
+      const killPids: number[] = [];
+      for (const [pid, info] of procMap) {
+        if (legitimatePids.has(pid)) continue;
+        if (pid === 1) continue;
+
+        const args = info.args;
+
+        // Orphaned vitest workers (the main CPU drain)
+        if (args.includes('vitest') && (args.includes('workers/forks') || args.includes('vitest run'))) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned zsh shells from claude's Bash tool
+        if (args.includes('.claude/shell-snapshots')) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned npm test / npm run commands for our project
+        if ((args.includes('npm test') || args.includes('npm run')) && args.includes(this.options.projectPath)) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned node processes referencing our project (not daemon, not MCP)
+        // On macOS, orphaned processes get reparented to PID 1 (launchd)
+        if (info.ppid === 1 && args.includes('node') && args.includes(this.options.projectPath) &&
+            !args.includes('daemon-entry') && !args.includes('mcp-server')) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned CLI processes (apex init, apex run, etc.) not descended from daemon
+        if (args.includes('/packages/cli/dist/index.js') && args.includes(this.options.projectPath)) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned tsc processes from build checks
+        if (args.includes('tsc') && args.includes(this.options.projectPath)) {
+          killPids.push(pid);
+          continue;
+        }
+
+        // Orphaned Playwright Chromium instances (spawned by browser tests)
+        if (args.includes('ms-playwright') && (args.includes('Google Chrome for Testing') || args.includes('chrome-headless-shell'))) {
+          killPids.push(pid);
+          continue;
+        }
+      }
+
+      if (killPids.length > 0) {
+        this.log('warn', `Killing ${killPids.length} orphaned process(es): ${killPids.join(', ')}`);
+        for (const pid of killPids) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // Process may have already exited
+          }
+        }
+      }
+    } catch (error) {
+      this.log('debug', `Orphaned process cleanup error: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Renice all daemon-descendant processes to reduce CPU priority.
+   *
+   * Since the Claude Agent SDK spawns subprocesses internally (and those
+   * spawn bash → npm → vitest → worker forks), we can't set nice levels
+   * at spawn time. Instead we periodically renice the entire process tree.
+   */
+  private reniceDaemonDescendants(): void {
+    if (process.platform === 'win32') return;
+
+    const daemonConfig = this.config?.daemon;
+    const niceLevel = daemonConfig?.processLimits?.niceLevel ?? 10;
+    if (niceLevel === 0) return;
+
+    try {
+      const result = execFileSync('ps', ['-eo', 'pid,ppid,nice'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+
+      const daemonPid = process.pid;
+      const lines = result.split('\n');
+
+      // Parse processes
+      const procMap = new Map<number, { ppid: number; nice: number }>();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const parts = trimmed.split(/\s+/);
+        const pid = parseInt(parts[0], 10);
+        const ppid = parseInt(parts[1], 10);
+        const nice = parseInt(parts[2], 10);
+        if (isNaN(pid) || isNaN(ppid) || isNaN(nice)) continue;
+        procMap.set(pid, { ppid, nice });
+      }
+
+      // Find all daemon descendants
+      const descendants = new Set<number>();
+      descendants.add(daemonPid);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const [pid, info] of procMap) {
+          if (!descendants.has(pid) && descendants.has(info.ppid)) {
+            descendants.add(pid);
+            changed = true;
+          }
+        }
+      }
+
+      // Renice descendants that have lower nice values than our target
+      let renicedCount = 0;
+      for (const pid of descendants) {
+        if (pid === daemonPid) continue; // Don't renice ourselves
+        const info = procMap.get(pid);
+        if (info && info.nice < niceLevel) {
+          try {
+            os.setPriority(pid, niceLevel);
+            renicedCount++;
+          } catch {
+            // Process may have exited or we lack permissions
+          }
+        }
+      }
+
+      if (renicedCount > 0) {
+        this.log('debug', `[ProcessLimits] Reniced ${renicedCount} descendant process(es) to nice=${niceLevel}`);
+      }
+    } catch (error) {
+      this.log('debug', `[ProcessLimits] Renice error: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Start periodic cleanup of orphaned OS processes and renice of descendants.
+   * Runs every 30 seconds — vitest workers at ~80% CPU each cause rapid resource exhaustion.
+   */
+  private startProcessCleanupInterval(): void {
+    this.processCleanupInterval = setInterval(() => {
+      if (!this.isRunning || this.isShuttingDown) return;
+      this.cleanupOrphanedProcesses();
+      this.reniceDaemonDescendants();
+    }, 30_000);
+
+    // Run renice immediately on startup
+    this.reniceDaemonDescendants();
   }
 }

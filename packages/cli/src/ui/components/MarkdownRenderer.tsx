@@ -25,13 +25,16 @@ export function MarkdownRenderer({
   // Subtract 2 for padding/margin safety
   const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
 
-  const [processed, setProcessed] = useState<string>(content);
+  // Handle null/undefined content
+  const safeContent = content || '';
+
+  const [processed, setProcessed] = useState<string>(safeContent);
 
   useEffect(() => {
     const processMarkdown = async () => {
       try {
         // marked.parse can be async in newer versions
-        const result = await marked.parse(content, { async: true });
+        const result = await marked.parse(safeContent, { async: true });
         // Strip HTML tags for terminal output
         const stripped = result
           .replace(/<[^>]*>/g, '')
@@ -42,11 +45,11 @@ export function MarkdownRenderer({
         setProcessed(stripped);
       } catch {
         // Fallback to plain text if markdown parsing fails
-        setProcessed(content);
+        setProcessed(safeContent);
       }
     };
     processMarkdown();
-  }, [content]);
+  }, [safeContent]);
 
   return (
     <Box flexDirection="column" width={effectiveWidth}>
@@ -70,7 +73,9 @@ export function SimpleMarkdownRenderer({
   // Subtract 2 for padding/margin safety
   const effectiveWidth = explicitWidth ?? (responsive ? Math.max(40, terminalWidth - 2) : 80);
 
-  const lines = content.split('\n');
+  // Handle null/undefined content
+  const safeContent = content || '';
+  const lines = safeContent.split('\n');
 
   return (
     <Box flexDirection="column" width={effectiveWidth}>

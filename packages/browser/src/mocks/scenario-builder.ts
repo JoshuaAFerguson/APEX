@@ -43,6 +43,10 @@ class MockUrlBehaviorImpl implements MockUrlBehavior {
     return this;
   }
 
+  build(): MockScenarioConfig {
+    return this.builder.build();
+  }
+
   and(): MockScenarioBuilder {
     return this.builder;
   }
@@ -82,6 +86,10 @@ class MockElementBehaviorImpl implements MockElementBehavior {
     return this;
   }
 
+  build(): MockScenarioConfig {
+    return this.builder.build();
+  }
+
   and(): MockScenarioBuilder {
     return this.builder;
   }
@@ -115,6 +123,10 @@ class MockOperationBehaviorImpl implements MockOperationBehavior {
   withDelay(ms: number): MockOperationBehavior {
     this.builder.addOperationBehavior(this.operationName, { delay: ms });
     return this;
+  }
+
+  build(): MockScenarioConfig {
+    return this.builder.build();
   }
 
   and(): MockScenarioBuilder {

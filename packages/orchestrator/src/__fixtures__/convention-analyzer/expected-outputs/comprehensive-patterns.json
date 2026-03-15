@@ -1,0 +1,32 @@
+{
+  "fileNaming": "camelCase",
+  "functionNaming": "camelCase",
+  "variableNaming": "camelCase",
+  "classNaming": "PascalCase",
+  "constantNaming": "SCREAMING_SNAKE_CASE",
+  "indentation": {
+    "type": "spaces",
+    "size": 2
+  },
+  "imports": {
+    "style": "es6",
+    "grouping": "type-separate",
+    "quotes": "single"
+  },
+  "documentation": {
+    "style": "jsdoc",
+    "coverage": 85
+  },
+  "formatting": {
+    "lineLength": 120,
+    "semicolons": "required",
+    "quotes": "single",
+    "trailingCommas": "always"
+  },
+  "organization": {
+    "testLocation": "separate-__tests__",
+    "testNaming": "suffix-.test",
+    "sourceStructure": "src",
+    "configLocation": "root"
+  }
+}

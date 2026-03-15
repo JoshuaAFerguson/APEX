@@ -5,7 +5,7 @@ import { Banner } from '../Banner';
 import type { StdoutDimensions } from '../hooks/useStdoutDimensions.js';
 
 // Mock useStdoutDimensions hook
-vi.mock('../hooks/useStdoutDimensions.js', () => ({
+vi.mock('../../hooks/useStdoutDimensions.js', () => ({
   useStdoutDimensions: vi.fn(),
 }));
 

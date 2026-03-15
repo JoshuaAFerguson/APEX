@@ -57,11 +57,11 @@ import {
  */
 export function createTestTask(overrides: Partial<Task> = {}): Task {
   const now = new Date();
-  const taskData = {
+  const taskData: Task = {
     id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     description: 'Test task',
     workflow: 'feature',
-    autonomy: 'full' as AutonomyLevel,
+    autonomy: 'full-auto' as AutonomyLevel,
     status: 'pending' as TaskStatus,
     priority: 'normal' as TaskPriority,
     effort: 'medium' as TaskEffort,

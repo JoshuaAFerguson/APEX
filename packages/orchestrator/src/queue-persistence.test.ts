@@ -638,12 +638,19 @@ describe('Queue State Persistence Across Restarts', () => {
       const initialNextQueued = await store1.getNextQueuedTask();
 
       // Verify expected initial state
-      expect(initialReadyTasks).toHaveLength(2); // urgent_ready and dependent_ready
+      // Ready tasks include: urgent_ready, dependent_ready, and subtask_1
+      // subtask_1 is ready because: it's pending, has no blocking deps, and is the first
+      // subtask in a sequential parent (no earlier incomplete siblings)
+      expect(initialReadyTasks).toHaveLength(3);
       expect(initialReadyTasks[0].id).toBe('urgent_ready'); // Urgent comes first
-      expect(initialReadyTasks[1].id).toBe('dependent_ready');
+      expect(initialReadyTasks[1].id).toBe('dependent_ready'); // Normal priority
+      expect(initialReadyTasks[2].id).toBe('subtask_1'); // Normal priority, but created later
 
-      expect(initialPausedForResume).toHaveLength(1); // Only paused_ready
-      expect(initialPausedForResume[0].id).toBe('paused_ready');
+      // Both paused_ready and parent_with_subtasks are eligible for resume
+      // (both have resumable pause reasons and resumeAfter in the past)
+      expect(initialPausedForResume).toHaveLength(2);
+      expect(initialPausedForResume[0].id).toBe('paused_ready'); // High priority
+      expect(initialPausedForResume[1].id).toBe('parent_with_subtasks'); // Normal priority
 
       expect(initialParentTasks).toHaveLength(1); // parent_with_subtasks
       expect(initialParentTasks[0].id).toBe('parent_with_subtasks');
@@ -661,12 +668,14 @@ describe('Queue State Persistence Across Restarts', () => {
       const restart1ParentTasks = await store2.findHighestPriorityParentTask();
       const restart1NextQueued = await store2.getNextQueuedTask();
 
-      expect(restart1ReadyTasks).toHaveLength(2);
+      expect(restart1ReadyTasks).toHaveLength(3);
       expect(restart1ReadyTasks[0].id).toBe('urgent_ready');
       expect(restart1ReadyTasks[1].id).toBe('dependent_ready');
+      expect(restart1ReadyTasks[2].id).toBe('subtask_1');
 
-      expect(restart1PausedForResume).toHaveLength(1);
+      expect(restart1PausedForResume).toHaveLength(2);
       expect(restart1PausedForResume[0].id).toBe('paused_ready');
+      expect(restart1PausedForResume[1].id).toBe('parent_with_subtasks');
 
       expect(restart1ParentTasks).toHaveLength(1);
       expect(restart1ParentTasks[0].id).toBe('parent_with_subtasks');
@@ -678,9 +687,10 @@ describe('Queue State Persistence Across Restarts', () => {
 
       // Now still_blocked should become ready
       const afterUrgentReadyTasks = await store2.getReadyTasks({ orderByPriority: true });
-      expect(afterUrgentReadyTasks).toHaveLength(2);
+      expect(afterUrgentReadyTasks).toHaveLength(3);
       expect(afterUrgentReadyTasks[0].id).toBe('still_blocked'); // High priority
       expect(afterUrgentReadyTasks[1].id).toBe('dependent_ready'); // Normal priority
+      expect(afterUrgentReadyTasks[2].id).toBe('subtask_1'); // Normal priority, later created
 
       // Second restart
       store2.close();
@@ -691,9 +701,10 @@ describe('Queue State Persistence Across Restarts', () => {
       const restart2ReadyTasks = await store3.getReadyTasks({ orderByPriority: true });
       const restart2NextQueued = await store3.getNextQueuedTask();
 
-      expect(restart2ReadyTasks).toHaveLength(2);
+      expect(restart2ReadyTasks).toHaveLength(3);
       expect(restart2ReadyTasks[0].id).toBe('still_blocked');
       expect(restart2ReadyTasks[1].id).toBe('dependent_ready');
+      expect(restart2ReadyTasks[2].id).toBe('subtask_1');
       expect(restart2NextQueued?.id).toBe('still_blocked');
 
       // Verify all task relationships and dates are still intact

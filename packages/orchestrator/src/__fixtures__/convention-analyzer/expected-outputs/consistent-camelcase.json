@@ -1,0 +1,24 @@
+{
+  "fileNaming": "camelCase",
+  "functionNaming": "camelCase",
+  "variableNaming": "camelCase",
+  "classNaming": "PascalCase",
+  "constantNaming": "SCREAMING_SNAKE_CASE",
+  "indentation": {
+    "type": "spaces",
+    "size": 2
+  },
+  "imports": {
+    "style": "es6",
+    "quotes": "single"
+  },
+  "documentation": {
+    "style": "jsdoc",
+    "coverage": 70
+  },
+  "formatting": {
+    "lineLength": 100,
+    "semicolons": "required",
+    "quotes": "single"
+  }
+}

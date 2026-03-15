@@ -1,13 +1,24 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '../../__tests__/test-utils';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ErrorDisplay } from '../ErrorDisplay';
+import { useStdoutDimensions } from '../../hooks/index.js';
 
 // Mock the useStdoutDimensions hook
-const mockUseStdoutDimensions = vi.fn();
-vi.mock('../hooks/index.js', () => ({
-  useStdoutDimensions: mockUseStdoutDimensions,
+vi.mock('../../hooks/index.js', () => ({
+  useStdoutDimensions: vi.fn(() => ({
+    width: 80,
+    height: 24,
+    breakpoint: 'normal',
+    isNarrow: false,
+    isCompact: false,
+    isNormal: true,
+    isWide: false,
+    isAvailable: true,
+  })),
 }));
+
+const mockUseStdoutDimensions = vi.mocked(useStdoutDimensions);
 
 describe('ErrorDisplay Stack Trace Responsive Behavior Matrix', () => {
   // Create a realistic stack trace for testing

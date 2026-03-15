@@ -427,8 +427,8 @@ export class MockToolsExecutor extends EventEmitter {
       error,
       timestamp: new Date(),
     };
-    this.emit(type, event);
-    this.emit('tool:event', event);
+    (this as any).emit(type, event);
+    (this as any).emit('tool:event', event);
   }
 
   /**

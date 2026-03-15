@@ -10,18 +10,6 @@
 
 import { EventEmitter } from 'eventemitter3';
 import type {
-  MockMCPServerDefinition,
-  MockMCPServerConfig,
-  MockBehaviorConfig,
-  MockToolHandler,
-  MockErrorInjection,
-  MockResponseDelay,
-  MockScenario,
-  MockErrorSimulationConfig,
-  MockMalformedResponseConfig,
-  MockErrorScenarioPreset,
-} from '@apexcli/core';
-import type {
   JSONRPCMessage,
   JSONRPCNotification,
 } from '../types.js';
@@ -32,10 +20,19 @@ import {
 import { MockTransport } from './mock-transport.js';
 import { MockMCPProtocolHandler } from './mock-protocol-handler.js';
 import type {
+  MockMCPServerDefinition,
+  MockMCPServerConfig,
+  MockBehaviorConfig,
+  MockToolHandler,
+  MockErrorInjection,
+  MockResponseDelay,
+  MockScenario,
+  MockErrorSimulationConfig,
+  MockMalformedResponseConfig,
+  MockErrorScenarioPreset,
   MockServerFacadeEvents,
   MockServerStats,
   RecordedRequest,
-  MockAssertionError as MockAssertionErrorType,
   MockTransportOptions,
   ErrorSimulationState,
   MalformedResponseInterceptorConfig,
@@ -911,7 +908,7 @@ export class MockMCPServerFacade extends EventEmitter<MockServerFacadeEvents> {
     this.malformedResponseConfig = undefined;
 
     // Clear all malformed response interceptors from transport
-    this.transport.clearMalformedInterceptors();
+    this.transport.clearMalformedResponseInjection();
   }
 
   /**
@@ -922,13 +919,13 @@ export class MockMCPServerFacade extends EventEmitter<MockServerFacadeEvents> {
     const injection: MalformedBytesInjectionConfig = {
       type: this.convertMalformedType(config.type),
       truncateAt: config.truncateAt,
-      customData: config.invalidJsonContent,
+      invalidContent: config.invalidJsonContent,
     };
 
-    // Handle wrong_schema type by converting to custom data
+    // Handle wrong_schema type by converting to custom raw bytes
     if (config.type === 'wrong_schema' && config.wrongSchemaPayload) {
       injection.type = 'custom';
-      injection.customData = JSON.stringify(config.wrongSchemaPayload);
+      injection.rawBytes = JSON.stringify(config.wrongSchemaPayload);
     }
 
     return {

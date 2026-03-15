@@ -226,19 +226,23 @@ export function createTaskStoreMock(initialTasks: any[] = []) {
 export function createEventEmitterMock() {
   const listeners = new Map<string, Set<Function>>();
 
-  return {
-    on: vi.fn().mockImplementation((event: string, listener: Function) => {
-      if (!listeners.has(event)) {
-        listeners.set(event, new Set());
-      }
-      listeners.get(event)!.add(listener);
-    }),
+  const addListener = (event: string, listener: Function) => {
+    if (!listeners.has(event)) {
+      listeners.set(event, new Set());
+    }
+    listeners.get(event)!.add(listener);
+  };
 
-    off: vi.fn().mockImplementation((event: string, listener: Function) => {
-      if (listeners.has(event)) {
-        listeners.get(event)!.delete(listener);
-      }
-    }),
+  const removeListener = (event: string, listener: Function) => {
+    if (listeners.has(event)) {
+      listeners.get(event)!.delete(listener);
+    }
+  };
+
+  return {
+    on: vi.fn().mockImplementation(addListener),
+
+    off: vi.fn().mockImplementation(removeListener),
 
     emit: vi.fn().mockImplementation((event: string, ...args: any[]) => {
       if (listeners.has(event)) {
@@ -255,9 +259,9 @@ export function createEventEmitterMock() {
     once: vi.fn().mockImplementation((event: string, listener: Function) => {
       const onceListener = (...args: any[]) => {
         listener(...args);
-        this.off(event, onceListener);
+        removeListener(event, onceListener);
       };
-      this.on(event, onceListener);
+      addListener(event, onceListener);
     }),
 
     // Helper methods for testing

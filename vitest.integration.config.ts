@@ -78,13 +78,9 @@ export default mergeConfig(
       // Sequential execution to prevent resource conflicts
       // Integration tests often share databases and temp directories
       pool: 'forks',
-      poolOptions: {
-        forks: {
-          // Limit concurrent tests to prevent resource exhaustion
-          maxForks: 4,
-          minForks: 1,
-        },
-      },
+      // Limit concurrent tests to prevent resource exhaustion
+      maxForks: 4,
+      minForks: 1,
 
       // Run tests sequentially within each file to avoid state conflicts
       sequence: {

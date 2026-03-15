@@ -32,9 +32,9 @@ export const AutonomyFixtures = {
     rejectionBehavior: 'abort' as RejectionBehavior,
     gates: [],
     limits: {
-      maxTokensPerTask: 1000000,
-      maxCostPerTask: 10.0,
-      timeoutMinutes: 60,
+      maxTokens: 1000000,
+      maxCost: 10.0,
+      maxTimeMs: 3600000, // 60 minutes
     },
     stageOverrides: {},
     agentOverrides: {},
@@ -48,16 +48,15 @@ export const AutonomyFixtures = {
     rejectionBehavior: 'abort' as RejectionBehavior,
     gates: [
       {
-        type: 'commit' as const,
+        type: 'before-commit' as const,
         description: 'Review code changes before committing',
         required: true,
-        stage: 'implementation',
       },
     ],
     limits: {
-      maxTokensPerTask: 500000,
-      maxCostPerTask: 5.0,
-      timeoutMinutes: 30,
+      maxTokens: 500000,
+      maxCost: 5.0,
+      maxTimeMs: 1800000, // 30 minutes
     },
     stageOverrides: {},
     agentOverrides: {},
@@ -71,28 +70,25 @@ export const AutonomyFixtures = {
     rejectionBehavior: 'skip' as RejectionBehavior,
     gates: [
       {
-        type: 'code_change' as const,
+        type: 'before-destructive' as const,
         description: 'Review all code changes',
         required: true,
-        stage: 'implementation',
       },
       {
-        type: 'commit' as const,
+        type: 'before-commit' as const,
         description: 'Review commits',
         required: true,
-        stage: 'implementation',
       },
       {
         type: 'deployment' as const,
         description: 'Review deployments',
         required: true,
-        stage: 'deployment',
       },
     ],
     limits: {
-      maxTokensPerTask: 250000,
-      maxCostPerTask: 2.5,
-      timeoutMinutes: 15,
+      maxTokens: 250000,
+      maxCost: 2.5,
+      maxTimeMs: 900000, // 15 minutes
     },
     stageOverrides: {},
     agentOverrides: {},
@@ -106,9 +102,9 @@ export const AutonomyFixtures = {
     rejectionBehavior: 'abort' as RejectionBehavior,
     gates: [],
     limits: {
-      maxTokensPerTask: 750000,
-      maxCostPerTask: 7.5,
-      timeoutMinutes: 45,
+      maxTokens: 750000,
+      maxCost: 7.5,
+      maxTimeMs: 2700000, // 45 minutes
     },
     stageOverrides: {
       planning: 'full-auto' as AutonomyLevel,
@@ -126,9 +122,9 @@ export const AutonomyFixtures = {
     rejectionBehavior: 'abort' as RejectionBehavior,
     gates: [],
     limits: {
-      maxTokensPerTask: 500000,
-      maxCostPerTask: 5.0,
-      timeoutMinutes: 30,
+      maxTokens: 500000,
+      maxCost: 5.0,
+      maxTimeMs: 1800000, // 30 minutes
     },
     stageOverrides: {},
     agentOverrides: {
@@ -157,34 +153,30 @@ export const AutonomyFixtures = {
     rejectionBehavior: 'abort' as RejectionBehavior,
     gates: [
       {
-        type: 'planning' as const,
+        type: 'custom' as const,
         description: 'Review implementation plan',
         required: true,
-        stage: 'planning',
       },
       {
-        type: 'code_change' as const,
+        type: 'before-destructive' as const,
         description: 'Review significant code changes',
         required: false,
-        stage: 'implementation',
       },
       {
-        type: 'commit' as const,
+        type: 'before-commit' as const,
         description: 'Review before committing',
         required: true,
-        stage: 'implementation',
       },
       {
         type: 'deployment' as const,
         description: 'Review before deployment',
         required: true,
-        stage: 'deployment',
       },
     ],
     limits: {
-      maxTokensPerTask: 500000,
-      maxCostPerTask: 5.0,
-      timeoutMinutes: 30,
+      maxTokens: 500000,
+      maxCost: 5.0,
+      maxTimeMs: 1800000, // 30 minutes
     },
     stageOverrides: {},
     agentOverrides: {},
@@ -200,9 +192,9 @@ export function createAutonomyConfig(overrides: Partial<AutonomyConfig> = {}): A
     rejectionBehavior: 'abort',
     gates: [],
     limits: {
-      maxTokensPerTask: 500000,
-      maxCostPerTask: 5.0,
-      timeoutMinutes: 30,
+      maxTokens: 500000,
+      maxCost: 5.0,
+      maxTimeMs: 1800000, // 30 minutes
     },
     stageOverrides: {},
     agentOverrides: {},
@@ -224,10 +216,9 @@ export function createAutonomyConfig(overrides: Partial<AutonomyConfig> = {}): A
  */
 export function createApprovalGate(overrides: Partial<ApprovalGate> = {}): ApprovalGate {
   const defaultGate: ApprovalGate = {
-    type: 'commit',
+    type: 'before-commit',
     description: 'Test approval gate',
     required: true,
-    stage: 'implementation',
   };
 
   return { ...defaultGate, ...overrides };
@@ -238,9 +229,9 @@ export function createApprovalGate(overrides: Partial<ApprovalGate> = {}): Appro
  */
 export function createTaskResourceLimits(overrides: Partial<TaskResourceLimits> = {}): TaskResourceLimits {
   const defaultLimits: TaskResourceLimits = {
-    maxTokensPerTask: 500000,
-    maxCostPerTask: 5.0,
-    timeoutMinutes: 30,
+    maxTokens: 500000,
+    maxCost: 5.0,
+    maxTimeMs: 1800000, // 30 minutes
   };
 
   return { ...defaultLimits, ...overrides };
@@ -292,7 +283,6 @@ export function createApexConfigWithAutonomy(
     },
     api: {
       port: 3000,
-      host: 'localhost',
     },
   };
 
@@ -323,7 +313,7 @@ export function getAutonomyConfigVariations(): Record<string, AutonomyConfig> {
     customStrict: createAutonomyConfig({
       level: 'review-all',
       rejectionBehavior: 'abort',
-      limits: { maxTokensPerTask: 100000, maxCostPerTask: 1.0, timeoutMinutes: 10 }
+      limits: { maxTokens: 100000, maxCost: 1.0, maxTimeMs: 600000 }
     }),
   };
 }

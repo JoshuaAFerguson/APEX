@@ -2013,6 +2013,49 @@ export const WorkflowDefinitionSchema = z.object({
 export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 
 // ============================================================================
+// AI Provider Configuration (v0.6.0)
+// ============================================================================
+
+/**
+ * Authentication methods for AI providers
+ */
+export const AiProviderAuthMethodSchema = z.enum(['api_key', 'oauth', 'openauth', 'none']);
+export type AiProviderAuthMethod = z.infer<typeof AiProviderAuthMethodSchema>;
+
+/**
+ * Configuration for an individual AI provider
+ */
+export const AiProviderConfigSchema = z.object({
+  /** Whether this provider is enabled */
+  enabled: z.boolean().default(true),
+  /** Authentication method to use */
+  authMethod: AiProviderAuthMethodSchema,
+  /** API key (if using api_key auth) */
+  apiKey: z.string().optional(),
+  /** Default model for this provider */
+  defaultModel: z.string().optional(),
+  /** Provider-specific options */
+  options: z.record(z.unknown()).optional().default({}),
+});
+export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>;
+
+/**
+ * Global AI provider configuration
+ */
+export const AiProvidersConfigSchema = z.object({
+  /** Primary provider to use */
+  primary: z.string().default('anthropic'),
+  /** Map of provider configurations */
+  configs: z.record(AiProviderConfigSchema).optional().default({
+    anthropic: { enabled: true, authMethod: 'oauth' },
+    openai: { enabled: true, authMethod: 'openauth' },
+    gemini: { enabled: true, authMethod: 'oauth' },
+    agnostic: { enabled: true, authMethod: 'api_key' },
+  }),
+});
+export type AiProvidersConfig = z.infer<typeof AiProvidersConfigSchema>;
+
+// ============================================================================
 // Project Configuration
 // ============================================================================
 
@@ -2723,14 +2766,18 @@ export const IdleTaskTypeSchema = z.enum([
   'refactoring',
   'docs',
   'tests',
+  'technical-debt',
+  'conventions',
 ]);
 export type IdleTaskType = z.infer<typeof IdleTaskTypeSchema>;
 
 export const StrategyWeightsSchema = z.object({
-  maintenance: z.number().min(0).max(1).optional().default(0.25),
-  refactoring: z.number().min(0).max(1).optional().default(0.25),
-  docs: z.number().min(0).max(1).optional().default(0.25),
-  tests: z.number().min(0).max(1).optional().default(0.25),
+  maintenance: z.number().min(0).max(1).optional().default(0.15),
+  refactoring: z.number().min(0).max(1).optional().default(0.15),
+  docs: z.number().min(0).max(1).optional().default(0.15),
+  tests: z.number().min(0).max(1).optional().default(0.15),
+  'technical-debt': z.number().min(0).max(1).optional().default(0.2),
+  conventions: z.number().min(0).max(1).optional().default(0.2),
 });
 export type StrategyWeights = z.infer<typeof StrategyWeightsSchema>;
 
@@ -2814,6 +2861,15 @@ export const DaemonConfigSchema = z.object({
   taskRestart: z.object({
     // Only restart root parent tasks, let orchestrator manage children
     restartParentOnly: z.boolean().optional().default(true),
+  }).optional(),
+  // Process resource controls
+  processLimits: z.object({
+    /** Nice level for task subprocesses (0-19, higher = lower priority). Default 10. */
+    niceLevel: z.number().min(0).max(19).optional().default(10),
+    /** Nice level for integrated services (API, WebUI). Default 15. */
+    serviceNiceLevel: z.number().min(0).max(19).optional().default(15),
+    /** Interval in ms to renice daemon descendants. Default 30000 (30s). 0 to disable. */
+    reniceIntervalMs: z.number().min(0).optional().default(30000),
   }).optional(),
 });
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
@@ -2979,6 +3035,165 @@ export interface HealthMetrics {
   /** History of daemon restarts (most recent first, limited to last N entries) */
   restartHistory: RestartRecord[];
 }
+
+// ============================================================================
+// Doctor Health Check Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Severity levels for health check results
+ * Used to indicate the impact of check failures
+ * @example
+ * ```typescript
+ * const severity: CheckSeverity = 'error';
+ * const validSeverity = CheckSeveritySchema.parse('warning');
+ * ```
+ */
+export const CheckSeveritySchema = z.enum(['error', 'warning', 'info']);
+export type CheckSeverity = z.infer<typeof CheckSeveritySchema>;
+
+/**
+ * Result status for individual health checks
+ * @example
+ * ```typescript
+ * const status: CheckStatus = 'pass';
+ * const validStatus = CheckStatusSchema.parse('fail');
+ * ```
+ */
+export const CheckStatusSchema = z.enum(['pass', 'fail', 'skip', 'unknown']);
+export type CheckStatus = z.infer<typeof CheckStatusSchema>;
+
+/**
+ * Information about a development toolchain tool
+ * Captures version, location, and metadata for tools like node, npm, git
+ * @example
+ * ```typescript
+ * const toolcheck: ToolchainCheck = {
+ *   name: 'node',
+ *   currentVersion: '18.17.0',
+ *   requiredVersion: '16.0.0',
+ *   required: true,
+ *   path: '/usr/bin/node',
+ *   metadata: { arch: 'x64' }
+ * };
+ * ```
+ */
+export const ToolchainCheckSchema = z.object({
+  /** Name of the tool being checked (e.g., 'node', 'npm', 'git') */
+  name: z.string(),
+  /** Current installed version, or null if not installed */
+  currentVersion: z.string().nullable(),
+  /** Minimum required version */
+  requiredVersion: z.string().optional(),
+  /** Whether this tool is required or optional */
+  required: z.boolean(),
+  /** Path to the tool binary */
+  path: z.string().optional(),
+  /** Additional metadata about the tool */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type ToolchainCheck = z.infer<typeof ToolchainCheckSchema>;
+
+/**
+ * Result of a single diagnostic check performed by the doctor command
+ * Contains all information needed to understand and act on the check result
+ * @example
+ * ```typescript
+ * const checkResult: DoctorCheckResult = {
+ *   id: 'node-version',
+ *   name: 'Node.js Version Check',
+ *   description: 'Verify Node.js meets minimum version requirements',
+ *   category: 'toolchain',
+ *   status: 'pass',
+ *   severity: 'error',
+ *   message: 'Node.js 18.17.0 meets requirement >= 16.0.0',
+ *   toolchain: { name: 'node', currentVersion: '18.17.0', required: true },
+ *   timestamp: new Date(),
+ *   durationMs: 150
+ * };
+ * ```
+ */
+export const DoctorCheckResultSchema = z.object({
+  /** Unique identifier for this check */
+  id: z.string(),
+  /** Human-readable name of the check */
+  name: z.string(),
+  /** Detailed description of what this check validates */
+  description: z.string(),
+  /** Category of the check (e.g., 'toolchain', 'config', 'network') */
+  category: z.enum(['toolchain', 'config', 'network', 'permissions', 'environment']),
+  /** Result status of the check */
+  status: CheckStatusSchema,
+  /** Severity if the check failed */
+  severity: CheckSeveritySchema,
+  /** Human-readable message explaining the result */
+  message: z.string(),
+  /** Suggested fix if the check failed */
+  suggestion: z.string().optional(),
+  /** Toolchain information if this is a toolchain check */
+  toolchain: ToolchainCheckSchema.optional(),
+  /** Timestamp when the check was performed */
+  timestamp: z.date(),
+  /** Duration of the check in milliseconds */
+  durationMs: z.number(),
+  /** Additional details for debugging */
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+export type DoctorCheckResult = z.infer<typeof DoctorCheckResultSchema>;
+
+/**
+ * Aggregated health report containing all check results and system information
+ * Generated by the doctor command for comprehensive system diagnostics
+ * @example
+ * ```typescript
+ * const report: HealthReport = {
+ *   id: 'health-2024-01-15-123456',
+ *   timestamp: new Date(),
+ *   overallStatus: 'pass',
+ *   summary: { total: 5, passed: 4, failed: 1, warnings: 0, skipped: 0 },
+ *   checks: [checkResult1, checkResult2, ...],
+ *   system: {
+ *     platform: 'darwin',
+ *     arch: 'arm64',
+ *     nodeVersion: '18.17.0',
+ *     cwd: '/Users/dev/project'
+ *   },
+ *   durationMs: 2500,
+ *   apexVersion: '0.6.0'
+ * };
+ * ```
+ */
+export const HealthReportSchema = z.object({
+  /** Unique identifier for this report */
+  id: z.string(),
+  /** Timestamp when the report was generated */
+  timestamp: z.date(),
+  /** Overall health status */
+  overallStatus: CheckStatusSchema,
+  /** Summary counts */
+  summary: z.object({
+    total: z.number(),
+    passed: z.number(),
+    failed: z.number(),
+    warnings: z.number(),
+    skipped: z.number(),
+    errors: z.number(),
+  }),
+  /** Individual check results */
+  checks: z.array(DoctorCheckResultSchema),
+  /** System information */
+  system: z.object({
+    platform: z.string(),
+    arch: z.string(),
+    nodeVersion: z.string(),
+    cwd: z.string(),
+  }),
+  /** Total duration of all checks in milliseconds */
+  durationMs: z.number(),
+  /** APEX version that generated this report */
+  apexVersion: z.string(),
+});
+export type HealthReport = z.infer<typeof HealthReportSchema>;
 
 // ============================================================================
 // MCP Configuration (v0.5.0)
@@ -4370,6 +4585,16 @@ export const ApexConfigSchema = z.object({
     })
     .optional(),
   models: ModelsConfigSchema.optional(),
+  /** AI provider configurations for multi-platform support (v0.6.0) */
+  providers: AiProvidersConfigSchema.optional().default({
+    primary: 'anthropic',
+    configs: {
+      anthropic: { enabled: true, authMethod: 'oauth' },
+      openai: { enabled: true, authMethod: 'openauth' },
+      gemini: { enabled: true, authMethod: 'oauth' },
+      agnostic: { enabled: true, authMethod: 'api_key' },
+    },
+  }),
   gates: z.array(WorkflowGateSchema).optional(),
   git: GitConfigSchema.optional(),
   limits: LimitsConfigSchema.optional(),
@@ -4603,6 +4828,14 @@ export interface Task {
   // v0.5.0 approval state
   /** Current approval state when task requires user approval to continue */
   approvalState?: ApprovalState;
+
+  // v0.6.0 multimodal support
+  /**
+   * Processed multimodal context for the task.
+   * Contains processed multimodal inputs (images, web pages, design mockups)
+   * with extracted content and processing status for agent consumption.
+   */
+  multimodalContext?: MultimodalContext;
 }
 
 /**
@@ -5669,6 +5902,14 @@ export interface CreateTaskRequest {
   priority?: TaskPriority;
   effort?: TaskEffort;
   projectPath?: string; // Optional when calling via API (server knows the project path)
+
+  // v0.6.0 Multimodal support
+  /**
+   * Optional multimodal inputs to provide visual/contextual information for the task.
+   * Can include images, web page captures, design mockups, etc.
+   * These inputs will be processed and made available to agents as MultimodalContext.
+   */
+  multimodalInputs?: MultimodalInput[];
 }
 
 export interface CreateTaskResponse {
@@ -5787,13 +6028,36 @@ export type ApexEventType =
   | 'browser:performance-warning'
   | 'browser:security-violation'
   | 'browser:session-started'
-  | 'browser:session-ended';
+  | 'browser:session-ended'
+  // MCP lifecycle events (v0.6.0)
+  | 'mcp:connected'
+  | 'mcp:disconnected'
+  | 'mcp:error'
+  | 'mcp:reconnecting'
+  | 'mcp:health-check'
+  | 'mcp:state-change';
 
 export interface ApexEvent {
   type: ApexEventType;
   taskId: string;
   timestamp: Date;
   data: Record<string, unknown>;
+  /** Optional truncation metadata indicating if data was truncated */
+  _truncation?: {
+    /** Whether any truncation occurred */
+    truncated: boolean;
+    /** Details about what was truncated */
+    truncations: Array<{
+      /** Path to truncated property */
+      path: string;
+      /** Type of truncation applied */
+      type: 'array' | 'string';
+      /** Original size before truncation */
+      originalSize: number;
+      /** Size after truncation */
+      truncatedSize: number;
+    }>;
+  };
 }
 
 // ============================================================================
@@ -6624,6 +6888,8 @@ export type VisualComparisonEventDataFor<T extends ApexEventType> =
 export interface ComplexityHotspot {
   /** File path relative to project root */
   file: string;
+  /** Function name that has high complexity */
+  functionName: string;
   /** Cyclomatic complexity score */
   cyclomaticComplexity: number;
   /** Cognitive complexity score */
@@ -10042,3 +10308,2399 @@ export {
   isBrowserPermissionDeniedError,
   toBrowserPermissionDeniedError,
 } from './tools/browser/browser-permission-denied-error.js';
+
+// ============================================================================
+// Project Context Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Git file status indicator
+ * Represents the state of a file in a git repository
+ * - 'M': Modified - file has been changed
+ * - 'A': Added - file is staged for addition
+ * - 'D': Deleted - file is staged for deletion
+ * - 'R': Renamed - file has been renamed
+ * - 'C': Copied - file has been copied
+ * - 'U': Unmerged - file has merge conflicts
+ * - '?': Untracked - file is not tracked by git
+ * - '!': Ignored - file is ignored by git
+ */
+export const GitFileStatusSchema = z.enum(['M', 'A', 'D', 'R', 'C', 'U', '?', '!']);
+export type GitFileStatus = z.infer<typeof GitFileStatusSchema>;
+
+/**
+ * Represents a file change in a git repository with its status
+ */
+export const GitChangedFileSchema = z.object({
+  /** Relative path to the file from the repository root */
+  path: z.string().min(1),
+  /** Git status indicator for this file */
+  status: GitFileStatusSchema,
+  /** Whether this file change is staged for commit */
+  staged: z.boolean(),
+  /** Original path if the file was renamed (only present for renames) */
+  oldPath: z.string().optional(),
+});
+export type GitChangedFile = z.infer<typeof GitChangedFileSchema>;
+
+/**
+ * Represents a single commit in git history
+ */
+export const GitCommitSchema = z.object({
+  /** Short commit hash (usually 7 characters) */
+  hash: z.string().min(1),
+  /** Commit message */
+  message: z.string(),
+  /** Timestamp when the commit was made */
+  timestamp: z.date(),
+  /** Author of the commit */
+  author: z.string().optional(),
+  /** Author email */
+  authorEmail: z.string().optional(),
+});
+export type GitCommit = z.infer<typeof GitCommitSchema>;
+
+/**
+ * Remote tracking information for a git branch
+ */
+export const GitTrackingSchema = z.object({
+  /** Name of the remote (e.g., 'origin') */
+  remote: z.string().nullable(),
+  /** Full name of the remote branch (e.g., 'origin/main') */
+  remoteBranch: z.string().nullable(),
+  /** Number of commits ahead of the remote branch */
+  aheadCount: z.number().int().min(0).default(0),
+  /** Number of commits behind the remote branch */
+  behindCount: z.number().int().min(0).default(0),
+});
+export type GitTracking = z.infer<typeof GitTrackingSchema>;
+
+/**
+ * Git repository status information
+ * Provides comprehensive information about the current state of a git repository
+ * including branch info, tracking status, and file changes
+ *
+ * @example
+ * ```typescript
+ * const status: GitStatus = {
+ *   isRepository: true,
+ *   branch: 'feature/new-feature',
+ *   remoteBranch: 'origin/feature/new-feature',
+ *   ahead: 2,
+ *   behind: 0,
+ *   staged: [{ path: 'src/index.ts', status: 'M' }],
+ *   unstaged: [{ path: 'README.md', status: 'M' }],
+ *   untracked: ['temp.log'],
+ *   hasConflicts: false,
+ *   isDirty: true,
+ *   lastCommitHash: 'abc1234',
+ *   lastCommitMessage: 'Add new feature',
+ *   recentCommits: [
+ *     { hash: 'abc1234', message: 'Add new feature', timestamp: new Date() },
+ *     { hash: 'def5678', message: 'Fix bug', timestamp: new Date() }
+ *   ]
+ * };
+ * ```
+ */
+export const GitStatusSchema = z.object({
+  /** Whether the path is a git repository */
+  isRepository: z.boolean(),
+
+  /** Current branch name (empty string if not in a git repository or detached HEAD) */
+  branch: z.string(),
+
+  /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+  isClean: z.boolean(),
+
+  /** Whether there are uncommitted changes (modified or deleted files) */
+  hasUncommittedChanges: z.boolean(),
+
+  /** Whether there are untracked files */
+  hasUntrackedFiles: z.boolean(),
+
+  /** Whether there are staged changes ready for commit */
+  hasStagedChanges: z.boolean(),
+
+  /** All changed files (staged, unstaged, and untracked) with their status */
+  changedFiles: z.array(GitChangedFileSchema),
+
+  /** Total number of stashes */
+  stashCount: z.number().int().min(0),
+
+  /** Remote tracking information */
+  tracking: GitTrackingSchema.nullable(),
+
+  /** Information about the last commit */
+  lastCommit: z.object({
+    /** Short commit hash (usually 7 characters) */
+    hash: z.string(),
+    /** Commit message */
+    message: z.string(),
+    /** Timestamp when the commit was made */
+    timestamp: z.date(),
+  }).nullable(),
+
+  // Legacy fields for backward compatibility
+  /** @deprecated Use branch instead */
+  remoteBranch: z.string().nullable().optional(),
+
+  /** @deprecated Use tracking.aheadCount instead */
+  ahead: z.number().int().min(0).optional().default(0),
+
+  /** @deprecated Use tracking.behindCount instead */
+  behind: z.number().int().min(0).optional().default(0),
+
+  /** @deprecated Use changedFiles with staged=true instead */
+  staged: z.array(GitChangedFileSchema).optional().default([]),
+
+  /** @deprecated Use changedFiles with staged=false instead */
+  unstaged: z.array(GitChangedFileSchema).optional().default([]),
+
+  /** @deprecated Use changedFiles with status='?' instead */
+  untracked: z.array(z.string()).optional().default([]),
+
+  /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+  isDirty: z.boolean().optional().default(false),
+
+  /** @deprecated Use lastCommit.hash instead */
+  lastCommitHash: z.string().optional(),
+
+  /** @deprecated Use lastCommit.message instead */
+  lastCommitMessage: z.string().optional(),
+
+  /** @deprecated Use lastCommit.timestamp instead */
+  lastCommitTimestamp: z.date().optional(),
+
+  /** Whether there are merge conflicts */
+  hasConflicts: z.boolean().optional().default(false),
+
+  /** List of configured remotes */
+  remotes: z.array(z.object({
+    name: z.string(),
+    url: z.string(),
+  })).optional().default([]),
+
+  /** Recent commits (last 5) */
+  recentCommits: z.array(GitCommitSchema).optional().default([]),
+});
+export type GitStatus = z.infer<typeof GitStatusSchema>;
+
+// ============================================================================
+// Project Structure Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Entry type in project structure
+ */
+export const ProjectEntryTypeSchema = z.enum(['file', 'directory']);
+export type ProjectEntryType = z.infer<typeof ProjectEntryTypeSchema>;
+
+/**
+ * Represents a single entry (file or directory) in the project structure
+ */
+export interface ProjectEntry {
+  /** Name of the file or directory */
+  name: string;
+  /** Relative path from project root */
+  path: string;
+  /** Whether this is a file or directory */
+  type: ProjectEntryType;
+  /** Size in bytes (for files only) */
+  size?: number;
+  /** Last modified timestamp */
+  modifiedAt?: Date;
+  /** Child entries (for directories only) */
+  children?: ProjectEntry[];
+}
+
+export const ProjectEntrySchema = z.object({
+  /** Name of the file or directory */
+  name: z.string().min(1),
+  /** Relative path from project root */
+  path: z.string().min(1),
+  /** Whether this is a file or directory */
+  type: ProjectEntryTypeSchema,
+  /** Size in bytes (for files only) */
+  size: z.number().int().min(0).optional(),
+  /** Last modified timestamp */
+  modifiedAt: z.date().optional(),
+  /** Child entries (for directories only) */
+  children: z.lazy(() => z.array(ProjectEntrySchema)).optional(),
+}) as z.ZodType<ProjectEntry>;
+
+/**
+ * Project structure information
+ * Provides an overview of the project's directory layout and key files
+ *
+ * @example
+ * ```typescript
+ * const structure: ProjectStructure = {
+ *   root: '/path/to/project',
+ *   totalFiles: 150,
+ *   totalDirectories: 25,
+ *   entries: [...],
+ *   hasPackageJson: true,
+ *   hasGitIgnore: true,
+ *   maxDepthScanned: 3
+ * };
+ * ```
+ */
+export const ProjectStructureSchema = z.object({
+  /** Absolute path to the project root */
+  root: z.string().min(1),
+
+  /** Total number of files in the scanned structure */
+  totalFiles: z.number().int().min(0).optional().default(0),
+
+  /** Total number of directories in the scanned structure */
+  totalDirectories: z.number().int().min(0).optional().default(0),
+
+  /** Hierarchical list of project entries */
+  entries: z.array(ProjectEntrySchema).optional().default([]),
+
+  /** Key configuration/manifest files detected at the root */
+  rootFiles: z.array(z.string()).optional().default([]),
+
+  /** Common project directories detected (src, lib, test, etc.) */
+  commonDirectories: z.array(z.string()).optional().default([]),
+
+  /** Whether a package.json exists */
+  hasPackageJson: z.boolean().optional().default(false),
+
+  /** Whether a .gitignore exists */
+  hasGitIgnore: z.boolean().optional().default(false),
+
+  /** Whether a README file exists */
+  hasReadme: z.boolean().optional().default(false),
+
+  /** Whether a LICENSE file exists */
+  hasLicense: z.boolean().optional().default(false),
+
+  /** Maximum directory depth that was scanned */
+  maxDepthScanned: z.number().int().min(0).optional(),
+
+  /** Maximum directory depth that was scanned (alias for compatibility) */
+  maxDepth: z.number().int().min(0).optional(),
+
+  /** Total size of all files in bytes */
+  totalSize: z.number().int().min(0).optional(),
+
+  /** Directories that were excluded from scanning */
+  excludedDirectories: z.array(z.string()).optional().default([]),
+
+  /** Timestamp when the structure was scanned */
+  scannedAt: z.date().optional(),
+
+  /** File count by extension */
+  filesByExtension: z.record(z.string(), z.number().int().min(0)).optional().default({}),
+
+  /** Top-level directories in the project root */
+  topLevelDirectories: z.array(z.string()).optional().default([]),
+
+  /** Detected important folders (src, test, docs) */
+  detectedFolders: z.object({
+    src: z.string().optional(),
+    test: z.string().optional(),
+    docs: z.string().optional(),
+  }).optional(),
+
+  /** Whether this appears to be a monorepo structure */
+  isMonorepo: z.boolean().optional().default(false),
+
+  /** Workspace packages if this is a monorepo */
+  workspaces: z.array(z.string()).optional(),
+});
+export type ProjectStructure = z.infer<typeof ProjectStructureSchema>;
+
+// ============================================================================
+// Framework Detection Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Framework category classification
+ */
+export const FrameworkCategorySchema = z.enum([
+  'frontend',     // Frontend frameworks (React, Vue, Angular, etc.)
+  'backend',      // Backend frameworks (Express, Fastify, NestJS, etc.)
+  'fullstack',    // Full-stack frameworks (Next.js, Nuxt, etc.)
+  'testing',      // Testing frameworks (Jest, Mocha, Vitest, etc.)
+  'build',        // Build tools (Webpack, Vite, Rollup, etc.)
+  'mobile',       // Mobile frameworks (React Native, Flutter, etc.)
+  'desktop',      // Desktop frameworks (Electron, Tauri, etc.)
+  'other',        // Other/unclassified frameworks
+]);
+export type FrameworkCategory = z.infer<typeof FrameworkCategorySchema>;
+
+/**
+ * Framework detection confidence level
+ */
+export const DetectionConfidenceSchema = z.enum([
+  'high',         // Framework explicitly declared in manifest
+  'medium',       // Framework detected via dependencies
+  'low',          // Framework inferred from file patterns
+]);
+export type DetectionConfidence = z.infer<typeof DetectionConfidenceSchema>;
+
+/**
+ * Information about a detected framework or library
+ *
+ * @example
+ * ```typescript
+ * const framework: FrameworkInfo = {
+ *   name: 'React',
+ *   version: '18.2.0',
+ *   category: 'frontend',
+ *   confidence: 'high',
+ *   detectedVia: 'package.json dependency',
+ *   detectionReasons: ['package.json dependency', 'React JSX patterns found'],
+ *   language: 'typescript',
+ *   configFiles: ['tsconfig.json', 'vite.config.ts']
+ * };
+ * ```
+ */
+export const FrameworkInfoSchema = z.object({
+  /** Framework or library name */
+  name: z.string().min(1),
+
+  /** Detected version (if available) */
+  version: z.string().optional(),
+
+  /** Framework category */
+  category: FrameworkCategorySchema,
+
+  /** How confident the detection is */
+  confidence: DetectionConfidenceSchema.optional().default('medium'),
+
+  /** How the framework was detected */
+  detectedVia: z.string().optional(),
+
+  /** Detailed reasons for how the framework was detected */
+  detectionReasons: z.array(z.string()).optional().default([]),
+
+  /** Primary programming language */
+  language: z.string().optional(),
+
+  /** Related configuration files found */
+  configFiles: z.array(z.string()).optional().default([]),
+
+  /** Whether this is a dev dependency */
+  isDevDependency: z.boolean().optional().default(false),
+
+  /** Additional metadata about the framework */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type FrameworkInfo = z.infer<typeof FrameworkInfoSchema>;
+
+/**
+ * Schema for framework detection results
+ * Identifies frameworks and libraries used in the project
+ *
+ * @example
+ * ```typescript
+ * const detection: FrameworkDetection = {
+ *   primary: { name: 'React', version: '18.2.0', category: 'frontend' },
+ *   frameworks: [
+ *     { name: 'React', version: '18.2.0', category: 'frontend' },
+ *     { name: 'TypeScript', version: '5.0.0', category: 'language' }
+ *   ],
+ *   primaryLanguage: 'typescript',
+ *   languages: [
+ *     { name: 'TypeScript', extensions: ['.ts', '.tsx'], percentage: 85 },
+ *     { name: 'JavaScript', extensions: ['.js', '.jsx'], percentage: 15 }
+ *   ],
+ *   runtime: 'node',
+ *   packageManager: 'npm'
+ * };
+ * ```
+ */
+export const FrameworkDetectionSchema = z.object({
+  /** Primary framework (highest confidence) */
+  primary: FrameworkInfoSchema.optional(),
+  /** All detected frameworks */
+  frameworks: z.array(FrameworkInfoSchema),
+  /** Primary programming language */
+  primaryLanguage: z.string().optional(),
+  /** All detected languages */
+  languages: z.array(z.object({
+    /** Language name */
+    name: z.string(),
+    /** File extensions associated with this language */
+    extensions: z.array(z.string()),
+    /** Percentage of files using this language */
+    percentage: z.number().min(0).max(100),
+  })),
+  /** Runtime environment (node, browser, deno, bun, etc.) */
+  runtime: z.string().optional(),
+  /** Package manager detected */
+  packageManager: z.string().optional(),
+  /** Error message if detection failed */
+  error: z.string().optional(),
+});
+export type FrameworkDetection = z.infer<typeof FrameworkDetectionSchema>;
+
+// ============================================================================
+// Configuration Detection Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Configuration file format
+ */
+export const ConfigFormatSchema = z.enum([
+  'json',
+  'yaml',
+  'toml',
+  'javascript',
+  'typescript',
+  'ini',
+  'env',
+  'xml',
+  'other',
+]);
+export type ConfigFormat = z.infer<typeof ConfigFormatSchema>;
+
+/**
+ * Configuration file purpose/category
+ */
+export const ConfigPurposeSchema = z.enum([
+  'package-manager',    // package.json, Cargo.toml, etc.
+  'typescript',         // tsconfig.json
+  'linting',            // eslint, prettier, etc.
+  'testing',            // jest.config, vitest.config, etc.
+  'build',              // webpack.config, vite.config, etc.
+  'ci-cd',              // .github/workflows, .gitlab-ci, etc.
+  'containerization',   // Dockerfile, docker-compose, etc.
+  'environment',        // .env files
+  'git',                // .gitignore, .gitattributes
+  'editor',             // .editorconfig, .vscode
+  'documentation',      // README, CHANGELOG
+  'security',           // .npmrc, .nvmrc
+  'other',
+]);
+export type ConfigPurpose = z.infer<typeof ConfigPurposeSchema>;
+
+/**
+ * Schema for individual configuration file info used in the project context analyzer
+ *
+ * @example
+ * ```typescript
+ * const configFile: ConfigFileInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   type: 'typescript',
+ *   exists: true,
+ *   description: 'TypeScript compiler configuration'
+ * };
+ * ```
+ */
+export const ConfigFileInfoSchema = z.object({
+  /** Configuration file name */
+  name: z.string(),
+  /** File path relative to project root */
+  path: z.string(),
+  /** Configuration type/purpose */
+  type: z.enum([
+    'package',
+    'typescript',
+    'eslint',
+    'prettier',
+    'babel',
+    'webpack',
+    'vite',
+    'rollup',
+    'jest',
+    'vitest',
+    'docker',
+    'ci',
+    'git',
+    'editor',
+    'environment',
+    'other',
+  ]),
+  /** Whether the file exists */
+  exists: z.boolean(),
+  /** Brief description of what this config controls */
+  description: z.string().optional(),
+});
+export type ConfigFileInfo = z.infer<typeof ConfigFileInfoSchema>;
+
+/**
+ * Information about a detected configuration file
+ *
+ * @example
+ * ```typescript
+ * const config: ConfigurationInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   format: 'json',
+ *   purpose: 'typescript',
+ *   isValid: true,
+ *   keySettings: {
+ *     strict: true,
+ *     target: 'ES2022'
+ *   }
+ * };
+ * ```
+ */
+export const ConfigurationInfoSchema = z.object({
+  /** Configuration file name */
+  name: z.string().min(1),
+
+  /** Relative path from project root */
+  path: z.string().min(1),
+
+  /** File format */
+  format: ConfigFormatSchema,
+
+  /** Configuration purpose/category */
+  purpose: ConfigPurposeSchema,
+
+  /** Whether the configuration file is syntactically valid */
+  isValid: z.boolean().optional().default(true),
+
+  /** Validation error message if not valid */
+  validationError: z.string().optional(),
+
+  /** Key settings extracted from the configuration (sanitized, no secrets) */
+  keySettings: z.record(z.string(), z.unknown()).optional(),
+
+  /** Whether this config extends another configuration */
+  extends: z.string().optional(),
+
+  /** Size in bytes */
+  size: z.number().int().min(0).optional(),
+
+  /** Last modified timestamp */
+  modifiedAt: z.date().optional(),
+
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type ConfigurationInfo = z.infer<typeof ConfigurationInfoSchema>;
+
+/**
+ * Information about a parsed configuration file with extracted settings
+ *
+ * @example
+ * ```typescript
+ * const parsedConfig: ParsedConfigurationInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   format: 'json',
+ *   purpose: 'typescript',
+ *   isValid: true,
+ *   parsed: {
+ *     compilerOptions: {
+ *       strict: true,
+ *       target: 'ES2022',
+ *       module: 'NodeNext'
+ *     }
+ *   },
+ *   compilerOptions: {
+ *     strict: true,
+ *     target: 'ES2022'
+ *   }
+ * };
+ * ```
+ */
+export const ParsedConfigurationInfoSchema = ConfigurationInfoSchema.extend({
+  /** Fully parsed configuration object */
+  parsed: z.record(z.string(), z.unknown()).optional(),
+
+  /** TypeScript compiler options (for tsconfig.json files) */
+  compilerOptions: z.record(z.string(), z.unknown()).optional(),
+
+  /** Build configuration settings (for webpack, vite, etc.) */
+  buildConfig: z.record(z.string(), z.unknown()).optional(),
+
+  /** Test configuration settings (for jest, vitest, etc.) */
+  testConfig: z.record(z.string(), z.unknown()).optional(),
+
+  /** Linting configuration settings (for eslint, prettier) */
+  lintConfig: z.record(z.string(), z.unknown()).optional(),
+
+  /** Scripts/commands defined in configuration */
+  scripts: z.record(z.string(), z.string()).optional(),
+
+  /** Dependencies information (from package.json) */
+  dependencies: z.object({
+    runtime: z.record(z.string(), z.string()).optional(),
+    development: z.record(z.string(), z.string()).optional(),
+    peer: z.record(z.string(), z.string()).optional(),
+    optional: z.record(z.string(), z.string()).optional(),
+  }).optional(),
+
+  /** Configuration inheritance/extension information */
+  extends: z.union([z.string(), z.array(z.string())]).optional(),
+
+  /** Environment variables or settings */
+  environment: z.record(z.string(), z.unknown()).optional(),
+
+  /** Parsing error details if configuration is malformed */
+  parseError: z.string().optional(),
+});
+export type ParsedConfigurationInfo = z.infer<typeof ParsedConfigurationInfoSchema>;
+
+// ============================================================================
+// Test Framework Detection Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Test runner type classification
+ */
+export const TestRunnerTypeSchema = z.enum([
+  'unit',           // Unit testing (Jest, Mocha, Vitest)
+  'integration',    // Integration testing
+  'e2e',            // End-to-end testing (Playwright, Cypress)
+  'component',      // Component testing
+  'visual',         // Visual regression testing
+  'performance',    // Performance/load testing
+  'accessibility',  // Accessibility testing
+  'other',
+]);
+export type TestRunnerType = z.infer<typeof TestRunnerTypeSchema>;
+
+/**
+ * Information about a detected test framework
+ *
+ * @example
+ * ```typescript
+ * const testFramework: TestFrameworkInfo = {
+ *   name: 'vitest',
+ *   version: '1.2.0',
+ *   type: 'unit',
+ *   configFile: 'vitest.config.ts',
+ *   testPatterns: ['**\/*.test.ts', '**\/*.spec.ts'],
+ *   testDirectory: 'src/__tests__',
+ *   runCommand: 'npm test',
+ *   coverageEnabled: true
+ * };
+ * ```
+ */
+export const TestFrameworkInfoSchema = z.object({
+  /** Test framework name */
+  name: z.string().min(1),
+
+  /** Detected version (if available) */
+  version: z.string().optional(),
+
+  /** Type of testing this framework handles */
+  type: TestRunnerTypeSchema,
+
+  /** Configuration file path (if detected) */
+  configFile: z.string().optional(),
+
+  /** File patterns used to identify test files */
+  testPatterns: z.array(z.string()).optional().default([]),
+
+  /** Primary test directory (if detected) */
+  testDirectory: z.string().optional(),
+
+  /** Command to run tests */
+  runCommand: z.string().optional(),
+
+  /** Whether code coverage is configured */
+  coverageEnabled: z.boolean().optional().default(false),
+
+  /** Coverage tool used (istanbul, c8, etc.) */
+  coverageTool: z.string().optional(),
+
+  /** Whether watch mode is available */
+  watchModeAvailable: z.boolean().optional().default(false),
+
+  /** Related plugins/extensions detected */
+  plugins: z.array(z.string()).optional().default([]),
+
+  /** Number of test files detected */
+  testFileCount: z.number().int().min(0).optional(),
+
+  /** Detected assertion library (if different from test runner) */
+  assertionLibrary: z.string().optional(),
+
+  /** Detected mocking library (if any) */
+  mockingLibrary: z.string().optional(),
+
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type TestFrameworkInfo = z.infer<typeof TestFrameworkInfoSchema>;
+
+// ============================================================================
+// Aggregate Project Context Type (v0.6.0)
+// ============================================================================
+
+/**
+ * Comprehensive project context combining all detection results
+ * This is the main type used for providing context to AI agents
+ *
+ * @example
+ * ```typescript
+ * const context: ProjectContext = {
+ *   gitStatus: { ... },
+ *   structure: { ... },
+ *   frameworks: [{ name: 'React', ... }],
+ *   configurations: [{ name: 'tsconfig.json', ... }],
+ *   testFrameworks: [{ name: 'vitest', ... }],
+ *   detectedAt: new Date()
+ * };
+ * ```
+ */
+export const ProjectContextSchema = z.object({
+  /** Git repository status (if applicable) */
+  git: GitStatusSchema.optional(),
+
+  /** Git repository status (if applicable) - kept for backward compatibility */
+  gitStatus: GitStatusSchema.optional(),
+
+  /** Project directory structure */
+  structure: ProjectStructureSchema.optional(),
+
+  /** Detected frameworks and libraries */
+  frameworks: z.array(FrameworkInfoSchema).optional().default([]),
+
+  /** Detected configuration files */
+  configurations: z.array(ConfigurationInfoSchema).optional().default([]),
+
+  /** Detected test frameworks */
+  testFrameworks: z.array(TestFrameworkInfoSchema).optional().default([]),
+
+  /** When the context was detected/generated */
+  detectedAt: z.date().optional(),
+
+  /** Errors encountered during detection */
+  errors: z.array(z.object({
+    component: z.string(),
+    message: z.string(),
+  })).optional().default([]),
+});
+export type ProjectContext = z.infer<typeof ProjectContextSchema>;
+
+// ============================================================================
+// Codebase Analysis Types (v0.6.0)
+// ============================================================================
+
+/**
+ * Analysis of technology stack including languages, frameworks, and runtime
+ * @example
+ * ```typescript
+ * const stackAnalysis: StackAnalysis = {
+ *   primaryLanguage: 'TypeScript',
+ *   languages: [
+ *     { name: 'TypeScript', percentage: 85, files: 120 },
+ *     { name: 'JavaScript', percentage: 15, files: 20 }
+ *   ],
+ *   frameworks: [
+ *     { name: 'React', version: '18.2.0', category: 'frontend' },
+ *     { name: 'Node.js', version: '18.17.0', category: 'runtime' }
+ *   ],
+ *   buildTools: ['Vite', 'TypeScript'],
+ *   packageManagers: ['npm']
+ * };
+ * ```
+ */
+export const StackAnalysisSchema = z.object({
+  /** Primary programming language used in the codebase */
+  primaryLanguage: z.string(),
+
+  /** Breakdown of languages used with percentages and file counts */
+  languages: z.array(z.object({
+    name: z.string(),
+    percentage: z.number().min(0).max(100),
+    files: z.number().int().min(0),
+    extensions: z.array(z.string()).optional(),
+  })),
+
+  /** Detected frameworks and libraries with version information */
+  frameworks: z.array(z.object({
+    name: z.string(),
+    version: z.string().optional(),
+    category: z.enum(['frontend', 'backend', 'testing', 'build', 'runtime', 'database', 'ui', 'state-management', 'other']),
+    confidence: z.number().min(0).max(1).optional().default(1),
+  })),
+
+  /** Build tools and bundlers detected */
+  buildTools: z.array(z.string()),
+
+  /** Package managers in use */
+  packageManagers: z.array(z.enum(['npm', 'yarn', 'pnpm', 'bun'])),
+
+  /** Runtime environments */
+  runtimes: z.array(z.object({
+    name: z.string(),
+    version: z.string().optional(),
+    type: z.enum(['node', 'browser', 'deno', 'bun', 'other']),
+  })).optional().default([]),
+});
+export type StackAnalysis = z.infer<typeof StackAnalysisSchema>;
+
+/**
+ * Analysis of codebase architecture including components, layers, and patterns
+ * @example
+ * ```typescript
+ * const archAnalysis: ArchitectureAnalysis = {
+ *   pattern: 'layered',
+ *   components: [
+ *     { name: 'UserService', type: 'service', path: 'src/services/user.ts' },
+ *     { name: 'UserController', type: 'controller', path: 'src/controllers/user.ts' }
+ *   ],
+ *   layers: [
+ *     { name: 'presentation', description: 'UI components', paths: ['src/components'] },
+ *     { name: 'business', description: 'Business logic', paths: ['src/services'] }
+ *   ],
+ *   dependencies: { external: 25, internal: 45, circular: 2 }
+ * };
+ * ```
+ */
+export const ArchitectureAnalysisSchema = z.object({
+  /** Overall architectural pattern detected */
+  pattern: z.enum(['layered', 'microservices', 'mvc', 'mvp', 'mvvm', 'component-based', 'modular', 'monolithic', 'hexagonal', 'onion', 'clean', 'other']),
+
+  /** Key components identified in the codebase */
+  components: z.array(z.object({
+    name: z.string(),
+    type: z.enum(['component', 'service', 'controller', 'model', 'view', 'repository', 'factory', 'utility', 'middleware', 'hook', 'store', 'other']),
+    path: z.string(),
+    dependencies: z.array(z.string()).optional().default([]),
+    exports: z.array(z.string()).optional().default([]),
+    loc: z.number().int().min(0).optional(),
+  })),
+
+  /** Architectural layers or modules */
+  layers: z.array(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    paths: z.array(z.string()),
+    dependencies: z.array(z.string()).optional().default([]),
+  })),
+
+  /** Dependency analysis summary */
+  dependencies: z.object({
+    external: z.number().int().min(0),
+    internal: z.number().int().min(0),
+    circular: z.number().int().min(0),
+    unused: z.number().int().min(0).optional().default(0),
+  }),
+
+  /** Entry points to the application */
+  entryPoints: z.array(z.object({
+    path: z.string(),
+    type: z.enum(['main', 'cli', 'server', 'worker', 'test', 'other']),
+    description: z.string().optional(),
+  })).optional().default([]),
+});
+export type ArchitectureAnalysis = z.infer<typeof ArchitectureAnalysisSchema>;
+
+/**
+ * Analysis of coding conventions and style patterns
+ * @example
+ * ```typescript
+ * const conventionAnalysis: ConventionAnalysis = {
+ *   fileNaming: 'camelCase',
+ *   functionNaming: 'camelCase',
+ *   variableNaming: 'camelCase',
+ *   indentation: { type: 'spaces', size: 2 },
+ *   imports: { style: 'es6', grouping: 'type-separate' },
+ *   documentation: { style: 'jsdoc', coverage: 75 },
+ *   organization: {
+ *     testLocation: 'separate-__tests__',
+ *     testNaming: 'suffix-.test',
+ *     sourceStructure: 'src'
+ *   }
+ * };
+ * ```
+ */
+export const ConventionAnalysisSchema = z.object({
+  /** File naming convention pattern */
+  fileNaming: z.enum(['camelCase', 'PascalCase', 'kebab-case', 'snake_case', 'mixed', 'inconsistent']),
+
+  /** Function/method naming convention */
+  functionNaming: z.enum(['camelCase', 'PascalCase', 'snake_case', 'mixed', 'inconsistent']),
+
+  /** Variable naming convention */
+  variableNaming: z.enum(['camelCase', 'PascalCase', 'snake_case', 'SCREAMING_SNAKE_CASE', 'mixed', 'inconsistent']),
+
+  /** Class naming convention */
+  classNaming: z.enum(['PascalCase', 'camelCase', 'snake_case', 'mixed', 'inconsistent']).optional(),
+
+  /** Constant naming convention */
+  constantNaming: z.enum(['SCREAMING_SNAKE_CASE', 'camelCase', 'PascalCase', 'mixed', 'inconsistent']).optional(),
+
+  /** Indentation settings */
+  indentation: z.object({
+    type: z.enum(['spaces', 'tabs', 'mixed']),
+    size: z.number().int().min(1).max(8).optional(),
+  }),
+
+  /** Import/export style patterns */
+  imports: z.object({
+    style: z.enum(['es6', 'commonjs', 'amd', 'umd', 'mixed']),
+    grouping: z.enum(['none', 'type-separate', 'source-separate', 'alphabetical', 'custom']).optional(),
+    quotes: z.enum(['single', 'double', 'mixed']).optional(),
+  }),
+
+  /** Documentation patterns */
+  documentation: z.object({
+    style: z.enum(['jsdoc', 'tsdoc', 'inline', 'markdown', 'none', 'mixed']),
+    coverage: z.number().min(0).max(100),
+  }),
+
+  /** Code formatting patterns */
+  formatting: z.object({
+    lineLength: z.number().int().min(40).max(200).optional(),
+    semicolons: z.enum(['required', 'optional', 'mixed']).optional(),
+    quotes: z.enum(['single', 'double', 'backtick', 'mixed']).optional(),
+    trailingCommas: z.enum(['always', 'never', 'es5', 'mixed']).optional(),
+  }).optional(),
+
+  /** File organization patterns */
+  organization: z.object({
+    /** Test file location patterns */
+    testLocation: z.enum(['colocated', 'separate-tests', 'separate-__tests__', 'mixed']),
+
+    /** Test file naming patterns */
+    testNaming: z.enum(['suffix-.test', 'suffix-.spec', 'suffix-Test', 'prefix-test-', 'mixed']),
+
+    /** Source directory structure */
+    sourceStructure: z.enum(['src', 'lib', 'app', 'source', 'root-level', 'mixed']),
+
+    /** Configuration file organization */
+    configLocation: z.enum(['root', 'config-dir', 'mixed']).optional(),
+  }).optional(),
+});
+export type ConventionAnalysis = z.infer<typeof ConventionAnalysisSchema>;
+
+/**
+ * Analysis of technical debt including categorization and severity
+ * @example
+ * ```typescript
+ * const debtAnalysis: TechnicalDebtAnalysis = {
+ *   totalScore: 42,
+ *   categories: [
+ *     { category: 'code-smell', count: 15, severity: 'medium', examples: ['Large function in user.ts'] },
+ *     { category: 'duplication', count: 8, severity: 'high', examples: ['Repeated validation logic'] }
+ *   ],
+ *   hotspots: [
+ *     { path: 'src/legacy/old-api.js', score: 95, issues: ['outdated-dependency', 'no-tests'] }
+ *   ],
+ *   trends: { improving: true, changeRate: -5.2 }
+ * };
+ * ```
+ */
+export const TechnicalDebtAnalysisSchema = z.object({
+  /** Overall technical debt score (0-100, higher is worse) */
+  totalScore: z.number().min(0).max(100),
+
+  /** Breakdown by debt category */
+  categories: z.array(z.object({
+    category: z.enum([
+      'code-smell',
+      'duplication',
+      'complexity',
+      'outdated-dependency',
+      'security-vulnerability',
+      'performance',
+      'maintainability',
+      'testability',
+      'documentation',
+      'dead-code',
+      'technical-design',
+      'other'
+    ]),
+    count: z.number().int().min(0),
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
+    examples: z.array(z.string()).optional().default([]),
+    estimatedEffort: z.string().optional(), // e.g., "2 hours", "1 day", "1 week"
+  })),
+
+  /** Files or areas with highest technical debt */
+  hotspots: z.array(z.object({
+    path: z.string(),
+    score: z.number().min(0).max(100),
+    issues: z.array(z.string()),
+    loc: z.number().int().min(0).optional(),
+    lastModified: z.date().optional(),
+  })),
+
+  /** Metrics and trends */
+  metrics: z.object({
+    codeComplexity: z.number().min(0).optional(),
+    testCoverage: z.number().min(0).max(100).optional(),
+    duplicatedLinesPercent: z.number().min(0).max(100).optional(),
+    maintainabilityIndex: z.number().min(0).max(100).optional(),
+  }).optional(),
+
+  /** Trend analysis */
+  trends: z.object({
+    improving: z.boolean(),
+    changeRate: z.number(), // Percentage change in debt score
+    timeframe: z.string().optional().default('last 30 days'),
+  }).optional(),
+});
+export type TechnicalDebtAnalysis = z.infer<typeof TechnicalDebtAnalysisSchema>;
+
+/**
+ * Analysis of testing patterns and coverage in a codebase
+ * @example
+ * ```typescript
+ * const testingAnalysis: TestingPatternAnalysis = {
+ *   framework: "Jest",
+ *   testCount: 150,
+ *   coverage: { overall: 85, statements: 87, branches: 83, functions: 90 },
+ *   patterns: {
+ *     unit: { count: 120, locations: ["src/__tests__", "src/**\/*.test.ts"] },
+ *     integration: { count: 25, locations: ["tests/integration"] },
+ *     e2e: { count: 5, locations: ["tests/e2e"] }
+ *   },
+ *   conventions: { fileNaming: "suffix-.test", testLocation: "colocated" },
+ *   antiPatterns: [],
+ *   recommendations: ["Add more integration tests", "Improve branch coverage"]
+ * };
+ * ```
+ */
+export const TestingPatternAnalysisSchema = z.object({
+  /** Primary testing framework detected */
+  framework: z.string(),
+
+  /** Total number of test files found */
+  testCount: z.number().int().min(0),
+
+  /** Test coverage information */
+  coverage: z.object({
+    overall: z.number().min(0).max(100).optional(),
+    statements: z.number().min(0).max(100).optional(),
+    branches: z.number().min(0).max(100).optional(),
+    functions: z.number().min(0).max(100).optional(),
+    lines: z.number().min(0).max(100).optional(),
+  }).optional(),
+
+  /** Test pattern categorization */
+  patterns: z.object({
+    unit: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }),
+    integration: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }),
+    e2e: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }),
+    component: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }).optional(),
+    performance: z.object({
+      count: z.number().int().min(0),
+      locations: z.array(z.string()),
+    }).optional(),
+  }),
+
+  /** Testing conventions detected */
+  conventions: z.object({
+    testFileNaming: z.enum(['suffix-.test', 'suffix-.spec', 'suffix-Test', 'prefix-test-', 'mixed']),
+    testLocation: z.enum(['colocated', 'separate-tests', 'separate-__tests__', 'mixed']),
+    testStructure: z.enum(['flat', 'mirrored', 'grouped', 'mixed']).optional(),
+  }),
+
+  /** Testing anti-patterns identified */
+  antiPatterns: z.array(z.object({
+    type: z.enum(['no-tests', 'god-test', 'mystery-guest', 'resource-optimism', 'test-code-duplication', 'assertion-roulette', 'conditional-test-logic', 'hardcoded-test-data', 'other']),
+    description: z.string(),
+    examples: z.array(z.string()),
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
+  })),
+
+  /** Recommendations for testing improvements */
+  recommendations: z.array(z.string()),
+
+  /** Additional testing metrics */
+  metrics: z.object({
+    avgTestsPerFile: z.number().min(0).optional(),
+    avgAssertionsPerTest: z.number().min(0).optional(),
+    testToSourceRatio: z.number().min(0).optional(),
+    mockedDependenciesCount: z.number().int().min(0).optional(),
+  }).optional(),
+});
+export type TestingPatternAnalysis = z.infer<typeof TestingPatternAnalysisSchema>;
+
+/**
+ * Analysis of third-party integrations and dependencies in a codebase
+ * @example
+ * ```typescript
+ * const integrationAnalysis: IntegrationAnalysis = {
+ *   dependencies: {
+ *     production: [{ name: "react", version: "18.2.0", category: "frontend" }],
+ *     development: [{ name: "jest", version: "29.0.0", category: "testing" }],
+ *     outdated: [{ name: "lodash", current: "4.17.20", latest: "4.17.21", risk: "low" }],
+ *     security: []
+ *   },
+ *   apis: {
+ *     consumed: [{ url: "https://api.example.com", method: "GET", authenticated: true }],
+ *     exposed: [{ path: "/api/users", method: "POST", authenticated: true }]
+ *   },
+ *   services: { databases: ["PostgreSQL"], caches: ["Redis"], queues: [], cloud: ["AWS S3"] }
+ * };
+ * ```
+ */
+export const IntegrationAnalysisSchema = z.object({
+  /** Dependency analysis */
+  dependencies: z.object({
+    /** Production dependencies */
+    production: z.array(z.object({
+      name: z.string(),
+      version: z.string(),
+      category: z.enum(['frontend', 'backend', 'testing', 'build', 'runtime', 'database', 'ui', 'state-management', 'security', 'utility', 'other']),
+      license: z.string().optional(),
+      size: z.number().optional(), // Size in bytes
+      lastUpdated: z.date().optional(),
+    })),
+
+    /** Development dependencies */
+    development: z.array(z.object({
+      name: z.string(),
+      version: z.string(),
+      category: z.enum(['frontend', 'backend', 'testing', 'build', 'runtime', 'database', 'ui', 'state-management', 'security', 'utility', 'other']),
+      license: z.string().optional(),
+      size: z.number().optional(),
+      lastUpdated: z.date().optional(),
+    })),
+
+    /** Outdated dependencies */
+    outdated: z.array(z.object({
+      name: z.string(),
+      currentVersion: z.string(),
+      latestVersion: z.string(),
+      majorVersionsBehind: z.number().int().min(0).optional(),
+      minorVersionsBehind: z.number().int().min(0).optional(),
+      patchVersionsBehind: z.number().int().min(0).optional(),
+      risk: z.enum(['low', 'medium', 'high', 'critical']),
+      breaking: z.boolean().optional(),
+    })),
+
+    /** Security vulnerabilities */
+    security: z.array(z.object({
+      name: z.string(),
+      severity: z.enum(['low', 'moderate', 'high', 'critical']),
+      vulnerability: z.string(),
+      patchedVersion: z.string().optional(),
+      cve: z.string().optional(),
+    })),
+  }),
+
+  /** API integrations */
+  apis: z.object({
+    /** External APIs consumed */
+    consumed: z.array(z.object({
+      url: z.string(),
+      method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']),
+      authenticated: z.boolean().optional(),
+      rateLimit: z.boolean().optional(),
+      provider: z.string().optional(),
+      usageCount: z.number().int().min(0).optional(),
+    })),
+
+    /** APIs exposed by this service */
+    exposed: z.array(z.object({
+      path: z.string(),
+      method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']),
+      authenticated: z.boolean().optional(),
+      deprecated: z.boolean().optional(),
+      version: z.string().optional(),
+      documentation: z.boolean().optional(),
+    })),
+  }),
+
+  /** Service integrations */
+  services: z.object({
+    /** Database integrations */
+    databases: z.array(z.string()),
+
+    /** Cache systems */
+    caches: z.array(z.string()),
+
+    /** Message queues */
+    queues: z.array(z.string()),
+
+    /** Cloud services */
+    cloud: z.array(z.string()),
+
+    /** Monitoring and analytics */
+    monitoring: z.array(z.string()).optional(),
+
+    /** Authentication services */
+    auth: z.array(z.string()).optional(),
+
+    /** Payment processors */
+    payments: z.array(z.string()).optional(),
+  }),
+
+  /** Integration health metrics */
+  health: z.object({
+    dependencyRisk: z.enum(['low', 'medium', 'high', 'critical']),
+    securityRisk: z.enum(['low', 'medium', 'high', 'critical']),
+    maintenanceLoad: z.enum(['low', 'medium', 'high', 'critical']),
+    updateFrequency: z.enum(['current', 'behind', 'legacy', 'abandoned']),
+  }).optional(),
+
+  /** Integration recommendations */
+  recommendations: z.array(z.string()).optional(),
+});
+export type IntegrationAnalysis = z.infer<typeof IntegrationAnalysisSchema>;
+
+/**
+ * Comprehensive codebase analysis combining all analysis types
+ * This is the main output type for codebase analysis operations
+ *
+ * @example
+ * ```typescript
+ * const analysis: CodebaseAnalysis = {
+ *   timestamp: new Date(),
+ *   projectPath: '/path/to/project',
+ *   stack: { primaryLanguage: 'TypeScript', ... },
+ *   architecture: { pattern: 'layered', ... },
+ *   conventions: { fileNaming: 'camelCase', ... },
+ *   technicalDebt: { totalScore: 42, ... },
+ *   summary: {
+ *     totalFiles: 150,
+ *     totalLines: 25000,
+ *     analysisVersion: '1.0.0'
+ *   }
+ * };
+ * ```
+ */
+export const CodebaseAnalysisSchema = z.object({
+  /** When the analysis was performed */
+  timestamp: z.date(),
+
+  /** Path to the analyzed project */
+  projectPath: z.string(),
+
+  /** Technology stack analysis */
+  stack: StackAnalysisSchema,
+
+  /** Architecture analysis */
+  architecture: ArchitectureAnalysisSchema,
+
+  /** Coding convention analysis */
+  conventions: ConventionAnalysisSchema,
+
+  /** Technical debt analysis */
+  technicalDebt: TechnicalDebtAnalysisSchema,
+
+  /** Testing pattern analysis */
+  testingPatterns: TestingPatternAnalysisSchema.optional(),
+
+  /** Integration and dependency analysis */
+  integrations: IntegrationAnalysisSchema.optional(),
+
+  /** High-level summary metrics */
+  summary: z.object({
+    totalFiles: z.number().int().min(0),
+    totalLines: z.number().int().min(0),
+    analysisVersion: z.string(),
+    confidence: z.number().min(0).max(1).optional().default(1),
+    warnings: z.array(z.string()).optional().default([]),
+  }),
+
+  /** Metadata about the analysis process */
+  metadata: z.object({
+    analysisTools: z.array(z.string()).optional().default([]),
+    excludedPaths: z.array(z.string()).optional().default([]),
+    analysisTime: z.number().min(0).optional(), // Time in milliseconds
+    errors: z.array(z.object({
+      component: z.string(),
+      error: z.string(),
+      severity: z.enum(['warning', 'error']),
+    })).optional().default([]),
+  }).optional(),
+});
+export type CodebaseAnalysis = z.infer<typeof CodebaseAnalysisSchema>;
+
+// ============================================================================
+// Repository Map Types (Code Intelligence)
+// ============================================================================
+
+/**
+ * Types of code symbols that can be tracked in a repository map
+ * Used for code navigation, search, and understanding codebase structure
+ *
+ * @example
+ * ```typescript
+ * const symbolType: SymbolType = 'function';
+ * const validType = SymbolTypeSchema.parse('class');
+ * ```
+ */
+export const SymbolTypeSchema = z.enum([
+  'function',       // Functions and methods
+  'class',          // Class definitions
+  'interface',      // Interface definitions (TypeScript, Go, etc.)
+  'type',           // Type aliases and definitions
+  'enum',           // Enumeration types
+  'variable',       // Variables and constants
+  'constant',       // Named constants (const, final, etc.)
+  'property',       // Object/class properties
+  'method',         // Class/object methods (distinguished from standalone functions)
+  'module',         // Module/namespace declarations
+  'import',         // Import statements
+  'export',         // Export statements
+  'parameter',      // Function/method parameters
+  'generic',        // Generic type parameters
+  'decorator',      // Decorators/annotations
+  'unknown',        // Unknown or unclassified symbol
+]);
+export type SymbolType = z.infer<typeof SymbolTypeSchema>;
+
+/**
+ * A code symbol representing a named entity in the codebase
+ * Symbols are the atomic units of code structure (functions, classes, variables, etc.)
+ *
+ * @example
+ * ```typescript
+ * const symbol: CodeSymbol = {
+ *   name: 'calculateTotal',
+ *   type: 'function',
+ *   filePath: 'src/utils/math.ts',
+ *   startLine: 15,
+ *   endLine: 25,
+ *   startColumn: 0,
+ *   endColumn: 1,
+ *   signature: 'function calculateTotal(items: Item[]): number',
+ *   exported: true,
+ *   documentation: 'Calculates the total price of all items'
+ * };
+ * ```
+ */
+export const CodeSymbolSchema = z.object({
+  /** The symbol's name/identifier */
+  name: z.string().min(1, 'Symbol name is required'),
+
+  /** The type/kind of this symbol */
+  type: SymbolTypeSchema,
+
+  /** File path where this symbol is defined (relative to repository root) */
+  filePath: z.string().min(1, 'File path is required'),
+
+  /** Line number where the symbol definition starts (1-based) */
+  startLine: z.number().int().min(1),
+
+  /** Line number where the symbol definition ends (1-based) */
+  endLine: z.number().int().min(1),
+
+  /** Column number where the symbol starts (0-based) */
+  startColumn: z.number().int().min(0).optional(),
+
+  /** Column number where the symbol ends (0-based) */
+  endColumn: z.number().int().min(0).optional(),
+
+  /** Full signature of the symbol (e.g., function signature with parameters) */
+  signature: z.string().optional(),
+
+  /** Whether this symbol is exported/public */
+  exported: z.boolean().optional().default(false),
+
+  /** Whether this symbol is a default export */
+  isDefault: z.boolean().optional().default(false),
+
+  /** Documentation string (JSDoc, docstring, etc.) */
+  documentation: z.string().optional(),
+
+  /** Parent symbol name (for nested symbols like methods in a class) */
+  parent: z.string().optional(),
+
+  /** Child symbol names (for container symbols like classes) */
+  children: z.array(z.string()).optional().default([]),
+
+  /** Type annotations if available */
+  typeAnnotation: z.string().optional(),
+
+  /** Modifiers (public, private, static, async, etc.) */
+  modifiers: z.array(z.string()).optional().default([]),
+
+  /** Language-specific metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CodeSymbol = z.infer<typeof CodeSymbolSchema>;
+
+/**
+ * A reference to a symbol from another location in the codebase
+ * Tracks where symbols are used (called, instantiated, referenced)
+ *
+ * @example
+ * ```typescript
+ * const reference: SymbolReference = {
+ *   symbolName: 'calculateTotal',
+ *   symbolType: 'function',
+ *   sourceFile: 'src/components/Cart.tsx',
+ *   sourceLine: 42,
+ *   sourceColumn: 10,
+ *   targetFile: 'src/utils/math.ts',
+ *   targetLine: 15,
+ *   referenceType: 'call'
+ * };
+ * ```
+ */
+export const SymbolReferenceSchema = z.object({
+  /** Name of the referenced symbol */
+  symbolName: z.string().min(1, 'Symbol name is required'),
+
+  /** Type of the referenced symbol */
+  symbolType: SymbolTypeSchema.optional(),
+
+  /** File where the reference occurs (relative to repository root) */
+  sourceFile: z.string().min(1, 'Source file is required'),
+
+  /** Line number where the reference occurs (1-based) */
+  sourceLine: z.number().int().min(1),
+
+  /** Column number where the reference occurs (0-based) */
+  sourceColumn: z.number().int().min(0).optional(),
+
+  /** File where the symbol is defined (relative to repository root) */
+  targetFile: z.string().min(1, 'Target file is required'),
+
+  /** Line number where the symbol is defined (1-based) */
+  targetLine: z.number().int().min(1).optional(),
+
+  /** Type of reference (how the symbol is being used) */
+  referenceType: z.enum([
+    'call',           // Function/method invocation
+    'instantiation',  // Class instantiation (new Foo())
+    'assignment',     // Variable assignment
+    'read',           // Value read
+    'write',          // Value write/mutation
+    'import',         // Import statement
+    'export',         // Re-export
+    'extension',      // Class extension (extends)
+    'implementation', // Interface implementation (implements)
+    'type',           // Type reference in type annotation
+    'decorator',      // Decorator application
+    'parameter',      // Used as parameter
+    'return',         // Used as return value
+    'unknown',        // Unknown reference type
+  ]).optional().default('unknown'),
+
+  /** Whether this is a dynamic reference (computed property, reflection, etc.) */
+  isDynamic: z.boolean().optional().default(false),
+
+  /** Confidence score for inferred references (0-1) */
+  confidence: z.number().min(0).max(1).optional().default(1),
+});
+export type SymbolReference = z.infer<typeof SymbolReferenceSchema>;
+
+/**
+ * An import edge representing a dependency between files
+ * Tracks the import graph of the codebase
+ *
+ * @example
+ * ```typescript
+ * const importEdge: ImportEdge = {
+ *   sourceFile: 'src/components/Cart.tsx',
+ *   targetFile: 'src/utils/math.ts',
+ *   importedSymbols: ['calculateTotal', 'formatPrice'],
+ *   isTypeOnly: false,
+ *   importType: 'named'
+ * };
+ * ```
+ */
+export const ImportEdgeSchema = z.object({
+  /** File that contains the import statement (relative to repository root) */
+  sourceFile: z.string().min(1, 'Source file is required'),
+
+  /** File being imported (relative to repository root) */
+  targetFile: z.string().min(1, 'Target file is required'),
+
+  /** The original import specifier as written in code */
+  importSpecifier: z.string().optional(),
+
+  /** List of specific symbols imported (empty for namespace/default imports) */
+  importedSymbols: z.array(z.string()).optional().default([]),
+
+  /** Whether this is a type-only import (TypeScript) */
+  isTypeOnly: z.boolean().optional().default(false),
+
+  /** Whether this is a dynamic import (import()) */
+  isDynamic: z.boolean().optional().default(false),
+
+  /** Type of import statement */
+  importType: z.enum([
+    'named',          // import { foo } from 'module'
+    'default',        // import foo from 'module'
+    'namespace',      // import * as foo from 'module'
+    'side-effect',    // import 'module' (no bindings)
+    'dynamic',        // import('module')
+    'require',        // require('module')
+    'reexport',       // export { foo } from 'module'
+  ]).optional().default('named'),
+
+  /** Line number of the import statement (1-based) */
+  line: z.number().int().min(1).optional(),
+
+  /** Whether this import is used (not just declared) */
+  isUsed: z.boolean().optional().default(true),
+
+  /** Resolved absolute or package path */
+  resolvedPath: z.string().optional(),
+});
+export type ImportEdge = z.infer<typeof ImportEdgeSchema>;
+
+/**
+ * A code file with its symbols and imports
+ * Represents a single source file in the repository
+ *
+ * @example
+ * ```typescript
+ * const codeFile: CodeFile = {
+ *   path: 'src/utils/math.ts',
+ *   language: 'typescript',
+ *   symbols: [
+ *     { name: 'calculateTotal', type: 'function', ... }
+ *   ],
+ *   imports: [
+ *     { sourceFile: 'src/utils/math.ts', targetFile: 'lodash', ... }
+ *   ],
+ *   lineCount: 150,
+ *   lastModified: new Date('2024-01-15')
+ * };
+ * ```
+ */
+export const CodeFileSchema = z.object({
+  /** File path relative to repository root */
+  path: z.string().min(1, 'File path is required'),
+
+  /** Programming language of the file */
+  language: z.string().optional(),
+
+  /** Symbols defined in this file */
+  symbols: z.array(CodeSymbolSchema).optional().default([]),
+
+  /** Import statements in this file */
+  imports: z.array(ImportEdgeSchema).optional().default([]),
+
+  /** Export statements in this file (re-exports) */
+  exports: z.array(z.object({
+    /** Exported symbol name (or '*' for namespace export) */
+    name: z.string(),
+    /** Original name if aliased */
+    originalName: z.string().optional(),
+    /** Source file for re-exports */
+    fromFile: z.string().optional(),
+    /** Whether this is a default export */
+    isDefault: z.boolean().optional().default(false),
+    /** Whether this is a type-only export */
+    isTypeOnly: z.boolean().optional().default(false),
+  })).optional().default([]),
+
+  /** Total line count of the file */
+  lineCount: z.number().int().min(0).optional(),
+
+  /** File size in bytes */
+  size: z.number().int().min(0).optional(),
+
+  /** Last modification timestamp */
+  lastModified: z.date().optional(),
+
+  /** SHA/hash of the file content for change detection */
+  contentHash: z.string().optional(),
+
+  /** Whether this file has parsing errors */
+  hasErrors: z.boolean().optional().default(false),
+
+  /** Parsing errors if any */
+  errors: z.array(z.object({
+    message: z.string(),
+    line: z.number().int().min(1).optional(),
+    column: z.number().int().min(0).optional(),
+  })).optional().default([]),
+
+  /** File-level metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CodeFile = z.infer<typeof CodeFileSchema>;
+
+/**
+ * A complete map of a repository's code structure
+ * Contains all files, symbols, references, and their relationships
+ *
+ * @example
+ * ```typescript
+ * const repoMap: RepositoryMap = {
+ *   rootPath: '/path/to/repo',
+ *   files: [
+ *     { path: 'src/index.ts', language: 'typescript', symbols: [...] }
+ *   ],
+ *   references: [
+ *     { symbolName: 'App', sourceFile: 'src/main.ts', targetFile: 'src/App.tsx', ... }
+ *   ],
+ *   createdAt: new Date(),
+ *   version: '1.0.0'
+ * };
+ * ```
+ */
+export const RepositoryMapSchema = z.object({
+  /** Root path of the repository */
+  rootPath: z.string().min(1, 'Root path is required'),
+
+  /** Name of the repository */
+  name: z.string().optional(),
+
+  /** List of all code files in the repository */
+  files: z.array(CodeFileSchema).optional().default([]),
+
+  /** All symbol references across the codebase */
+  references: z.array(SymbolReferenceSchema).optional().default([]),
+
+  /** Summary statistics about the repository */
+  stats: z.object({
+    /** Total number of files */
+    totalFiles: z.number().int().min(0),
+    /** Total number of symbols */
+    totalSymbols: z.number().int().min(0),
+    /** Total number of references */
+    totalReferences: z.number().int().min(0),
+    /** Total lines of code */
+    totalLines: z.number().int().min(0).optional(),
+    /** Breakdown of files by language */
+    languageBreakdown: z.record(z.string(), z.number().int().min(0)).optional(),
+    /** Breakdown of symbols by type */
+    symbolTypeBreakdown: z.record(z.string(), z.number().int().min(0)).optional(),
+  }).optional(),
+
+  /** When this map was created/last updated */
+  createdAt: z.date().optional(),
+
+  /** Version of the map format/schema */
+  version: z.string().optional().default('1.0.0'),
+
+  /** Git commit hash at time of mapping */
+  commitHash: z.string().optional(),
+
+  /** Branch name at time of mapping */
+  branch: z.string().optional(),
+
+  /** Configuration used for generating this map */
+  config: z.object({
+    /** File patterns that were included */
+    includePatterns: z.array(z.string()).optional().default([]),
+    /** File patterns that were excluded */
+    excludePatterns: z.array(z.string()).optional().default([]),
+    /** Languages that were parsed */
+    languages: z.array(z.string()).optional().default([]),
+    /** Maximum file size that was processed */
+    maxFileSize: z.number().int().min(0).optional(),
+  }).optional(),
+
+  /** Errors encountered during mapping */
+  errors: z.array(z.object({
+    /** File path where error occurred */
+    file: z.string().optional(),
+    /** Error message */
+    message: z.string(),
+    /** Error severity */
+    severity: z.enum(['warning', 'error']),
+  })).optional().default([]),
+
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type RepositoryMap = z.infer<typeof RepositoryMapSchema>;
+
+// ============================================================================
+// Multimodal Input Types (v0.6.0)
+// ============================================================================
+// These types enable agents to receive and process multimodal inputs including:
+// - Images (base64-encoded or URL references)
+// - Web pages (for context/analysis)
+// - Design mockups (Figma, Sketch, etc.)
+
+/**
+ * Supported image media types for multimodal inputs
+ * Includes common web and design formats
+ */
+export const ImageMediaTypeSchema = z.enum([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+  'image/bmp',
+  'image/tiff',
+]);
+export type ImageMediaType = z.infer<typeof ImageMediaTypeSchema>;
+
+/**
+ * Multimodal input type discriminator
+ * Used to identify the type of multimodal content being provided
+ */
+export const MultimodalInputTypeSchema = z.enum([
+  'image',
+  'web_page',
+  'design_mockup',
+]);
+export type MultimodalInputType = z.infer<typeof MultimodalInputTypeSchema>;
+
+/**
+ * Source metadata for tracking where multimodal inputs originated
+ * Provides context about the input's origin for audit trails and debugging
+ *
+ * @example
+ * ```typescript
+ * const sourceMetadata: SourceMetadata = {
+ *   provider: 'figma',
+ *   originalUrl: 'https://figma.com/file/abc123',
+ *   capturedAt: new Date(),
+ *   capturedBy: 'design-agent',
+ *   version: '2.1.0',
+ *   additionalInfo: { nodeId: '123:456' }
+ * };
+ * ```
+ */
+export const SourceMetadataSchema = z.object({
+  /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+  provider: z.string().min(1, 'Provider is required').optional(),
+
+  /** Original URL where the content was sourced from */
+  originalUrl: z.string().url().optional(),
+
+  /** Timestamp when the content was captured/retrieved */
+  capturedAt: z.date().optional(),
+
+  /** Identifier of the agent or process that captured the content */
+  capturedBy: z.string().optional(),
+
+  /** Version identifier for the source content (if applicable) */
+  version: z.string().optional(),
+
+  /** Additional provider-specific metadata */
+  additionalInfo: z.record(z.string(), z.unknown()).optional(),
+});
+export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
+
+/**
+ * Base schema for all multimodal inputs
+ * Contains common fields shared across all input types
+ */
+export const BaseMultimodalInputSchema = z.object({
+  /** Unique identifier for this input */
+  id: z.string().optional(),
+
+  /** Human-readable name/label for the input */
+  name: z.string().optional(),
+
+  /** Description of what this input contains or represents */
+  description: z.string().optional(),
+
+  /** Source metadata for tracking input origin */
+  source: SourceMetadataSchema.optional(),
+
+  /** Tags for categorization and filtering */
+  tags: z.array(z.string()).optional().default([]),
+
+  /** Timestamp when this input was created/added */
+  createdAt: z.date().optional(),
+
+  /** Additional custom metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type BaseMultimodalInput = z.infer<typeof BaseMultimodalInputSchema>;
+
+/**
+ * Image input schema for providing images to agents
+ * Supports both base64-encoded data and URL references
+ *
+ * @example
+ * ```typescript
+ * // Base64 image input
+ * const base64Image: ImageInput = {
+ *   type: 'image',
+ *   name: 'screenshot.png',
+ *   mediaType: 'image/png',
+ *   data: 'iVBORw0KGgoAAAANSUhEUgAA...',
+ *   encoding: 'base64',
+ *   width: 1920,
+ *   height: 1080,
+ * };
+ *
+ * // URL image input
+ * const urlImage: ImageInput = {
+ *   type: 'image',
+ *   name: 'product-photo.jpg',
+ *   mediaType: 'image/jpeg',
+ *   url: 'https://example.com/images/product.jpg',
+ * };
+ * ```
+ */
+export const ImageInputSchema = BaseMultimodalInputSchema.extend({
+  /** Discriminator for image type */
+  type: z.literal('image'),
+
+  /** MIME type of the image */
+  mediaType: ImageMediaTypeSchema,
+
+  /**
+   * Base64-encoded image data
+   * Mutually exclusive with `url` - provide either data or url, not both
+   */
+  data: z.string().optional(),
+
+  /**
+   * URL to the image resource
+   * Mutually exclusive with `data` - provide either url or data, not both
+   */
+  url: z.string().url().optional(),
+
+  /** Encoding format for the data field (always 'base64' when data is provided) */
+  encoding: z.literal('base64').optional(),
+
+  /** Image width in pixels (if known) */
+  width: z.number().int().min(1).optional(),
+
+  /** Image height in pixels (if known) */
+  height: z.number().int().min(1).optional(),
+
+  /** File size in bytes (if known) */
+  fileSize: z.number().int().min(0).optional(),
+
+  /** Alt text for accessibility and context */
+  altText: z.string().optional(),
+}).refine(
+  (data) => data.data !== undefined || data.url !== undefined,
+  { message: 'Either data (base64) or url must be provided for image input' }
+).refine(
+  (data) => !(data.data !== undefined && data.url !== undefined),
+  { message: 'Provide either data or url, not both' }
+);
+export type ImageInput = z.infer<typeof ImageInputSchema>;
+
+/**
+ * Web page input schema for providing web page content/context to agents
+ * Can include both the URL and optionally captured content
+ *
+ * @example
+ * ```typescript
+ * const webPageInput: WebPageInput = {
+ *   type: 'web_page',
+ *   name: 'Product Landing Page',
+ *   url: 'https://example.com/products/widget',
+ *   title: 'Amazing Widget - Example Corp',
+ *   capturedHtml: '<html>...</html>',
+ *   capturedText: 'Plain text content...',
+ *   screenshot: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *   },
+ *   viewport: { width: 1920, height: 1080 },
+ * };
+ * ```
+ */
+export const WebPageInputSchema = BaseMultimodalInputSchema.extend({
+  /** Discriminator for web page type */
+  type: z.literal('web_page'),
+
+  /** URL of the web page */
+  url: z.string().url('Valid URL is required for web page input'),
+
+  /** Page title (if captured) */
+  title: z.string().optional(),
+
+  /** Full HTML content of the page (if captured) */
+  capturedHtml: z.string().optional(),
+
+  /** Plain text content extracted from the page (if captured) */
+  capturedText: z.string().optional(),
+
+  /** Markdown representation of the page content (if converted) */
+  capturedMarkdown: z.string().optional(),
+
+  /**
+   * Screenshot of the page
+   * Stored as a nested ImageInput without the refinements to avoid circular validation
+   */
+  screenshot: BaseMultimodalInputSchema.extend({
+    type: z.literal('image'),
+    mediaType: ImageMediaTypeSchema,
+    data: z.string().optional(),
+    url: z.string().url().optional(),
+    encoding: z.literal('base64').optional(),
+    width: z.number().int().min(1).optional(),
+    height: z.number().int().min(1).optional(),
+    fileSize: z.number().int().min(0).optional(),
+    altText: z.string().optional(),
+  }).optional(),
+
+  /** Viewport dimensions used when capturing the page */
+  viewport: z.object({
+    width: z.number().int().min(1),
+    height: z.number().int().min(1),
+  }).optional(),
+
+  /** HTTP status code when the page was fetched */
+  statusCode: z.number().int().optional(),
+
+  /** Response headers (selected relevant headers) */
+  headers: z.record(z.string(), z.string()).optional(),
+
+  /** Timestamp when the page was captured */
+  capturedAt: z.date().optional(),
+
+  /** Whether JavaScript was executed during capture */
+  jsExecuted: z.boolean().optional().default(false),
+
+  /** Links found on the page */
+  links: z.array(z.object({
+    href: z.string(),
+    text: z.string().optional(),
+    rel: z.string().optional(),
+  })).optional(),
+
+  /** Page load metrics */
+  loadMetrics: z.object({
+    /** Time to first byte in milliseconds */
+    ttfb: z.number().min(0).optional(),
+    /** DOM content loaded time in milliseconds */
+    domContentLoaded: z.number().min(0).optional(),
+    /** Full page load time in milliseconds */
+    loadComplete: z.number().min(0).optional(),
+  }).optional(),
+});
+export type WebPageInput = z.infer<typeof WebPageInputSchema>;
+
+/**
+ * Design tool/platform identifiers for mockup inputs
+ */
+export const DesignToolSchema = z.enum([
+  'figma',
+  'sketch',
+  'adobe_xd',
+  'invision',
+  'zeplin',
+  'framer',
+  'canva',
+  'photoshop',
+  'illustrator',
+  'other',
+]);
+export type DesignTool = z.infer<typeof DesignToolSchema>;
+
+/**
+ * Design mockup input schema for providing design files/exports to agents
+ * Supports various design tools like Figma, Sketch, Adobe XD, etc.
+ *
+ * @example
+ * ```typescript
+ * const mockupInput: DesignMockupInput = {
+ *   type: 'design_mockup',
+ *   name: 'Login Screen - Mobile',
+ *   designTool: 'figma',
+ *   fileId: 'abc123xyz',
+ *   nodeId: '123:456',
+ *   fileUrl: 'https://figma.com/file/abc123xyz/Login-Screens',
+ *   exportedImage: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *     width: 375,
+ *     height: 812,
+ *   },
+ *   exportFormat: 'png',
+ *   exportScale: 2,
+ *   designTokens: {
+ *     colors: { primary: '#007AFF', secondary: '#5856D6' },
+ *     typography: { heading: 'SF Pro Display', body: 'SF Pro Text' },
+ *   },
+ * };
+ * ```
+ */
+export const DesignMockupInputSchema = BaseMultimodalInputSchema.extend({
+  /** Discriminator for design mockup type */
+  type: z.literal('design_mockup'),
+
+  /** Design tool/platform used to create the mockup */
+  designTool: DesignToolSchema,
+
+  /** Unique file identifier in the design tool */
+  fileId: z.string().optional(),
+
+  /** Node/frame/artboard identifier within the file */
+  nodeId: z.string().optional(),
+
+  /** Direct URL to the design file or frame */
+  fileUrl: z.string().url().optional(),
+
+  /**
+   * Exported image of the mockup
+   * Stored as a nested structure to avoid circular refinement issues
+   */
+  exportedImage: BaseMultimodalInputSchema.extend({
+    type: z.literal('image'),
+    mediaType: ImageMediaTypeSchema,
+    data: z.string().optional(),
+    url: z.string().url().optional(),
+    encoding: z.literal('base64').optional(),
+    width: z.number().int().min(1).optional(),
+    height: z.number().int().min(1).optional(),
+    fileSize: z.number().int().min(0).optional(),
+    altText: z.string().optional(),
+  }).optional(),
+
+  /** Format used for export (png, svg, pdf, etc.) */
+  exportFormat: z.enum(['png', 'jpeg', 'svg', 'pdf', 'webp']).optional(),
+
+  /** Export scale factor (1x, 2x, 3x, etc.) */
+  exportScale: z.number().min(0.1).max(10).optional(),
+
+  /** Frame/artboard name in the design tool */
+  frameName: z.string().optional(),
+
+  /** Page name containing the frame */
+  pageName: z.string().optional(),
+
+  /** Design dimensions (if different from exported image) */
+  designDimensions: z.object({
+    width: z.number().min(0),
+    height: z.number().min(0),
+    unit: z.enum(['px', 'pt', 'dp', 'sp', 'em', 'rem', '%']).optional().default('px'),
+  }).optional(),
+
+  /** Design tokens extracted from the mockup */
+  designTokens: z.object({
+    /** Color palette */
+    colors: z.record(z.string(), z.string()).optional(),
+    /** Typography definitions */
+    typography: z.record(z.string(), z.union([z.string(), z.object({
+      fontFamily: z.string().optional(),
+      fontSize: z.number().optional(),
+      fontWeight: z.union([z.string(), z.number()]).optional(),
+      lineHeight: z.number().optional(),
+      letterSpacing: z.number().optional(),
+    })])).optional(),
+    /** Spacing values */
+    spacing: z.record(z.string(), z.number()).optional(),
+    /** Border radius values */
+    borderRadius: z.record(z.string(), z.number()).optional(),
+    /** Shadow definitions */
+    shadows: z.record(z.string(), z.string()).optional(),
+  }).optional(),
+
+  /** Components/symbols used in the mockup */
+  components: z.array(z.object({
+    name: z.string(),
+    id: z.string().optional(),
+    type: z.string().optional(),
+    bounds: z.object({
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    }).optional(),
+  })).optional(),
+
+  /** Version/revision of the design file */
+  fileVersion: z.string().optional(),
+
+  /** Last modified timestamp from the design tool */
+  lastModified: z.date().optional(),
+
+  /** Collaborators/editors of the design file */
+  collaborators: z.array(z.string()).optional(),
+
+  /** Comments or annotations on this mockup */
+  annotations: z.array(z.object({
+    id: z.string().optional(),
+    text: z.string(),
+    author: z.string().optional(),
+    position: z.object({
+      x: z.number(),
+      y: z.number(),
+    }).optional(),
+    createdAt: z.date().optional(),
+  })).optional(),
+});
+export type DesignMockupInput = z.infer<typeof DesignMockupInputSchema>;
+
+/**
+ * Union type for all multimodal inputs
+ * Uses discriminated union based on the 'type' field for type-safe handling
+ *
+ * @example
+ * ```typescript
+ * function processMultimodalInput(input: MultimodalInput) {
+ *   switch (input.type) {
+ *     case 'image':
+ *       // TypeScript knows this is ImageInput
+ *       console.log(`Processing image: ${input.mediaType}`);
+ *       break;
+ *     case 'web_page':
+ *       // TypeScript knows this is WebPageInput
+ *       console.log(`Processing web page: ${input.url}`);
+ *       break;
+ *     case 'design_mockup':
+ *       // TypeScript knows this is DesignMockupInput
+ *       console.log(`Processing mockup from: ${input.designTool}`);
+ *       break;
+ *   }
+ * }
+ * ```
+ */
+export const MultimodalInputSchema = z.union([
+  ImageInputSchema,
+  WebPageInputSchema,
+  DesignMockupInputSchema,
+]);
+export type MultimodalInput = z.infer<typeof MultimodalInputSchema>;
+
+/**
+ * Collection of multimodal inputs for batch processing
+ * Useful for tasks that require multiple inputs of different types
+ *
+ * @example
+ * ```typescript
+ * const inputCollection: MultimodalInputCollection = {
+ *   inputs: [
+ *     { type: 'design_mockup', designTool: 'figma', ... },
+ *     { type: 'web_page', url: 'https://example.com', ... },
+ *     { type: 'image', mediaType: 'image/png', data: '...', ... },
+ *   ],
+ *   context: 'Implement the login screen based on the Figma mockup',
+ * };
+ * ```
+ */
+export const MultimodalInputCollectionSchema = z.object({
+  /** Array of multimodal inputs */
+  inputs: z.array(MultimodalInputSchema).min(1, 'At least one input is required'),
+
+  /** Optional context describing the relationship between inputs */
+  context: z.string().optional(),
+
+  /** Primary input index (0-based) if one input is the main focus */
+  primaryInputIndex: z.number().int().min(0).optional(),
+
+  /** Processing order preference */
+  processingOrder: z.enum(['sequential', 'parallel', 'priority']).optional().default('sequential'),
+
+  /** Timestamp when this collection was created */
+  createdAt: z.date().optional(),
+
+  /** Additional metadata for the collection */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type MultimodalInputCollection = z.infer<typeof MultimodalInputCollectionSchema>;
+
+// ============================================================================
+// Multimodal Context Types (v0.6.0) - Processed Multimodal Data for Tasks
+// ============================================================================
+
+/**
+ * Processing status for individual multimodal inputs
+ * Tracks the lifecycle of multimodal input processing
+ *
+ * @example
+ * ```typescript
+ * const status: MultimodalProcessingStatus = 'processing';
+ *
+ * // Status flow: pending -> processing -> completed/failed/skipped
+ * ```
+ */
+export const MultimodalProcessingStatusSchema = z.enum([
+  'pending',      // Not yet processed
+  'processing',   // Currently being processed
+  'completed',    // Successfully processed
+  'failed',       // Processing failed
+  'skipped',      // Skipped (e.g., unsupported type)
+]);
+export type MultimodalProcessingStatus = z.infer<typeof MultimodalProcessingStatusSchema>;
+
+/**
+ * Entity detected/extracted from multimodal input
+ * Represents structured information extracted during processing
+ *
+ * @example
+ * ```typescript
+ * const entity: ExtractedEntity = {
+ *   type: 'button',
+ *   value: 'Submit',
+ *   confidence: 0.95,
+ *   bounds: { x: 100, y: 200, width: 80, height: 40 }
+ * };
+ * ```
+ */
+export const ExtractedEntitySchema = z.object({
+  /** Type of entity (e.g., 'button', 'text', 'image', 'input', 'link') */
+  type: z.string().min(1),
+
+  /** Value or content of the entity */
+  value: z.string(),
+
+  /** Confidence score for the extraction (0.0 to 1.0) */
+  confidence: z.number().min(0).max(1).optional(),
+
+  /** Bounding box coordinates if applicable (for visual entities) */
+  bounds: z.object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  }).optional(),
+});
+export type ExtractedEntity = z.infer<typeof ExtractedEntitySchema>;
+
+/**
+ * Content extracted from a multimodal input during processing
+ * Contains text, structured data, and detected entities
+ *
+ * @example
+ * ```typescript
+ * const content: ExtractedContent = {
+ *   text: 'Welcome to our application',
+ *   structuredData: { pageTitle: 'Home', hasLogin: true },
+ *   entities: [
+ *     { type: 'heading', value: 'Welcome', confidence: 0.99 },
+ *     { type: 'button', value: 'Sign In', confidence: 0.95 }
+ *   ]
+ * };
+ * ```
+ */
+export const ExtractedContentSchema = z.object({
+  /** Text content extracted from the input */
+  text: z.string().optional(),
+
+  /** Structured data extracted from the input */
+  structuredData: z.record(z.string(), z.unknown()).optional(),
+
+  /** Detected entities (UI components, text regions, etc.) */
+  entities: z.array(ExtractedEntitySchema).optional(),
+});
+export type ExtractedContent = z.infer<typeof ExtractedContentSchema>;
+
+/**
+ * A multimodal input that has been processed with status and results
+ * Wraps the original input with processing metadata and extracted content
+ *
+ * @example
+ * ```typescript
+ * const processed: ProcessedMultimodalInput = {
+ *   input: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *   },
+ *   status: 'completed',
+ *   processedAt: new Date(),
+ *   processingDurationMs: 1500,
+ *   extractedContent: {
+ *     text: 'Login form with username and password fields',
+ *     entities: [
+ *       { type: 'input', value: 'username', confidence: 0.98 },
+ *       { type: 'input', value: 'password', confidence: 0.97 },
+ *       { type: 'button', value: 'Login', confidence: 0.99 }
+ *     ]
+ *   }
+ * };
+ * ```
+ */
+export const ProcessedMultimodalInputSchema = z.object({
+  /** Original multimodal input */
+  input: MultimodalInputSchema,
+
+  /** Current processing status */
+  status: MultimodalProcessingStatusSchema,
+
+  /** Timestamp when processing started/completed */
+  processedAt: z.date().optional(),
+
+  /** Processing duration in milliseconds */
+  processingDurationMs: z.number().min(0).optional(),
+
+  /** Error message if processing failed */
+  error: z.string().optional(),
+
+  /** Extracted/analyzed content from the input */
+  extractedContent: ExtractedContentSchema.optional(),
+});
+export type ProcessedMultimodalInput = z.infer<typeof ProcessedMultimodalInputSchema>;
+
+/**
+ * Input counts by type for quick reference
+ * Provides a summary of multimodal input types in a context
+ *
+ * @example
+ * ```typescript
+ * const counts: MultimodalInputCounts = {
+ *   images: 3,
+ *   webPages: 1,
+ *   designMockups: 2
+ * };
+ * ```
+ */
+export const MultimodalInputCountsSchema = z.object({
+  /** Number of image inputs */
+  images: z.number().int().min(0).default(0),
+
+  /** Number of web page inputs */
+  webPages: z.number().int().min(0).default(0),
+
+  /** Number of design mockup inputs */
+  designMockups: z.number().int().min(0).default(0),
+});
+export type MultimodalInputCounts = z.infer<typeof MultimodalInputCountsSchema>;
+
+/**
+ * Multimodal context for a task - contains processed multimodal inputs
+ * and aggregated context information for agent consumption
+ *
+ * This type represents the processed state of multimodal inputs attached
+ * to a task, including processing status, extracted content, and summary.
+ *
+ * @example
+ * ```typescript
+ * const context: MultimodalContext = {
+ *   inputs: [
+ *     {
+ *       input: { type: 'design_mockup', designTool: 'figma' },
+ *       status: 'completed',
+ *       processedAt: new Date(),
+ *       extractedContent: { text: 'Login screen mockup', entities: [] }
+ *     },
+ *     {
+ *       input: { type: 'web_page', url: 'https://example.com' },
+ *       status: 'completed',
+ *       processedAt: new Date(),
+ *       extractedContent: { text: 'Current implementation', structuredData: {} }
+ *     }
+ *   ],
+ *   status: 'completed',
+ *   contextSummary: 'Task includes a Figma login screen mockup and the current implementation webpage for reference.',
+ *   createdAt: new Date('2024-01-15T10:00:00Z'),
+ *   completedAt: new Date('2024-01-15T10:00:05Z'),
+ *   totalProcessingTimeMs: 5000,
+ *   inputCounts: { images: 0, webPages: 1, designMockups: 1 }
+ * };
+ * ```
+ */
+export const MultimodalContextSchema = z.object({
+  /** Array of processed multimodal inputs */
+  inputs: z.array(ProcessedMultimodalInputSchema),
+
+  /** Overall processing status */
+  status: MultimodalProcessingStatusSchema,
+
+  /** Combined context summary for agent consumption */
+  contextSummary: z.string().optional(),
+
+  /** Timestamp when context was created */
+  createdAt: z.date(),
+
+  /** Timestamp when all processing completed */
+  completedAt: z.date().optional(),
+
+  /** Total processing time across all inputs in milliseconds */
+  totalProcessingTimeMs: z.number().min(0).optional(),
+
+  /** Count of inputs by type for quick reference */
+  inputCounts: MultimodalInputCountsSchema,
+
+  /** Additional metadata */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type MultimodalContext = z.infer<typeof MultimodalContextSchema>;

@@ -16,6 +16,28 @@ import type {
 import type { ToolResponseOptions, ToolRequestOptions, FixtureFactory } from '../types.js';
 
 /**
+ * Factory function type for tool-specific factories that take positional arguments
+ * (different from the standard FixtureFactory which takes overrides/options).
+ */
+type ToolResultFactory = (
+  toolName: string,
+  output: unknown,
+  options?: ToolResponseOptions
+) => ToolResult;
+
+type ToolExecutionFactory = (
+  toolName: string,
+  input?: Record<string, unknown>,
+  overrides?: Partial<ToolExecution>
+) => ToolExecution;
+
+type ToolInvocationFactory = (
+  toolName: string,
+  parameters?: Record<string, unknown>,
+  options?: ToolRequestOptions
+) => ToolInvocation;
+
+/**
  * Creates a basic ToolResult fixture
  *
  * @param toolName - Name of the tool that was executed
@@ -33,7 +55,7 @@ import type { ToolResponseOptions, ToolRequestOptions, FixtureFactory } from '..
  * expect(result.toolName).toBe('Read');
  * ```
  */
-export const createToolResult: FixtureFactory<ToolResult, ToolResponseOptions> = (
+export const createToolResult: ToolResultFactory = (
   toolName: string,
   output: unknown,
   options: ToolResponseOptions = {}
@@ -56,7 +78,7 @@ export const createToolResult: FixtureFactory<ToolResult, ToolResponseOptions> =
 /**
  * Creates a successful tool result
  */
-export const createSuccessResult: FixtureFactory<ToolResult> = (
+export const createSuccessResult: ToolResultFactory = (
   toolName: string,
   output: unknown,
   options: ToolResponseOptions = {}
@@ -65,7 +87,7 @@ export const createSuccessResult: FixtureFactory<ToolResult> = (
 /**
  * Creates a failed tool result
  */
-export const createFailureResult: FixtureFactory<ToolResult> = (
+export const createFailureResult = (
   toolName: string,
   error: string,
   options: ToolResponseOptions = {}
@@ -83,7 +105,7 @@ export const createFailureResult: FixtureFactory<ToolResult> = (
  * @param options - Additional execution options
  * @returns A ToolExecution object
  */
-export const createToolExecution: FixtureFactory<ToolExecution> = (
+export const createToolExecution: ToolExecutionFactory = (
   toolName: string,
   input: Record<string, unknown> = {},
   overrides: Partial<ToolExecution> = {}
@@ -114,7 +136,7 @@ export const createToolExecution: FixtureFactory<ToolExecution> = (
 /**
  * Creates a running tool execution
  */
-export const createRunningExecution: FixtureFactory<ToolExecution> = (
+export const createRunningExecution: ToolExecutionFactory = (
   toolName: string,
   input: Record<string, unknown> = {}
 ) => createToolExecution(toolName, input, {
@@ -127,7 +149,7 @@ export const createRunningExecution: FixtureFactory<ToolExecution> = (
 /**
  * Creates a failed tool execution
  */
-export const createFailedExecution: FixtureFactory<ToolExecution> = (
+export const createFailedExecution = (
   toolName: string,
   input: Record<string, unknown> = {},
   error: string = 'Tool execution failed'
@@ -148,7 +170,7 @@ export const createFailedExecution: FixtureFactory<ToolExecution> = (
  * @param options - Additional request options
  * @returns A ToolInvocation object
  */
-export const createToolInvocation: FixtureFactory<ToolInvocation, ToolRequestOptions> = (
+export const createToolInvocation: ToolInvocationFactory = (
   toolName: string,
   parameters: Record<string, unknown> = {},
   options: ToolRequestOptions = {}

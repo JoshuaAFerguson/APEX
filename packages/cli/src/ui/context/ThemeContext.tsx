@@ -18,6 +18,8 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 interface ThemeProviderProps {
   children: ReactNode;
   defaultTheme?: ThemeName;
+  initialTheme?: ThemeName;
+  theme?: Theme;
 }
 
 /**
@@ -25,10 +27,23 @@ interface ThemeProviderProps {
  */
 export function ThemeProvider({
   children,
-  defaultTheme = 'dark'
+  defaultTheme = 'dark',
+  initialTheme,
+  theme: customTheme
 }: ThemeProviderProps): React.ReactElement {
-  const [themeName, setThemeName] = useState<ThemeName>(defaultTheme);
-  const theme = getTheme(themeName);
+  // Use initialTheme if provided and valid, then defaultTheme, then fall back to 'dark'
+  const getValidThemeName = (themeCandidate?: string): ThemeName => {
+    if (themeCandidate && isValidThemeName(themeCandidate)) {
+      return themeCandidate as ThemeName;
+    }
+    return 'dark';
+  };
+
+  const initialThemeName = getValidThemeName(initialTheme || defaultTheme);
+  const [themeName, setThemeName] = useState<ThemeName>(initialThemeName);
+
+  // Use custom theme if provided, otherwise get theme by name
+  const theme = customTheme || getTheme(themeName);
 
   const handleSetTheme = useCallback((newThemeName: ThemeName) => {
     if (isValidThemeName(newThemeName)) {
@@ -38,7 +53,7 @@ export function ThemeProvider({
 
   const value: ThemeContextType = {
     theme,
-    themeName,
+    themeName: customTheme ? customTheme.name as ThemeName : themeName,
     setTheme: handleSetTheme,
   };
 

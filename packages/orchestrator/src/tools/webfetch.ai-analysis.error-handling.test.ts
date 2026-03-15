@@ -32,7 +32,9 @@ vi.mock('@anthropic-ai/sdk', () => ({
 }));
 
 // Mock fetch
-global.fetch = vi.fn();
+global.fetch = vi.fn(function() {
+  return Promise.resolve(new Response());
+});
 
 describe('WebFetch AI Analysis Error Handling', () => {
   let webFetchTool: WebFetchTool;

@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { render, screen } from '../../../__tests__/test-utils.js';
+import { render, screen } from '../../__tests__/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { StatusBar, StatusBarProps } from '../StatusBar.js';
 import { Banner, BannerProps } from '../Banner.js';

@@ -8,6 +8,7 @@
  * @module orchestrator/mcp/mock-server/mock-behavior-engine
  */
 
+import type { JSONRPCRequest } from '../types.js';
 import type {
   MockBehaviorConfig,
   MockResponseDelay,
@@ -20,9 +21,6 @@ import type {
   MockStatefulBehaviorConfig,
   MockStateTransition,
   MockStateBehavior,
-} from '@apexcli/core';
-import type { JSONRPCRequest } from '../types.js';
-import type {
   RecordedRequest,
   ErrorInjectionResult,
   ComputedDelay,

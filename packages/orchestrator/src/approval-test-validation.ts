@@ -112,6 +112,6 @@ async function validateApprovalTestUtils(): Promise<void> {
 }
 
 // Run validation if this script is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
   validateApprovalTestUtils().catch(console.error);
 }

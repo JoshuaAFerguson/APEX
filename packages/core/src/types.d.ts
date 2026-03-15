@@ -7392,6 +7392,90 @@ export declare const WorkflowDefinitionSchema: z.ZodObject<{
 }>;
 export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 /**
+ * Authentication methods for AI providers
+ */
+export declare const AiProviderAuthMethodSchema: z.ZodEnum<["api_key", "oauth", "openauth", "none"]>;
+export type AiProviderAuthMethod = z.infer<typeof AiProviderAuthMethodSchema>;
+/**
+ * Configuration for an individual AI provider
+ */
+export declare const AiProviderConfigSchema: z.ZodObject<{
+    /** Whether this provider is enabled */
+    enabled: z.ZodDefault<z.ZodBoolean>;
+    /** Authentication method to use */
+    authMethod: z.ZodEnum<["api_key", "oauth", "openauth", "none"]>;
+    /** API key (if using api_key auth) */
+    apiKey: z.ZodOptional<z.ZodString>;
+    /** Default model for this provider */
+    defaultModel: z.ZodOptional<z.ZodString>;
+    /** Provider-specific options */
+    options: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
+}, "strip", z.ZodTypeAny, {
+    options: Record<string, unknown>;
+    enabled: boolean;
+    authMethod: "none" | "api_key" | "oauth" | "openauth";
+    apiKey?: string | undefined;
+    defaultModel?: string | undefined;
+}, {
+    authMethod: "none" | "api_key" | "oauth" | "openauth";
+    options?: Record<string, unknown> | undefined;
+    enabled?: boolean | undefined;
+    apiKey?: string | undefined;
+    defaultModel?: string | undefined;
+}>;
+export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>;
+/**
+ * Global AI provider configuration
+ */
+export declare const AiProvidersConfigSchema: z.ZodObject<{
+    /** Primary provider to use */
+    primary: z.ZodDefault<z.ZodString>;
+    /** Map of provider configurations */
+    configs: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{
+        /** Whether this provider is enabled */
+        enabled: z.ZodDefault<z.ZodBoolean>;
+        /** Authentication method to use */
+        authMethod: z.ZodEnum<["api_key", "oauth", "openauth", "none"]>;
+        /** API key (if using api_key auth) */
+        apiKey: z.ZodOptional<z.ZodString>;
+        /** Default model for this provider */
+        defaultModel: z.ZodOptional<z.ZodString>;
+        /** Provider-specific options */
+        options: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
+    }, "strip", z.ZodTypeAny, {
+        options: Record<string, unknown>;
+        enabled: boolean;
+        authMethod: "none" | "api_key" | "oauth" | "openauth";
+        apiKey?: string | undefined;
+        defaultModel?: string | undefined;
+    }, {
+        authMethod: "none" | "api_key" | "oauth" | "openauth";
+        options?: Record<string, unknown> | undefined;
+        enabled?: boolean | undefined;
+        apiKey?: string | undefined;
+        defaultModel?: string | undefined;
+    }>>>>;
+}, "strip", z.ZodTypeAny, {
+    primary: string;
+    configs: Record<string, {
+        options: Record<string, unknown>;
+        enabled: boolean;
+        authMethod: "none" | "api_key" | "oauth" | "openauth";
+        apiKey?: string | undefined;
+        defaultModel?: string | undefined;
+    }>;
+}, {
+    primary?: string | undefined;
+    configs?: Record<string, {
+        authMethod: "none" | "api_key" | "oauth" | "openauth";
+        options?: Record<string, unknown> | undefined;
+        enabled?: boolean | undefined;
+        apiKey?: string | undefined;
+        defaultModel?: string | undefined;
+    }> | undefined;
+}>;
+export type AiProvidersConfig = z.infer<typeof AiProvidersConfigSchema>;
+/**
  * Schema for project-specific configuration settings that define build, test, and development commands
  * @example
  * ```typescript
@@ -9102,23 +9186,29 @@ export declare const ServiceConfigSchema: z.ZodObject<{
     enableOnBoot?: boolean | undefined;
 }>;
 export type ServiceConfig = z.infer<typeof ServiceConfigSchema>;
-export declare const IdleTaskTypeSchema: z.ZodEnum<["maintenance", "refactoring", "docs", "tests"]>;
+export declare const IdleTaskTypeSchema: z.ZodEnum<["maintenance", "refactoring", "docs", "tests", "technical-debt", "conventions"]>;
 export type IdleTaskType = z.infer<typeof IdleTaskTypeSchema>;
 export declare const StrategyWeightsSchema: z.ZodObject<{
     maintenance: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     refactoring: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     docs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     tests: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    'technical-debt': z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    conventions: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
     maintenance: number;
     refactoring: number;
     docs: number;
     tests: number;
+    'technical-debt': number;
+    conventions: number;
 }, {
     maintenance?: number | undefined;
     refactoring?: number | undefined;
     docs?: number | undefined;
     tests?: number | undefined;
+    'technical-debt'?: number | undefined;
+    conventions?: number | undefined;
 }>;
 export type StrategyWeights = z.infer<typeof StrategyWeightsSchema>;
 export declare const DaemonConfigSchema: z.ZodObject<{
@@ -9263,16 +9353,22 @@ export declare const DaemonConfigSchema: z.ZodObject<{
             refactoring: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
             docs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
             tests: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+            'technical-debt': z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+            conventions: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
         }, "strip", z.ZodTypeAny, {
             maintenance: number;
             refactoring: number;
             docs: number;
             tests: number;
+            'technical-debt': number;
+            conventions: number;
         }, {
             maintenance?: number | undefined;
             refactoring?: number | undefined;
             docs?: number | undefined;
             tests?: number | undefined;
+            'technical-debt'?: number | undefined;
+            conventions?: number | undefined;
         }>>;
     }, "strip", z.ZodTypeAny, {
         enabled: boolean;
@@ -9284,6 +9380,8 @@ export declare const DaemonConfigSchema: z.ZodObject<{
             refactoring: number;
             docs: number;
             tests: number;
+            'technical-debt': number;
+            conventions: number;
         } | undefined;
     }, {
         enabled?: boolean | undefined;
@@ -9295,6 +9393,8 @@ export declare const DaemonConfigSchema: z.ZodObject<{
             refactoring?: number | undefined;
             docs?: number | undefined;
             tests?: number | undefined;
+            'technical-debt'?: number | undefined;
+            conventions?: number | undefined;
         } | undefined;
     }>>;
     orphanDetection: z.ZodOptional<z.ZodObject<{
@@ -9373,6 +9473,22 @@ export declare const DaemonConfigSchema: z.ZodObject<{
     }, {
         restartParentOnly?: boolean | undefined;
     }>>;
+    processLimits: z.ZodOptional<z.ZodObject<{
+        /** Nice level for task subprocesses (0-19, higher = lower priority). Default 10. */
+        niceLevel: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Nice level for integrated services (API, WebUI). Default 15. */
+        serviceNiceLevel: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Interval in ms to renice daemon descendants. Default 30000 (30s). 0 to disable. */
+        reniceIntervalMs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        niceLevel: number;
+        serviceNiceLevel: number;
+        reniceIntervalMs: number;
+    }, {
+        niceLevel?: number | undefined;
+        serviceNiceLevel?: number | undefined;
+        reniceIntervalMs?: number | undefined;
+    }>>;
 }, "strip", z.ZodTypeAny, {
     pollInterval: number;
     autoStart: boolean;
@@ -9429,6 +9545,8 @@ export declare const DaemonConfigSchema: z.ZodObject<{
             refactoring: number;
             docs: number;
             tests: number;
+            'technical-debt': number;
+            conventions: number;
         } | undefined;
     } | undefined;
     orphanDetection?: {
@@ -9452,6 +9570,11 @@ export declare const DaemonConfigSchema: z.ZodObject<{
     } | undefined;
     taskRestart?: {
         restartParentOnly: boolean;
+    } | undefined;
+    processLimits?: {
+        niceLevel: number;
+        serviceNiceLevel: number;
+        reniceIntervalMs: number;
     } | undefined;
 }, {
     pollInterval?: number | undefined;
@@ -9509,6 +9632,8 @@ export declare const DaemonConfigSchema: z.ZodObject<{
             refactoring?: number | undefined;
             docs?: number | undefined;
             tests?: number | undefined;
+            'technical-debt'?: number | undefined;
+            conventions?: number | undefined;
         } | undefined;
     } | undefined;
     orphanDetection?: {
@@ -9532,6 +9657,11 @@ export declare const DaemonConfigSchema: z.ZodObject<{
     } | undefined;
     taskRestart?: {
         restartParentOnly?: boolean | undefined;
+    } | undefined;
+    processLimits?: {
+        niceLevel?: number | undefined;
+        serviceNiceLevel?: number | undefined;
+        reniceIntervalMs?: number | undefined;
     } | undefined;
 }>;
 export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
@@ -9784,6 +9914,435 @@ export interface HealthMetrics {
     /** History of daemon restarts (most recent first, limited to last N entries) */
     restartHistory: RestartRecord[];
 }
+/**
+ * Severity levels for health check results
+ * Used to indicate the impact of check failures
+ * @example
+ * ```typescript
+ * const severity: CheckSeverity = 'error';
+ * const validSeverity = CheckSeveritySchema.parse('warning');
+ * ```
+ */
+export declare const CheckSeveritySchema: z.ZodEnum<["error", "warning", "info"]>;
+export type CheckSeverity = z.infer<typeof CheckSeveritySchema>;
+/**
+ * Result status for individual health checks
+ * @example
+ * ```typescript
+ * const status: CheckStatus = 'pass';
+ * const validStatus = CheckStatusSchema.parse('fail');
+ * ```
+ */
+export declare const CheckStatusSchema: z.ZodEnum<["pass", "fail", "skip", "unknown"]>;
+export type CheckStatus = z.infer<typeof CheckStatusSchema>;
+/**
+ * Information about a development toolchain tool
+ * Captures version, location, and metadata for tools like node, npm, git
+ * @example
+ * ```typescript
+ * const toolcheck: ToolchainCheck = {
+ *   name: 'node',
+ *   currentVersion: '18.17.0',
+ *   requiredVersion: '16.0.0',
+ *   required: true,
+ *   path: '/usr/bin/node',
+ *   metadata: { arch: 'x64' }
+ * };
+ * ```
+ */
+export declare const ToolchainCheckSchema: z.ZodObject<{
+    /** Name of the tool being checked (e.g., 'node', 'npm', 'git') */
+    name: z.ZodString;
+    /** Current installed version, or null if not installed */
+    currentVersion: z.ZodNullable<z.ZodString>;
+    /** Minimum required version */
+    requiredVersion: z.ZodOptional<z.ZodString>;
+    /** Whether this tool is required or optional */
+    required: z.ZodBoolean;
+    /** Path to the tool binary */
+    path: z.ZodOptional<z.ZodString>;
+    /** Additional metadata about the tool */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    required: boolean;
+    currentVersion: string | null;
+    path?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    requiredVersion?: string | undefined;
+}, {
+    name: string;
+    required: boolean;
+    currentVersion: string | null;
+    path?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    requiredVersion?: string | undefined;
+}>;
+export type ToolchainCheck = z.infer<typeof ToolchainCheckSchema>;
+/**
+ * Result of a single diagnostic check performed by the doctor command
+ * Contains all information needed to understand and act on the check result
+ * @example
+ * ```typescript
+ * const checkResult: DoctorCheckResult = {
+ *   id: 'node-version',
+ *   name: 'Node.js Version Check',
+ *   description: 'Verify Node.js meets minimum version requirements',
+ *   category: 'toolchain',
+ *   status: 'pass',
+ *   severity: 'error',
+ *   message: 'Node.js 18.17.0 meets requirement >= 16.0.0',
+ *   toolchain: { name: 'node', currentVersion: '18.17.0', required: true },
+ *   timestamp: new Date(),
+ *   durationMs: 150
+ * };
+ * ```
+ */
+export declare const DoctorCheckResultSchema: z.ZodObject<{
+    /** Unique identifier for this check */
+    id: z.ZodString;
+    /** Human-readable name of the check */
+    name: z.ZodString;
+    /** Detailed description of what this check validates */
+    description: z.ZodString;
+    /** Category of the check (e.g., 'toolchain', 'config', 'network') */
+    category: z.ZodEnum<["toolchain", "config", "network", "permissions", "environment"]>;
+    /** Result status of the check */
+    status: z.ZodEnum<["pass", "fail", "skip", "unknown"]>;
+    /** Severity if the check failed */
+    severity: z.ZodEnum<["error", "warning", "info"]>;
+    /** Human-readable message explaining the result */
+    message: z.ZodString;
+    /** Suggested fix if the check failed */
+    suggestion: z.ZodOptional<z.ZodString>;
+    /** Toolchain information if this is a toolchain check */
+    toolchain: z.ZodOptional<z.ZodObject<{
+        /** Name of the tool being checked (e.g., 'node', 'npm', 'git') */
+        name: z.ZodString;
+        /** Current installed version, or null if not installed */
+        currentVersion: z.ZodNullable<z.ZodString>;
+        /** Minimum required version */
+        requiredVersion: z.ZodOptional<z.ZodString>;
+        /** Whether this tool is required or optional */
+        required: z.ZodBoolean;
+        /** Path to the tool binary */
+        path: z.ZodOptional<z.ZodString>;
+        /** Additional metadata about the tool */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        required: boolean;
+        currentVersion: string | null;
+        path?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        requiredVersion?: string | undefined;
+    }, {
+        name: string;
+        required: boolean;
+        currentVersion: string | null;
+        path?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        requiredVersion?: string | undefined;
+    }>>;
+    /** Timestamp when the check was performed */
+    timestamp: z.ZodDate;
+    /** Duration of the check in milliseconds */
+    durationMs: z.ZodNumber;
+    /** Additional details for debugging */
+    details: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    timestamp: Date;
+    message: string;
+    status: "unknown" | "skip" | "fail" | "pass";
+    name: string;
+    description: string;
+    severity: "info" | "error" | "warning";
+    category: "network" | "environment" | "config" | "permissions" | "toolchain";
+    id: string;
+    durationMs: number;
+    toolchain?: {
+        name: string;
+        required: boolean;
+        currentVersion: string | null;
+        path?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        requiredVersion?: string | undefined;
+    } | undefined;
+    suggestion?: string | undefined;
+    details?: Record<string, unknown> | undefined;
+}, {
+    timestamp: Date;
+    message: string;
+    status: "unknown" | "skip" | "fail" | "pass";
+    name: string;
+    description: string;
+    severity: "info" | "error" | "warning";
+    category: "network" | "environment" | "config" | "permissions" | "toolchain";
+    id: string;
+    durationMs: number;
+    toolchain?: {
+        name: string;
+        required: boolean;
+        currentVersion: string | null;
+        path?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        requiredVersion?: string | undefined;
+    } | undefined;
+    suggestion?: string | undefined;
+    details?: Record<string, unknown> | undefined;
+}>;
+export type DoctorCheckResult = z.infer<typeof DoctorCheckResultSchema>;
+/**
+ * Aggregated health report containing all check results and system information
+ * Generated by the doctor command for comprehensive system diagnostics
+ * @example
+ * ```typescript
+ * const report: HealthReport = {
+ *   id: 'health-2024-01-15-123456',
+ *   timestamp: new Date(),
+ *   overallStatus: 'pass',
+ *   summary: { total: 5, passed: 4, failed: 1, warnings: 0, skipped: 0 },
+ *   checks: [checkResult1, checkResult2, ...],
+ *   system: {
+ *     platform: 'darwin',
+ *     arch: 'arm64',
+ *     nodeVersion: '18.17.0',
+ *     cwd: '/Users/dev/project'
+ *   },
+ *   durationMs: 2500,
+ *   apexVersion: '0.6.0'
+ * };
+ * ```
+ */
+export declare const HealthReportSchema: z.ZodObject<{
+    /** Unique identifier for this report */
+    id: z.ZodString;
+    /** Timestamp when the report was generated */
+    timestamp: z.ZodDate;
+    /** Overall health status */
+    overallStatus: z.ZodEnum<["pass", "fail", "skip", "unknown"]>;
+    /** Summary counts */
+    summary: z.ZodObject<{
+        total: z.ZodNumber;
+        passed: z.ZodNumber;
+        failed: z.ZodNumber;
+        warnings: z.ZodNumber;
+        skipped: z.ZodNumber;
+        errors: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        failed: number;
+        errors: number;
+        total: number;
+        passed: number;
+        warnings: number;
+        skipped: number;
+    }, {
+        failed: number;
+        errors: number;
+        total: number;
+        passed: number;
+        warnings: number;
+        skipped: number;
+    }>;
+    /** Individual check results */
+    checks: z.ZodArray<z.ZodObject<{
+        /** Unique identifier for this check */
+        id: z.ZodString;
+        /** Human-readable name of the check */
+        name: z.ZodString;
+        /** Detailed description of what this check validates */
+        description: z.ZodString;
+        /** Category of the check (e.g., 'toolchain', 'config', 'network') */
+        category: z.ZodEnum<["toolchain", "config", "network", "permissions", "environment"]>;
+        /** Result status of the check */
+        status: z.ZodEnum<["pass", "fail", "skip", "unknown"]>;
+        /** Severity if the check failed */
+        severity: z.ZodEnum<["error", "warning", "info"]>;
+        /** Human-readable message explaining the result */
+        message: z.ZodString;
+        /** Suggested fix if the check failed */
+        suggestion: z.ZodOptional<z.ZodString>;
+        /** Toolchain information if this is a toolchain check */
+        toolchain: z.ZodOptional<z.ZodObject<{
+            /** Name of the tool being checked (e.g., 'node', 'npm', 'git') */
+            name: z.ZodString;
+            /** Current installed version, or null if not installed */
+            currentVersion: z.ZodNullable<z.ZodString>;
+            /** Minimum required version */
+            requiredVersion: z.ZodOptional<z.ZodString>;
+            /** Whether this tool is required or optional */
+            required: z.ZodBoolean;
+            /** Path to the tool binary */
+            path: z.ZodOptional<z.ZodString>;
+            /** Additional metadata about the tool */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        }, {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        }>>;
+        /** Timestamp when the check was performed */
+        timestamp: z.ZodDate;
+        /** Duration of the check in milliseconds */
+        durationMs: z.ZodNumber;
+        /** Additional details for debugging */
+        details: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        timestamp: Date;
+        message: string;
+        status: "unknown" | "skip" | "fail" | "pass";
+        name: string;
+        description: string;
+        severity: "info" | "error" | "warning";
+        category: "network" | "environment" | "config" | "permissions" | "toolchain";
+        id: string;
+        durationMs: number;
+        toolchain?: {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        } | undefined;
+        suggestion?: string | undefined;
+        details?: Record<string, unknown> | undefined;
+    }, {
+        timestamp: Date;
+        message: string;
+        status: "unknown" | "skip" | "fail" | "pass";
+        name: string;
+        description: string;
+        severity: "info" | "error" | "warning";
+        category: "network" | "environment" | "config" | "permissions" | "toolchain";
+        id: string;
+        durationMs: number;
+        toolchain?: {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        } | undefined;
+        suggestion?: string | undefined;
+        details?: Record<string, unknown> | undefined;
+    }>, "many">;
+    /** System information */
+    system: z.ZodObject<{
+        platform: z.ZodString;
+        arch: z.ZodString;
+        nodeVersion: z.ZodString;
+        cwd: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        platform: string;
+        arch: string;
+        nodeVersion: string;
+        cwd: string;
+    }, {
+        platform: string;
+        arch: string;
+        nodeVersion: string;
+        cwd: string;
+    }>;
+    /** Total duration of all checks in milliseconds */
+    durationMs: z.ZodNumber;
+    /** APEX version that generated this report */
+    apexVersion: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    timestamp: Date;
+    system: {
+        platform: string;
+        arch: string;
+        nodeVersion: string;
+        cwd: string;
+    };
+    id: string;
+    durationMs: number;
+    overallStatus: "unknown" | "skip" | "fail" | "pass";
+    summary: {
+        failed: number;
+        errors: number;
+        total: number;
+        passed: number;
+        warnings: number;
+        skipped: number;
+    };
+    checks: {
+        timestamp: Date;
+        message: string;
+        status: "unknown" | "skip" | "fail" | "pass";
+        name: string;
+        description: string;
+        severity: "info" | "error" | "warning";
+        category: "network" | "environment" | "config" | "permissions" | "toolchain";
+        id: string;
+        durationMs: number;
+        toolchain?: {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        } | undefined;
+        suggestion?: string | undefined;
+        details?: Record<string, unknown> | undefined;
+    }[];
+    apexVersion: string;
+}, {
+    timestamp: Date;
+    system: {
+        platform: string;
+        arch: string;
+        nodeVersion: string;
+        cwd: string;
+    };
+    id: string;
+    durationMs: number;
+    overallStatus: "unknown" | "skip" | "fail" | "pass";
+    summary: {
+        failed: number;
+        errors: number;
+        total: number;
+        passed: number;
+        warnings: number;
+        skipped: number;
+    };
+    checks: {
+        timestamp: Date;
+        message: string;
+        status: "unknown" | "skip" | "fail" | "pass";
+        name: string;
+        description: string;
+        severity: "info" | "error" | "warning";
+        category: "network" | "environment" | "config" | "permissions" | "toolchain";
+        id: string;
+        durationMs: number;
+        toolchain?: {
+            name: string;
+            required: boolean;
+            currentVersion: string | null;
+            path?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            requiredVersion?: string | undefined;
+        } | undefined;
+        suggestion?: string | undefined;
+        details?: Record<string, unknown> | undefined;
+    }[];
+    apexVersion: string;
+}>;
+export type HealthReport = z.infer<typeof HealthReportSchema>;
 /**
  * MCP Connection Configuration Schema (v0.5.0)
  * Configuration for MCP connection management including retry policies,
@@ -13302,15 +13861,15 @@ export declare const MCPInstallationSchema: z.ZodObject<{
     configPath: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     id: string;
     configPath: string;
-    serverId: string;
     installedAt: Date;
 }, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     id: string;
     configPath: string;
-    serverId: string;
     installedAt: Date;
 }>;
 export type MCPInstallation = z.infer<typeof MCPInstallationSchema>;
@@ -14004,6 +14563,7 @@ export declare const MCPRegistryInstallationSchema: z.ZodObject<{
     error: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     config: {
         autoStart: boolean;
         args?: string[] | undefined;
@@ -14011,14 +14571,14 @@ export declare const MCPRegistryInstallationSchema: z.ZodObject<{
         configPath?: string | undefined;
         instanceName?: string | undefined;
     };
-    serverId: string;
     installedAt: Date;
+    installationId?: string | undefined;
     error?: string | undefined;
     updatedAt?: Date | undefined;
     installedVersion?: string | undefined;
-    installationId?: string | undefined;
 }, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     config: {
         args?: string[] | undefined;
         env?: Record<string, string> | undefined;
@@ -14026,12 +14586,11 @@ export declare const MCPRegistryInstallationSchema: z.ZodObject<{
         autoStart?: boolean | undefined;
         instanceName?: string | undefined;
     };
-    serverId: string;
     installedAt: Date;
+    installationId?: string | undefined;
     error?: string | undefined;
     updatedAt?: Date | undefined;
     installedVersion?: string | undefined;
-    installationId?: string | undefined;
 }>;
 export type MCPRegistryInstallation = z.infer<typeof MCPRegistryInstallationSchema>;
 /**
@@ -14497,6 +15056,7 @@ export declare const MCPConnectionInfoSchema: z.ZodObject<{
         uptimeMs?: number | undefined;
     }>>;
 }, "strip", z.ZodTypeAny, {
+    serverId: string;
     state: "error" | "disconnected" | "connecting" | "connected" | "reconnecting";
     config: {
         type: "stdio" | "http" | "sse" | "sdk";
@@ -14538,7 +15098,6 @@ export declare const MCPConnectionInfoSchema: z.ZodObject<{
             heartbeatIntervalMs: number;
         } | undefined;
     };
-    serverId: string;
     serverName: string;
     reconnectAttempts: number;
     connectedAt?: Date | undefined;
@@ -14568,6 +15127,7 @@ export declare const MCPConnectionInfoSchema: z.ZodObject<{
         uptimeMs: number;
     } | undefined;
 }, {
+    serverId: string;
     state: "error" | "disconnected" | "connecting" | "connected" | "reconnecting";
     config: {
         name: string;
@@ -14609,7 +15169,6 @@ export declare const MCPConnectionInfoSchema: z.ZodObject<{
             heartbeatIntervalMs?: number | undefined;
         } | undefined;
     };
-    serverId: string;
     serverName: string;
     connectedAt?: Date | undefined;
     lastActivityAt?: Date | undefined;
@@ -15015,6 +15574,7 @@ export declare const MCPConnectionSchema: z.ZodObject<{
         uptimeMs?: number | undefined;
     }>>;
 }, "strip", z.ZodTypeAny, {
+    serverId: string;
     state: "error" | "disconnected" | "connecting" | "connected" | "reconnecting";
     config: {
         type: "stdio" | "http" | "sse" | "sdk";
@@ -15056,7 +15616,6 @@ export declare const MCPConnectionSchema: z.ZodObject<{
             heartbeatIntervalMs: number;
         } | undefined;
     };
-    serverId: string;
     serverName: string;
     reconnectAttempts: number;
     connectedAt?: Date | undefined;
@@ -15086,6 +15645,7 @@ export declare const MCPConnectionSchema: z.ZodObject<{
         uptimeMs: number;
     } | undefined;
 }, {
+    serverId: string;
     state: "error" | "disconnected" | "connecting" | "connected" | "reconnecting";
     config: {
         name: string;
@@ -15127,7 +15687,6 @@ export declare const MCPConnectionSchema: z.ZodObject<{
             heartbeatIntervalMs?: number | undefined;
         } | undefined;
     };
-    serverId: string;
     serverName: string;
     connectedAt?: Date | undefined;
     lastActivityAt?: Date | undefined;
@@ -15664,10 +16223,10 @@ export declare const MCPToolSchema: z.ZodObject<{
     /** When this tool definition was last updated */
     updatedAt: z.ZodOptional<z.ZodDate>;
 }, "strip", z.ZodTypeAny, {
+    serverId: string;
     name: string;
     tags: string[];
     available: boolean;
-    serverId: string;
     inputSchema: {
         type: "object";
         required: string[];
@@ -15738,8 +16297,8 @@ export declare const MCPToolSchema: z.ZodObject<{
         $schema?: string | undefined;
     } | undefined;
 }, {
-    name: string;
     serverId: string;
+    name: string;
     inputSchema: {
         type?: "object" | undefined;
         description?: string | undefined;
@@ -16155,10 +16714,10 @@ export declare const MCPToolRegistryEntrySchema: z.ZodObject<{
         /** When this tool definition was last updated */
         updatedAt: z.ZodOptional<z.ZodDate>;
     }, "strip", z.ZodTypeAny, {
+        serverId: string;
         name: string;
         tags: string[];
         available: boolean;
-        serverId: string;
         inputSchema: {
             type: "object";
             required: string[];
@@ -16229,8 +16788,8 @@ export declare const MCPToolRegistryEntrySchema: z.ZodObject<{
             $schema?: string | undefined;
         } | undefined;
     }, {
-        name: string;
         serverId: string;
+        name: string;
         inputSchema: {
             type?: "object" | undefined;
             description?: string | undefined;
@@ -16742,10 +17301,10 @@ export declare const MCPToolRegistryEntrySchema: z.ZodObject<{
     }>]>>;
 }, "strip", z.ZodTypeAny, {
     tool: {
+        serverId: string;
         name: string;
         tags: string[];
         available: boolean;
-        serverId: string;
         inputSchema: {
             type: "object";
             required: string[];
@@ -16921,8 +17480,8 @@ export declare const MCPToolRegistryEntrySchema: z.ZodObject<{
     } | undefined;
 }, {
     tool: {
-        name: string;
         serverId: string;
+        name: string;
         inputSchema: {
             type?: "object" | undefined;
             description?: string | undefined;
@@ -21846,14 +22405,14 @@ export declare const MCPToolInvocationRequestSchema: z.ZodObject<{
     stream: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
 }, "strip", z.ZodTypeAny, {
     arguments: Record<string, unknown>;
-    toolName: string;
     serverId: string;
+    toolName: string;
     stream: boolean;
     timeoutMs?: number | undefined;
     requestId?: string | undefined;
 }, {
-    toolName: string;
     serverId: string;
+    toolName: string;
     arguments?: Record<string, unknown> | undefined;
     timeoutMs?: number | undefined;
     requestId?: string | undefined;
@@ -22348,6 +22907,7 @@ export declare const MCPInstallationV050Schema: z.ZodObject<{
     status: z.ZodEnum<["pending", "installing", "installed", "failed", "uninstalling", "uninstalled"]>;
 }, "strip", z.ZodTypeAny, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     config: {
         type: "stdio" | "http" | "sse" | "sdk";
         name: string;
@@ -22388,10 +22948,10 @@ export declare const MCPInstallationV050Schema: z.ZodObject<{
             heartbeatIntervalMs: number;
         } | undefined;
     };
-    serverId: string;
     installedAt: Date;
 }, {
     status: "failed" | "pending" | "installing" | "installed" | "uninstalling" | "uninstalled";
+    serverId: string;
     config: {
         name: string;
         type?: "stdio" | "http" | "sse" | "sdk" | undefined;
@@ -22432,7 +22992,6 @@ export declare const MCPInstallationV050Schema: z.ZodObject<{
             heartbeatIntervalMs?: number | undefined;
         } | undefined;
     };
-    serverId: string;
     installedAt: Date;
 }>;
 export type MCPInstallationV050 = z.infer<typeof MCPInstallationV050Schema>;
@@ -22981,6 +23540,54 @@ export declare const ApexConfigSchema: z.ZodObject<{
         implementation?: "haiku" | "opus" | "sonnet" | "inherit" | undefined;
         review?: "haiku" | "opus" | "sonnet" | "inherit" | undefined;
     }>>;
+    /** AI provider configurations for multi-platform support (v0.6.0) */
+    providers: z.ZodDefault<z.ZodOptional<z.ZodObject<{
+        /** Primary provider to use */
+        primary: z.ZodDefault<z.ZodString>;
+        /** Map of provider configurations */
+        configs: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodObject<{
+            /** Whether this provider is enabled */
+            enabled: z.ZodDefault<z.ZodBoolean>;
+            /** Authentication method to use */
+            authMethod: z.ZodEnum<["api_key", "oauth", "openauth", "none"]>;
+            /** API key (if using api_key auth) */
+            apiKey: z.ZodOptional<z.ZodString>;
+            /** Default model for this provider */
+            defaultModel: z.ZodOptional<z.ZodString>;
+            /** Provider-specific options */
+            options: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
+        }, "strip", z.ZodTypeAny, {
+            options: Record<string, unknown>;
+            enabled: boolean;
+            authMethod: "none" | "api_key" | "oauth" | "openauth";
+            apiKey?: string | undefined;
+            defaultModel?: string | undefined;
+        }, {
+            authMethod: "none" | "api_key" | "oauth" | "openauth";
+            options?: Record<string, unknown> | undefined;
+            enabled?: boolean | undefined;
+            apiKey?: string | undefined;
+            defaultModel?: string | undefined;
+        }>>>>;
+    }, "strip", z.ZodTypeAny, {
+        primary: string;
+        configs: Record<string, {
+            options: Record<string, unknown>;
+            enabled: boolean;
+            authMethod: "none" | "api_key" | "oauth" | "openauth";
+            apiKey?: string | undefined;
+            defaultModel?: string | undefined;
+        }>;
+    }, {
+        primary?: string | undefined;
+        configs?: Record<string, {
+            authMethod: "none" | "api_key" | "oauth" | "openauth";
+            options?: Record<string, unknown> | undefined;
+            enabled?: boolean | undefined;
+            apiKey?: string | undefined;
+            defaultModel?: string | undefined;
+        }> | undefined;
+    }>>>;
     gates: z.ZodOptional<z.ZodArray<z.ZodObject<{
         /** Unique identifier for this gate */
         id: z.ZodString;
@@ -24228,16 +24835,22 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 refactoring: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
                 docs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
                 tests: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+                'technical-debt': z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+                conventions: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
             }, "strip", z.ZodTypeAny, {
                 maintenance: number;
                 refactoring: number;
                 docs: number;
                 tests: number;
+                'technical-debt': number;
+                conventions: number;
             }, {
                 maintenance?: number | undefined;
                 refactoring?: number | undefined;
                 docs?: number | undefined;
                 tests?: number | undefined;
+                'technical-debt'?: number | undefined;
+                conventions?: number | undefined;
             }>>;
         }, "strip", z.ZodTypeAny, {
             enabled: boolean;
@@ -24249,6 +24862,8 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 refactoring: number;
                 docs: number;
                 tests: number;
+                'technical-debt': number;
+                conventions: number;
             } | undefined;
         }, {
             enabled?: boolean | undefined;
@@ -24260,6 +24875,8 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 refactoring?: number | undefined;
                 docs?: number | undefined;
                 tests?: number | undefined;
+                'technical-debt'?: number | undefined;
+                conventions?: number | undefined;
             } | undefined;
         }>>;
         orphanDetection: z.ZodOptional<z.ZodObject<{
@@ -24338,6 +24955,22 @@ export declare const ApexConfigSchema: z.ZodObject<{
         }, {
             restartParentOnly?: boolean | undefined;
         }>>;
+        processLimits: z.ZodOptional<z.ZodObject<{
+            /** Nice level for task subprocesses (0-19, higher = lower priority). Default 10. */
+            niceLevel: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+            /** Nice level for integrated services (API, WebUI). Default 15. */
+            serviceNiceLevel: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+            /** Interval in ms to renice daemon descendants. Default 30000 (30s). 0 to disable. */
+            reniceIntervalMs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        }, "strip", z.ZodTypeAny, {
+            niceLevel: number;
+            serviceNiceLevel: number;
+            reniceIntervalMs: number;
+        }, {
+            niceLevel?: number | undefined;
+            serviceNiceLevel?: number | undefined;
+            reniceIntervalMs?: number | undefined;
+        }>>;
     }, "strip", z.ZodTypeAny, {
         pollInterval: number;
         autoStart: boolean;
@@ -24394,6 +25027,8 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 refactoring: number;
                 docs: number;
                 tests: number;
+                'technical-debt': number;
+                conventions: number;
             } | undefined;
         } | undefined;
         orphanDetection?: {
@@ -24417,6 +25052,11 @@ export declare const ApexConfigSchema: z.ZodObject<{
         } | undefined;
         taskRestart?: {
             restartParentOnly: boolean;
+        } | undefined;
+        processLimits?: {
+            niceLevel: number;
+            serviceNiceLevel: number;
+            reniceIntervalMs: number;
         } | undefined;
     }, {
         pollInterval?: number | undefined;
@@ -24474,6 +25114,8 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 refactoring?: number | undefined;
                 docs?: number | undefined;
                 tests?: number | undefined;
+                'technical-debt'?: number | undefined;
+                conventions?: number | undefined;
             } | undefined;
         } | undefined;
         orphanDetection?: {
@@ -24497,6 +25139,11 @@ export declare const ApexConfigSchema: z.ZodObject<{
         } | undefined;
         taskRestart?: {
             restartParentOnly?: boolean | undefined;
+        } | undefined;
+        processLimits?: {
+            niceLevel?: number | undefined;
+            serviceNiceLevel?: number | undefined;
+            reniceIntervalMs?: number | undefined;
         } | undefined;
     }>>;
     /** Logging configuration for structured logging across all packages (v0.6.0) */
@@ -28340,6 +28987,16 @@ export declare const ApexConfigSchema: z.ZodObject<{
         language?: string | undefined;
         framework?: string | undefined;
     };
+    providers: {
+        primary: string;
+        configs: Record<string, {
+            options: Record<string, unknown>;
+            enabled: boolean;
+            authMethod: "none" | "api_key" | "oauth" | "openauth";
+            apiKey?: string | undefined;
+            defaultModel?: string | undefined;
+        }>;
+    };
     policies: {
         name: string;
         enabled: boolean;
@@ -28624,6 +29281,8 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 refactoring: number;
                 docs: number;
                 tests: number;
+                'technical-debt': number;
+                conventions: number;
             } | undefined;
         } | undefined;
         orphanDetection?: {
@@ -28647,6 +29306,11 @@ export declare const ApexConfigSchema: z.ZodObject<{
         } | undefined;
         taskRestart?: {
             restartParentOnly: boolean;
+        } | undefined;
+        processLimits?: {
+            niceLevel: number;
+            serviceNiceLevel: number;
+            reniceIntervalMs: number;
         } | undefined;
     } | undefined;
     mcp?: {
@@ -29501,6 +30165,8 @@ export declare const ApexConfigSchema: z.ZodObject<{
                 refactoring?: number | undefined;
                 docs?: number | undefined;
                 tests?: number | undefined;
+                'technical-debt'?: number | undefined;
+                conventions?: number | undefined;
             } | undefined;
         } | undefined;
         orphanDetection?: {
@@ -29524,6 +30190,11 @@ export declare const ApexConfigSchema: z.ZodObject<{
         } | undefined;
         taskRestart?: {
             restartParentOnly?: boolean | undefined;
+        } | undefined;
+        processLimits?: {
+            niceLevel?: number | undefined;
+            serviceNiceLevel?: number | undefined;
+            reniceIntervalMs?: number | undefined;
         } | undefined;
     } | undefined;
     mcp?: {
@@ -29703,6 +30374,16 @@ export declare const ApexConfigSchema: z.ZodObject<{
         planning?: "haiku" | "opus" | "sonnet" | "inherit" | undefined;
         implementation?: "haiku" | "opus" | "sonnet" | "inherit" | undefined;
         review?: "haiku" | "opus" | "sonnet" | "inherit" | undefined;
+    } | undefined;
+    providers?: {
+        primary?: string | undefined;
+        configs?: Record<string, {
+            authMethod: "none" | "api_key" | "oauth" | "openauth";
+            options?: Record<string, unknown> | undefined;
+            enabled?: boolean | undefined;
+            apiKey?: string | undefined;
+            defaultModel?: string | undefined;
+        }> | undefined;
     } | undefined;
     git?: {
         worktree?: {
@@ -30389,6 +31070,12 @@ export interface Task {
     policyCheckResult?: TaskPolicyCheckResult;
     /** Current approval state when task requires user approval to continue */
     approvalState?: ApprovalState;
+    /**
+     * Processed multimodal context for the task.
+     * Contains processed multimodal inputs (images, web pages, design mockups)
+     * with extracted content and processing status for agent consumption.
+     */
+    multimodalContext?: MultimodalContext;
 }
 /**
  * Strategy for how subtasks should be executed within a parent task
@@ -32204,6 +32891,12 @@ export interface CreateTaskRequest {
     priority?: TaskPriority;
     effort?: TaskEffort;
     projectPath?: string;
+    /**
+     * Optional multimodal inputs to provide visual/contextual information for the task.
+     * Can include images, web page captures, design mockups, etc.
+     * These inputs will be processed and made available to agents as MultimodalContext.
+     */
+    multimodalInputs?: MultimodalInput[];
 }
 export interface CreateTaskResponse {
     taskId: string;
@@ -32223,12 +32916,28 @@ export interface ApproveGateRequest {
     approver: string;
     comment?: string;
 }
-export type ApexEventType = 'task:created' | 'task:started' | 'task:stage-changed' | 'task:completed' | 'task:failed' | 'task:paused' | 'task:session-resumed' | 'task:decomposed' | 'task:iteration-started' | 'task:iteration-completed' | 'task:trashed' | 'task:restored' | 'task:archived' | 'task:unarchived' | 'trash:emptied' | 'subtask:created' | 'subtask:completed' | 'subtask:failed' | 'agent:message' | 'agent:thinking' | 'agent:tool-use' | 'agent:tool-result' | 'tool:start' | 'tool:progress' | 'tool:complete' | 'tool:timing' | 'gate:required' | 'approval-required' | 'approval-resolved' | 'gate:approved' | 'gate:rejected' | 'approval:granted' | 'approval:denied' | 'usage:updated' | 'log:entry' | 'worktree:merge-cleaned' | 'container:created' | 'container:started' | 'container:stopped' | 'container:died' | 'container:removed' | 'container:health' | 'permission:request' | 'permission:granted' | 'permission:denied' | 'dangerous:detected' | 'dangerous:confirmed' | 'dangerous:blocked' | 'policy:blocked' | 'policy:warned' | 'policy:audited' | 'undo:requested' | 'undo:started' | 'undo:completed' | 'undo:failed' | 'redo:requested' | 'redo:started' | 'redo:completed' | 'redo:failed' | 'autofix:requested' | 'autofix:started' | 'autofix:progress' | 'autofix:completed' | 'autofix:failed' | 'autofix:skipped' | 'tdd:started' | 'tdd:iteration-started' | 'tdd:test-run' | 'tdd:fix-generated' | 'tdd:fix-applied' | 'tdd:regression-detected' | 'tdd:fix-reverted' | 'tdd:iteration-completed' | 'tdd:completed' | 'tdd:failed' | 'visual:comparison:failed' | 'visual:comparison:passed' | 'browser:console' | 'browser:error' | 'browser:network-error' | 'browser:performance-warning' | 'browser:security-violation' | 'browser:session-started' | 'browser:session-ended';
+export type ApexEventType = 'task:created' | 'task:started' | 'task:stage-changed' | 'task:completed' | 'task:failed' | 'task:paused' | 'task:session-resumed' | 'task:decomposed' | 'task:iteration-started' | 'task:iteration-completed' | 'task:trashed' | 'task:restored' | 'task:archived' | 'task:unarchived' | 'trash:emptied' | 'subtask:created' | 'subtask:completed' | 'subtask:failed' | 'agent:message' | 'agent:thinking' | 'agent:tool-use' | 'agent:tool-result' | 'tool:start' | 'tool:progress' | 'tool:complete' | 'tool:timing' | 'gate:required' | 'approval-required' | 'approval-resolved' | 'gate:approved' | 'gate:rejected' | 'approval:granted' | 'approval:denied' | 'usage:updated' | 'log:entry' | 'worktree:merge-cleaned' | 'container:created' | 'container:started' | 'container:stopped' | 'container:died' | 'container:removed' | 'container:health' | 'permission:request' | 'permission:granted' | 'permission:denied' | 'dangerous:detected' | 'dangerous:confirmed' | 'dangerous:blocked' | 'policy:blocked' | 'policy:warned' | 'policy:audited' | 'undo:requested' | 'undo:started' | 'undo:completed' | 'undo:failed' | 'redo:requested' | 'redo:started' | 'redo:completed' | 'redo:failed' | 'autofix:requested' | 'autofix:started' | 'autofix:progress' | 'autofix:completed' | 'autofix:failed' | 'autofix:skipped' | 'tdd:started' | 'tdd:iteration-started' | 'tdd:test-run' | 'tdd:fix-generated' | 'tdd:fix-applied' | 'tdd:regression-detected' | 'tdd:fix-reverted' | 'tdd:iteration-completed' | 'tdd:completed' | 'tdd:failed' | 'visual:comparison:failed' | 'visual:comparison:passed' | 'browser:console' | 'browser:error' | 'browser:network-error' | 'browser:performance-warning' | 'browser:security-violation' | 'browser:session-started' | 'browser:session-ended' | 'mcp:connected' | 'mcp:disconnected' | 'mcp:error' | 'mcp:reconnecting' | 'mcp:health-check' | 'mcp:state-change';
 export interface ApexEvent {
     type: ApexEventType;
     taskId: string;
     timestamp: Date;
     data: Record<string, unknown>;
+    /** Optional truncation metadata indicating if data was truncated */
+    _truncation?: {
+        /** Whether any truncation occurred */
+        truncated: boolean;
+        /** Details about what was truncated */
+        truncations: Array<{
+            /** Path to truncated property */
+            path: string;
+            /** Type of truncation applied */
+            type: 'array' | 'string';
+            /** Original size before truncation */
+            originalSize: number;
+            /** Size after truncation */
+            truncatedSize: number;
+        }>;
+    };
 }
 /**
  * Base interface for all container event data
@@ -32979,6 +33688,8 @@ export type VisualComparisonEventDataFor<T extends ApexEventType> = T extends 'v
 export interface ComplexityHotspot {
     /** File path relative to project root */
     file: string;
+    /** Function name that has high complexity */
+    functionName: string;
     /** Cyclomatic complexity score */
     cyclomaticComplexity: number;
     /** Cognitive complexity score */
@@ -33535,7 +34246,7 @@ export declare const TaskTemplateSchema: z.ZodObject<{
 export type TaskTemplate = z.infer<typeof TaskTemplateSchema>;
 export declare const IdleTaskSchema: z.ZodObject<{
     id: z.ZodString;
-    type: z.ZodEnum<["maintenance", "refactoring", "docs", "tests"]>;
+    type: z.ZodEnum<["maintenance", "refactoring", "docs", "tests", "technical-debt", "conventions"]>;
     title: z.ZodString;
     description: z.ZodString;
     priority: z.ZodEnum<["low", "normal", "high", "urgent"]>;
@@ -33546,7 +34257,7 @@ export declare const IdleTaskSchema: z.ZodObject<{
     implemented: z.ZodDefault<z.ZodBoolean>;
     implementedTaskId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    type: "maintenance" | "refactoring" | "docs" | "tests";
+    type: "maintenance" | "refactoring" | "docs" | "tests" | "technical-debt" | "conventions";
     description: string;
     createdAt: Date;
     title: string;
@@ -33558,7 +34269,7 @@ export declare const IdleTaskSchema: z.ZodObject<{
     rationale: string;
     implementedTaskId?: string | undefined;
 }, {
-    type: "maintenance" | "refactoring" | "docs" | "tests";
+    type: "maintenance" | "refactoring" | "docs" | "tests" | "technical-debt" | "conventions";
     description: string;
     createdAt: Date;
     title: string;
@@ -40074,9 +40785,9 @@ export declare const AuditLogEntrySchema: z.ZodObject<{
     sessionId?: string | undefined;
     error?: string | undefined;
     agent?: string | undefined;
+    durationMs?: number | undefined;
     previousState?: string | undefined;
     newState?: string | undefined;
-    durationMs?: number | undefined;
     correlationId?: string | undefined;
 }, {
     timestamp: Date;
@@ -40092,9 +40803,9 @@ export declare const AuditLogEntrySchema: z.ZodObject<{
     error?: string | undefined;
     success?: boolean | undefined;
     agent?: string | undefined;
+    durationMs?: number | undefined;
     previousState?: string | undefined;
     newState?: string | undefined;
-    durationMs?: number | undefined;
     correlationId?: string | undefined;
 }>;
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
@@ -40591,29 +41302,29 @@ export declare const ScreenshotResultSchema: z.ZodEffects<z.ZodObject<{
     height: number;
     path?: string | undefined;
     format?: "png" | "jpeg" | undefined;
-    buffer?: Buffer<ArrayBufferLike> | undefined;
     capturedAt?: Date | undefined;
+    buffer?: Buffer<ArrayBufferLike> | undefined;
 }, {
     width: number;
     height: number;
     path?: string | undefined;
     format?: "png" | "jpeg" | undefined;
-    buffer?: Buffer<ArrayBufferLike> | undefined;
     capturedAt?: Date | undefined;
+    buffer?: Buffer<ArrayBufferLike> | undefined;
 }>, {
     width: number;
     height: number;
     path?: string | undefined;
     format?: "png" | "jpeg" | undefined;
-    buffer?: Buffer<ArrayBufferLike> | undefined;
     capturedAt?: Date | undefined;
+    buffer?: Buffer<ArrayBufferLike> | undefined;
 }, {
     width: number;
     height: number;
     path?: string | undefined;
     format?: "png" | "jpeg" | undefined;
-    buffer?: Buffer<ArrayBufferLike> | undefined;
     capturedAt?: Date | undefined;
+    buffer?: Buffer<ArrayBufferLike> | undefined;
 }>;
 export type ScreenshotResult = z.infer<typeof ScreenshotResultSchema>;
 /**
@@ -41194,7 +41905,7 @@ export declare const TestResultSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     status: "failed" | "pending" | "passed" | "skipped";
     name: string;
-    category: "integration" | "functional" | "visual" | "unit" | "e2e" | "performance";
+    category: "integration" | "unit" | "functional" | "visual" | "e2e" | "performance";
     testId: string;
     executionTime: number;
     stackTrace?: string | undefined;
@@ -41214,7 +41925,7 @@ export declare const TestResultSchema: z.ZodObject<{
 }, {
     status: "failed" | "pending" | "passed" | "skipped";
     name: string;
-    category: "integration" | "functional" | "visual" | "unit" | "e2e" | "performance";
+    category: "integration" | "unit" | "functional" | "visual" | "e2e" | "performance";
     testId: string;
     executionTime: number;
     stackTrace?: string | undefined;
@@ -41525,7 +42236,7 @@ export declare const TestReportSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         status: "failed" | "pending" | "passed" | "skipped";
         name: string;
-        category: "integration" | "functional" | "visual" | "unit" | "e2e" | "performance";
+        category: "integration" | "unit" | "functional" | "visual" | "e2e" | "performance";
         testId: string;
         executionTime: number;
         stackTrace?: string | undefined;
@@ -41545,7 +42256,7 @@ export declare const TestReportSchema: z.ZodObject<{
     }, {
         status: "failed" | "pending" | "passed" | "skipped";
         name: string;
-        category: "integration" | "functional" | "visual" | "unit" | "e2e" | "performance";
+        category: "integration" | "unit" | "functional" | "visual" | "e2e" | "performance";
         testId: string;
         executionTime: number;
         stackTrace?: string | undefined;
@@ -41599,7 +42310,6 @@ export declare const TestReportSchema: z.ZodObject<{
     /** Version of the test report schema */
     schemaVersion: z.ZodDefault<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    reportId: string;
     summary: {
         timestamp: Date;
         executionTime: number;
@@ -41613,10 +42323,11 @@ export declare const TestReportSchema: z.ZodObject<{
         version?: string | undefined;
         pendingTests?: number | undefined;
     };
+    reportId: string;
     testResults: {
         status: "failed" | "pending" | "passed" | "skipped";
         name: string;
-        category: "integration" | "functional" | "visual" | "unit" | "e2e" | "performance";
+        category: "integration" | "unit" | "functional" | "visual" | "e2e" | "performance";
         testId: string;
         executionTime: number;
         stackTrace?: string | undefined;
@@ -41669,7 +42380,6 @@ export declare const TestReportSchema: z.ZodObject<{
         pageUrl?: string | undefined;
     }[] | undefined;
 }, {
-    reportId: string;
     summary: {
         timestamp: Date;
         executionTime: number;
@@ -41683,10 +42393,11 @@ export declare const TestReportSchema: z.ZodObject<{
         version?: string | undefined;
         pendingTests?: number | undefined;
     };
+    reportId: string;
     testResults: {
         status: "failed" | "pending" | "passed" | "skipped";
         name: string;
-        category: "integration" | "functional" | "visual" | "unit" | "e2e" | "performance";
+        category: "integration" | "unit" | "functional" | "visual" | "e2e" | "performance";
         testId: string;
         executionTime: number;
         stackTrace?: string | undefined;
@@ -41858,4 +42569,14271 @@ export declare const PermissionChangeEventSchema: z.ZodObject<{
 export type PermissionChangeEvent = z.infer<typeof PermissionChangeEventSchema>;
 export type { BrowserLifecycleState, BrowserLifecycleAware, BrowserResourceState, BrowserPermissionDeniedContext, } from './tools/browser/browser-permission-denied-error.js';
 export { BrowserPermissionDeniedError, isBrowserPermissionDeniedError, toBrowserPermissionDeniedError, } from './tools/browser/browser-permission-denied-error.js';
+/**
+ * Git file status indicator
+ * Represents the state of a file in a git repository
+ * - 'M': Modified - file has been changed
+ * - 'A': Added - file is staged for addition
+ * - 'D': Deleted - file is staged for deletion
+ * - 'R': Renamed - file has been renamed
+ * - 'C': Copied - file has been copied
+ * - 'U': Unmerged - file has merge conflicts
+ * - '?': Untracked - file is not tracked by git
+ * - '!': Ignored - file is ignored by git
+ */
+export declare const GitFileStatusSchema: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+export type GitFileStatus = z.infer<typeof GitFileStatusSchema>;
+/**
+ * Represents a file change in a git repository with its status
+ */
+export declare const GitChangedFileSchema: z.ZodObject<{
+    /** Relative path to the file from the repository root */
+    path: z.ZodString;
+    /** Git status indicator for this file */
+    status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+    /** Whether this file change is staged for commit */
+    staged: z.ZodBoolean;
+    /** Original path if the file was renamed (only present for renames) */
+    oldPath: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    path: string;
+    status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+    staged: boolean;
+    oldPath?: string | undefined;
+}, {
+    path: string;
+    status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+    staged: boolean;
+    oldPath?: string | undefined;
+}>;
+export type GitChangedFile = z.infer<typeof GitChangedFileSchema>;
+/**
+ * Represents a single commit in git history
+ */
+export declare const GitCommitSchema: z.ZodObject<{
+    /** Short commit hash (usually 7 characters) */
+    hash: z.ZodString;
+    /** Commit message */
+    message: z.ZodString;
+    /** Timestamp when the commit was made */
+    timestamp: z.ZodDate;
+    /** Author of the commit */
+    author: z.ZodOptional<z.ZodString>;
+    /** Author email */
+    authorEmail: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    timestamp: Date;
+    message: string;
+    hash: string;
+    author?: string | undefined;
+    authorEmail?: string | undefined;
+}, {
+    timestamp: Date;
+    message: string;
+    hash: string;
+    author?: string | undefined;
+    authorEmail?: string | undefined;
+}>;
+export type GitCommit = z.infer<typeof GitCommitSchema>;
+/**
+ * Remote tracking information for a git branch
+ */
+export declare const GitTrackingSchema: z.ZodObject<{
+    /** Name of the remote (e.g., 'origin') */
+    remote: z.ZodNullable<z.ZodString>;
+    /** Full name of the remote branch (e.g., 'origin/main') */
+    remoteBranch: z.ZodNullable<z.ZodString>;
+    /** Number of commits ahead of the remote branch */
+    aheadCount: z.ZodDefault<z.ZodNumber>;
+    /** Number of commits behind the remote branch */
+    behindCount: z.ZodDefault<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    remote: string | null;
+    remoteBranch: string | null;
+    aheadCount: number;
+    behindCount: number;
+}, {
+    remote: string | null;
+    remoteBranch: string | null;
+    aheadCount?: number | undefined;
+    behindCount?: number | undefined;
+}>;
+export type GitTracking = z.infer<typeof GitTrackingSchema>;
+/**
+ * Git repository status information
+ * Provides comprehensive information about the current state of a git repository
+ * including branch info, tracking status, and file changes
+ *
+ * @example
+ * ```typescript
+ * const status: GitStatus = {
+ *   isRepository: true,
+ *   branch: 'feature/new-feature',
+ *   remoteBranch: 'origin/feature/new-feature',
+ *   ahead: 2,
+ *   behind: 0,
+ *   staged: [{ path: 'src/index.ts', status: 'M' }],
+ *   unstaged: [{ path: 'README.md', status: 'M' }],
+ *   untracked: ['temp.log'],
+ *   hasConflicts: false,
+ *   isDirty: true,
+ *   lastCommitHash: 'abc1234',
+ *   lastCommitMessage: 'Add new feature',
+ *   recentCommits: [
+ *     { hash: 'abc1234', message: 'Add new feature', timestamp: new Date() },
+ *     { hash: 'def5678', message: 'Fix bug', timestamp: new Date() }
+ *   ]
+ * };
+ * ```
+ */
+export declare const GitStatusSchema: z.ZodObject<{
+    /** Whether the path is a git repository */
+    isRepository: z.ZodBoolean;
+    /** Current branch name (empty string if not in a git repository or detached HEAD) */
+    branch: z.ZodString;
+    /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+    isClean: z.ZodBoolean;
+    /** Whether there are uncommitted changes (modified or deleted files) */
+    hasUncommittedChanges: z.ZodBoolean;
+    /** Whether there are untracked files */
+    hasUntrackedFiles: z.ZodBoolean;
+    /** Whether there are staged changes ready for commit */
+    hasStagedChanges: z.ZodBoolean;
+    /** All changed files (staged, unstaged, and untracked) with their status */
+    changedFiles: z.ZodArray<z.ZodObject<{
+        /** Relative path to the file from the repository root */
+        path: z.ZodString;
+        /** Git status indicator for this file */
+        status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+        /** Whether this file change is staged for commit */
+        staged: z.ZodBoolean;
+        /** Original path if the file was renamed (only present for renames) */
+        oldPath: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }>, "many">;
+    /** Total number of stashes */
+    stashCount: z.ZodNumber;
+    /** Remote tracking information */
+    tracking: z.ZodNullable<z.ZodObject<{
+        /** Name of the remote (e.g., 'origin') */
+        remote: z.ZodNullable<z.ZodString>;
+        /** Full name of the remote branch (e.g., 'origin/main') */
+        remoteBranch: z.ZodNullable<z.ZodString>;
+        /** Number of commits ahead of the remote branch */
+        aheadCount: z.ZodDefault<z.ZodNumber>;
+        /** Number of commits behind the remote branch */
+        behindCount: z.ZodDefault<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        remote: string | null;
+        remoteBranch: string | null;
+        aheadCount: number;
+        behindCount: number;
+    }, {
+        remote: string | null;
+        remoteBranch: string | null;
+        aheadCount?: number | undefined;
+        behindCount?: number | undefined;
+    }>>;
+    /** Information about the last commit */
+    lastCommit: z.ZodNullable<z.ZodObject<{
+        /** Short commit hash (usually 7 characters) */
+        hash: z.ZodString;
+        /** Commit message */
+        message: z.ZodString;
+        /** Timestamp when the commit was made */
+        timestamp: z.ZodDate;
+    }, "strip", z.ZodTypeAny, {
+        timestamp: Date;
+        message: string;
+        hash: string;
+    }, {
+        timestamp: Date;
+        message: string;
+        hash: string;
+    }>>;
+    /** @deprecated Use branch instead */
+    remoteBranch: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    /** @deprecated Use tracking.aheadCount instead */
+    ahead: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** @deprecated Use tracking.behindCount instead */
+    behind: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** @deprecated Use changedFiles with staged=true instead */
+    staged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Relative path to the file from the repository root */
+        path: z.ZodString;
+        /** Git status indicator for this file */
+        status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+        /** Whether this file change is staged for commit */
+        staged: z.ZodBoolean;
+        /** Original path if the file was renamed (only present for renames) */
+        oldPath: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }>, "many">>>;
+    /** @deprecated Use changedFiles with staged=false instead */
+    unstaged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Relative path to the file from the repository root */
+        path: z.ZodString;
+        /** Git status indicator for this file */
+        status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+        /** Whether this file change is staged for commit */
+        staged: z.ZodBoolean;
+        /** Original path if the file was renamed (only present for renames) */
+        oldPath: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }, {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }>, "many">>>;
+    /** @deprecated Use changedFiles with status='?' instead */
+    untracked: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+    isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** @deprecated Use lastCommit.hash instead */
+    lastCommitHash: z.ZodOptional<z.ZodString>;
+    /** @deprecated Use lastCommit.message instead */
+    lastCommitMessage: z.ZodOptional<z.ZodString>;
+    /** @deprecated Use lastCommit.timestamp instead */
+    lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
+    /** Whether there are merge conflicts */
+    hasConflicts: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** List of configured remotes */
+    remotes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        url: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        url: string;
+    }, {
+        name: string;
+        url: string;
+    }>, "many">>>;
+    /** Recent commits (last 5) */
+    recentCommits: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Short commit hash (usually 7 characters) */
+        hash: z.ZodString;
+        /** Commit message */
+        message: z.ZodString;
+        /** Timestamp when the commit was made */
+        timestamp: z.ZodDate;
+        /** Author of the commit */
+        author: z.ZodOptional<z.ZodString>;
+        /** Author email */
+        authorEmail: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        timestamp: Date;
+        message: string;
+        hash: string;
+        author?: string | undefined;
+        authorEmail?: string | undefined;
+    }, {
+        timestamp: Date;
+        message: string;
+        hash: string;
+        author?: string | undefined;
+        authorEmail?: string | undefined;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    staged: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }[];
+    isRepository: boolean;
+    branch: string;
+    isClean: boolean;
+    hasUncommittedChanges: boolean;
+    hasUntrackedFiles: boolean;
+    hasStagedChanges: boolean;
+    changedFiles: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }[];
+    stashCount: number;
+    tracking: {
+        remote: string | null;
+        remoteBranch: string | null;
+        aheadCount: number;
+        behindCount: number;
+    } | null;
+    lastCommit: {
+        timestamp: Date;
+        message: string;
+        hash: string;
+    } | null;
+    ahead: number;
+    behind: number;
+    unstaged: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }[];
+    untracked: string[];
+    isDirty: boolean;
+    hasConflicts: boolean;
+    remotes: {
+        name: string;
+        url: string;
+    }[];
+    recentCommits: {
+        timestamp: Date;
+        message: string;
+        hash: string;
+        author?: string | undefined;
+        authorEmail?: string | undefined;
+    }[];
+    remoteBranch?: string | null | undefined;
+    lastCommitHash?: string | undefined;
+    lastCommitMessage?: string | undefined;
+    lastCommitTimestamp?: Date | undefined;
+}, {
+    isRepository: boolean;
+    branch: string;
+    isClean: boolean;
+    hasUncommittedChanges: boolean;
+    hasUntrackedFiles: boolean;
+    hasStagedChanges: boolean;
+    changedFiles: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }[];
+    stashCount: number;
+    tracking: {
+        remote: string | null;
+        remoteBranch: string | null;
+        aheadCount?: number | undefined;
+        behindCount?: number | undefined;
+    } | null;
+    lastCommit: {
+        timestamp: Date;
+        message: string;
+        hash: string;
+    } | null;
+    staged?: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }[] | undefined;
+    remoteBranch?: string | null | undefined;
+    ahead?: number | undefined;
+    behind?: number | undefined;
+    unstaged?: {
+        path: string;
+        status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+        staged: boolean;
+        oldPath?: string | undefined;
+    }[] | undefined;
+    untracked?: string[] | undefined;
+    isDirty?: boolean | undefined;
+    lastCommitHash?: string | undefined;
+    lastCommitMessage?: string | undefined;
+    lastCommitTimestamp?: Date | undefined;
+    hasConflicts?: boolean | undefined;
+    remotes?: {
+        name: string;
+        url: string;
+    }[] | undefined;
+    recentCommits?: {
+        timestamp: Date;
+        message: string;
+        hash: string;
+        author?: string | undefined;
+        authorEmail?: string | undefined;
+    }[] | undefined;
+}>;
+export type GitStatus = z.infer<typeof GitStatusSchema>;
+/**
+ * Entry type in project structure
+ */
+export declare const ProjectEntryTypeSchema: z.ZodEnum<["file", "directory"]>;
+export type ProjectEntryType = z.infer<typeof ProjectEntryTypeSchema>;
+/**
+ * Represents a single entry (file or directory) in the project structure
+ */
+export interface ProjectEntry {
+    /** Name of the file or directory */
+    name: string;
+    /** Relative path from project root */
+    path: string;
+    /** Whether this is a file or directory */
+    type: ProjectEntryType;
+    /** Size in bytes (for files only) */
+    size?: number;
+    /** Last modified timestamp */
+    modifiedAt?: Date;
+    /** Child entries (for directories only) */
+    children?: ProjectEntry[];
+}
+export declare const ProjectEntrySchema: z.ZodType<ProjectEntry>;
+/**
+ * Project structure information
+ * Provides an overview of the project's directory layout and key files
+ *
+ * @example
+ * ```typescript
+ * const structure: ProjectStructure = {
+ *   root: '/path/to/project',
+ *   totalFiles: 150,
+ *   totalDirectories: 25,
+ *   entries: [...],
+ *   hasPackageJson: true,
+ *   hasGitIgnore: true,
+ *   maxDepthScanned: 3
+ * };
+ * ```
+ */
+export declare const ProjectStructureSchema: z.ZodObject<{
+    /** Absolute path to the project root */
+    root: z.ZodString;
+    /** Total number of files in the scanned structure */
+    totalFiles: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** Total number of directories in the scanned structure */
+    totalDirectories: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    /** Hierarchical list of project entries */
+    entries: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodType<ProjectEntry, z.ZodTypeDef, ProjectEntry>, "many">>>;
+    /** Key configuration/manifest files detected at the root */
+    rootFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Common project directories detected (src, lib, test, etc.) */
+    commonDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Whether a package.json exists */
+    hasPackageJson: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether a .gitignore exists */
+    hasGitIgnore: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether a README file exists */
+    hasReadme: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether a LICENSE file exists */
+    hasLicense: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Maximum directory depth that was scanned */
+    maxDepthScanned: z.ZodOptional<z.ZodNumber>;
+    /** Maximum directory depth that was scanned (alias for compatibility) */
+    maxDepth: z.ZodOptional<z.ZodNumber>;
+    /** Total size of all files in bytes */
+    totalSize: z.ZodOptional<z.ZodNumber>;
+    /** Directories that were excluded from scanning */
+    excludedDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when the structure was scanned */
+    scannedAt: z.ZodOptional<z.ZodDate>;
+    /** File count by extension */
+    filesByExtension: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>>;
+    /** Top-level directories in the project root */
+    topLevelDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Detected important folders (src, test, docs) */
+    detectedFolders: z.ZodOptional<z.ZodObject<{
+        src: z.ZodOptional<z.ZodString>;
+        test: z.ZodOptional<z.ZodString>;
+        docs: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        docs?: string | undefined;
+        test?: string | undefined;
+        src?: string | undefined;
+    }, {
+        docs?: string | undefined;
+        test?: string | undefined;
+        src?: string | undefined;
+    }>>;
+    /** Whether this appears to be a monorepo structure */
+    isMonorepo: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Workspace packages if this is a monorepo */
+    workspaces: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+}, "strip", z.ZodTypeAny, {
+    entries: ProjectEntry[];
+    root: string;
+    totalFiles: number;
+    totalDirectories: number;
+    rootFiles: string[];
+    commonDirectories: string[];
+    hasPackageJson: boolean;
+    hasGitIgnore: boolean;
+    hasReadme: boolean;
+    hasLicense: boolean;
+    excludedDirectories: string[];
+    filesByExtension: Record<string, number>;
+    topLevelDirectories: string[];
+    isMonorepo: boolean;
+    maxDepth?: number | undefined;
+    scannedAt?: Date | undefined;
+    maxDepthScanned?: number | undefined;
+    totalSize?: number | undefined;
+    detectedFolders?: {
+        docs?: string | undefined;
+        test?: string | undefined;
+        src?: string | undefined;
+    } | undefined;
+    workspaces?: string[] | undefined;
+}, {
+    root: string;
+    entries?: ProjectEntry[] | undefined;
+    maxDepth?: number | undefined;
+    scannedAt?: Date | undefined;
+    totalFiles?: number | undefined;
+    totalDirectories?: number | undefined;
+    rootFiles?: string[] | undefined;
+    commonDirectories?: string[] | undefined;
+    hasPackageJson?: boolean | undefined;
+    hasGitIgnore?: boolean | undefined;
+    hasReadme?: boolean | undefined;
+    hasLicense?: boolean | undefined;
+    maxDepthScanned?: number | undefined;
+    totalSize?: number | undefined;
+    excludedDirectories?: string[] | undefined;
+    filesByExtension?: Record<string, number> | undefined;
+    topLevelDirectories?: string[] | undefined;
+    detectedFolders?: {
+        docs?: string | undefined;
+        test?: string | undefined;
+        src?: string | undefined;
+    } | undefined;
+    isMonorepo?: boolean | undefined;
+    workspaces?: string[] | undefined;
+}>;
+export type ProjectStructure = z.infer<typeof ProjectStructureSchema>;
+/**
+ * Framework category classification
+ */
+export declare const FrameworkCategorySchema: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+export type FrameworkCategory = z.infer<typeof FrameworkCategorySchema>;
+/**
+ * Framework detection confidence level
+ */
+export declare const DetectionConfidenceSchema: z.ZodEnum<["high", "medium", "low"]>;
+export type DetectionConfidence = z.infer<typeof DetectionConfidenceSchema>;
+/**
+ * Information about a detected framework or library
+ *
+ * @example
+ * ```typescript
+ * const framework: FrameworkInfo = {
+ *   name: 'React',
+ *   version: '18.2.0',
+ *   category: 'frontend',
+ *   confidence: 'high',
+ *   detectedVia: 'package.json dependency',
+ *   detectionReasons: ['package.json dependency', 'React JSX patterns found'],
+ *   language: 'typescript',
+ *   configFiles: ['tsconfig.json', 'vite.config.ts']
+ * };
+ * ```
+ */
+export declare const FrameworkInfoSchema: z.ZodObject<{
+    /** Framework or library name */
+    name: z.ZodString;
+    /** Detected version (if available) */
+    version: z.ZodOptional<z.ZodString>;
+    /** Framework category */
+    category: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+    /** How confident the detection is */
+    confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>>;
+    /** How the framework was detected */
+    detectedVia: z.ZodOptional<z.ZodString>;
+    /** Detailed reasons for how the framework was detected */
+    detectionReasons: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Primary programming language */
+    language: z.ZodOptional<z.ZodString>;
+    /** Related configuration files found */
+    configFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Whether this is a dev dependency */
+    isDevDependency: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Additional metadata about the framework */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+    confidence: "high" | "medium" | "low";
+    detectionReasons: string[];
+    configFiles: string[];
+    isDevDependency: boolean;
+    metadata?: Record<string, unknown> | undefined;
+    version?: string | undefined;
+    language?: string | undefined;
+    detectedVia?: string | undefined;
+}, {
+    name: string;
+    category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+    metadata?: Record<string, unknown> | undefined;
+    version?: string | undefined;
+    language?: string | undefined;
+    confidence?: "high" | "medium" | "low" | undefined;
+    detectedVia?: string | undefined;
+    detectionReasons?: string[] | undefined;
+    configFiles?: string[] | undefined;
+    isDevDependency?: boolean | undefined;
+}>;
+export type FrameworkInfo = z.infer<typeof FrameworkInfoSchema>;
+/**
+ * Schema for framework detection results
+ * Identifies frameworks and libraries used in the project
+ *
+ * @example
+ * ```typescript
+ * const detection: FrameworkDetection = {
+ *   primary: { name: 'React', version: '18.2.0', category: 'frontend' },
+ *   frameworks: [
+ *     { name: 'React', version: '18.2.0', category: 'frontend' },
+ *     { name: 'TypeScript', version: '5.0.0', category: 'language' }
+ *   ],
+ *   primaryLanguage: 'typescript',
+ *   languages: [
+ *     { name: 'TypeScript', extensions: ['.ts', '.tsx'], percentage: 85 },
+ *     { name: 'JavaScript', extensions: ['.js', '.jsx'], percentage: 15 }
+ *   ],
+ *   runtime: 'node',
+ *   packageManager: 'npm'
+ * };
+ * ```
+ */
+export declare const FrameworkDetectionSchema: z.ZodObject<{
+    /** Primary framework (highest confidence) */
+    primary: z.ZodOptional<z.ZodObject<{
+        /** Framework or library name */
+        name: z.ZodString;
+        /** Detected version (if available) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Framework category */
+        category: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+        /** How confident the detection is */
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>>;
+        /** How the framework was detected */
+        detectedVia: z.ZodOptional<z.ZodString>;
+        /** Detailed reasons for how the framework was detected */
+        detectionReasons: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Primary programming language */
+        language: z.ZodOptional<z.ZodString>;
+        /** Related configuration files found */
+        configFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether this is a dev dependency */
+        isDevDependency: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Additional metadata about the framework */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        detectionReasons: string[];
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        detectionReasons?: string[] | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }>>;
+    /** All detected frameworks */
+    frameworks: z.ZodArray<z.ZodObject<{
+        /** Framework or library name */
+        name: z.ZodString;
+        /** Detected version (if available) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Framework category */
+        category: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+        /** How confident the detection is */
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>>;
+        /** How the framework was detected */
+        detectedVia: z.ZodOptional<z.ZodString>;
+        /** Detailed reasons for how the framework was detected */
+        detectionReasons: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Primary programming language */
+        language: z.ZodOptional<z.ZodString>;
+        /** Related configuration files found */
+        configFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether this is a dev dependency */
+        isDevDependency: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Additional metadata about the framework */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        detectionReasons: string[];
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        detectionReasons?: string[] | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }>, "many">;
+    /** Primary programming language */
+    primaryLanguage: z.ZodOptional<z.ZodString>;
+    /** All detected languages */
+    languages: z.ZodArray<z.ZodObject<{
+        /** Language name */
+        name: z.ZodString;
+        /** File extensions associated with this language */
+        extensions: z.ZodArray<z.ZodString, "many">;
+        /** Percentage of files using this language */
+        percentage: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        extensions: string[];
+        percentage: number;
+    }, {
+        name: string;
+        extensions: string[];
+        percentage: number;
+    }>, "many">;
+    /** Runtime environment (node, browser, deno, bun, etc.) */
+    runtime: z.ZodOptional<z.ZodString>;
+    /** Package manager detected */
+    packageManager: z.ZodOptional<z.ZodString>;
+    /** Error message if detection failed */
+    error: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    frameworks: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        detectionReasons: string[];
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }[];
+    languages: {
+        name: string;
+        extensions: string[];
+        percentage: number;
+    }[];
+    error?: string | undefined;
+    primary?: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        detectionReasons: string[];
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    } | undefined;
+    primaryLanguage?: string | undefined;
+    runtime?: string | undefined;
+    packageManager?: string | undefined;
+}, {
+    frameworks: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        detectionReasons?: string[] | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }[];
+    languages: {
+        name: string;
+        extensions: string[];
+        percentage: number;
+    }[];
+    error?: string | undefined;
+    primary?: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        detectionReasons?: string[] | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    } | undefined;
+    primaryLanguage?: string | undefined;
+    runtime?: string | undefined;
+    packageManager?: string | undefined;
+}>;
+export type FrameworkDetection = z.infer<typeof FrameworkDetectionSchema>;
+/**
+ * Configuration file format
+ */
+export declare const ConfigFormatSchema: z.ZodEnum<["json", "yaml", "toml", "javascript", "typescript", "ini", "env", "xml", "other"]>;
+export type ConfigFormat = z.infer<typeof ConfigFormatSchema>;
+/**
+ * Configuration file purpose/category
+ */
+export declare const ConfigPurposeSchema: z.ZodEnum<["package-manager", "typescript", "linting", "testing", "build", "ci-cd", "containerization", "environment", "git", "editor", "documentation", "security", "other"]>;
+export type ConfigPurpose = z.infer<typeof ConfigPurposeSchema>;
+/**
+ * Schema for individual configuration file info used in the project context analyzer
+ *
+ * @example
+ * ```typescript
+ * const configFile: ConfigFileInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   type: 'typescript',
+ *   exists: true,
+ *   description: 'TypeScript compiler configuration'
+ * };
+ * ```
+ */
+export declare const ConfigFileInfoSchema: z.ZodObject<{
+    /** Configuration file name */
+    name: z.ZodString;
+    /** File path relative to project root */
+    path: z.ZodString;
+    /** Configuration type/purpose */
+    type: z.ZodEnum<["package", "typescript", "eslint", "prettier", "babel", "webpack", "vite", "rollup", "jest", "vitest", "docker", "ci", "git", "editor", "environment", "other"]>;
+    /** Whether the file exists */
+    exists: z.ZodBoolean;
+    /** Brief description of what this config controls */
+    description: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    type: "environment" | "eslint" | "prettier" | "ci" | "package" | "docker" | "other" | "git" | "typescript" | "editor" | "babel" | "webpack" | "vite" | "rollup" | "jest" | "vitest";
+    path: string;
+    name: string;
+    exists: boolean;
+    description?: string | undefined;
+}, {
+    type: "environment" | "eslint" | "prettier" | "ci" | "package" | "docker" | "other" | "git" | "typescript" | "editor" | "babel" | "webpack" | "vite" | "rollup" | "jest" | "vitest";
+    path: string;
+    name: string;
+    exists: boolean;
+    description?: string | undefined;
+}>;
+export type ConfigFileInfo = z.infer<typeof ConfigFileInfoSchema>;
+/**
+ * Information about a detected configuration file
+ *
+ * @example
+ * ```typescript
+ * const config: ConfigurationInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   format: 'json',
+ *   purpose: 'typescript',
+ *   isValid: true,
+ *   keySettings: {
+ *     strict: true,
+ *     target: 'ES2022'
+ *   }
+ * };
+ * ```
+ */
+export declare const ConfigurationInfoSchema: z.ZodObject<{
+    /** Configuration file name */
+    name: z.ZodString;
+    /** Relative path from project root */
+    path: z.ZodString;
+    /** File format */
+    format: z.ZodEnum<["json", "yaml", "toml", "javascript", "typescript", "ini", "env", "xml", "other"]>;
+    /** Configuration purpose/category */
+    purpose: z.ZodEnum<["package-manager", "typescript", "linting", "testing", "build", "ci-cd", "containerization", "environment", "git", "editor", "documentation", "security", "other"]>;
+    /** Whether the configuration file is syntactically valid */
+    isValid: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Validation error message if not valid */
+    validationError: z.ZodOptional<z.ZodString>;
+    /** Key settings extracted from the configuration (sanitized, no secrets) */
+    keySettings: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    /** Whether this config extends another configuration */
+    extends: z.ZodOptional<z.ZodString>;
+    /** Size in bytes */
+    size: z.ZodOptional<z.ZodNumber>;
+    /** Last modified timestamp */
+    modifiedAt: z.ZodOptional<z.ZodDate>;
+    /** Additional metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    path: string;
+    name: string;
+    format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+    purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+    isValid: boolean;
+    metadata?: Record<string, unknown> | undefined;
+    size?: number | undefined;
+    modifiedAt?: Date | undefined;
+    validationError?: string | undefined;
+    keySettings?: Record<string, unknown> | undefined;
+    extends?: string | undefined;
+}, {
+    path: string;
+    name: string;
+    format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+    purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+    metadata?: Record<string, unknown> | undefined;
+    size?: number | undefined;
+    modifiedAt?: Date | undefined;
+    isValid?: boolean | undefined;
+    validationError?: string | undefined;
+    keySettings?: Record<string, unknown> | undefined;
+    extends?: string | undefined;
+}>;
+export type ConfigurationInfo = z.infer<typeof ConfigurationInfoSchema>;
+/**
+ * Information about a parsed configuration file with extracted settings
+ *
+ * @example
+ * ```typescript
+ * const parsedConfig: ParsedConfigurationInfo = {
+ *   name: 'tsconfig.json',
+ *   path: 'tsconfig.json',
+ *   format: 'json',
+ *   purpose: 'typescript',
+ *   isValid: true,
+ *   parsed: {
+ *     compilerOptions: {
+ *       strict: true,
+ *       target: 'ES2022',
+ *       module: 'NodeNext'
+ *     }
+ *   },
+ *   compilerOptions: {
+ *     strict: true,
+ *     target: 'ES2022'
+ *   }
+ * };
+ * ```
+ */
+export declare const ParsedConfigurationInfoSchema: z.ZodObject<{
+    name: z.ZodString;
+    path: z.ZodString;
+    format: z.ZodEnum<["json", "yaml", "toml", "javascript", "typescript", "ini", "env", "xml", "other"]>;
+    purpose: z.ZodEnum<["package-manager", "typescript", "linting", "testing", "build", "ci-cd", "containerization", "environment", "git", "editor", "documentation", "security", "other"]>;
+    isValid: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    validationError: z.ZodOptional<z.ZodString>;
+    keySettings: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    size: z.ZodOptional<z.ZodNumber>;
+    modifiedAt: z.ZodOptional<z.ZodDate>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+} & {
+    parsed: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    compilerOptions: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    buildConfig: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    testConfig: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    lintConfig: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    scripts: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+    dependencies: z.ZodOptional<z.ZodObject<{
+        runtime: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        development: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        peer: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        optional: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+    }, "strip", z.ZodTypeAny, {
+        development?: Record<string, string> | undefined;
+        optional?: Record<string, string> | undefined;
+        runtime?: Record<string, string> | undefined;
+        peer?: Record<string, string> | undefined;
+    }, {
+        development?: Record<string, string> | undefined;
+        optional?: Record<string, string> | undefined;
+        runtime?: Record<string, string> | undefined;
+        peer?: Record<string, string> | undefined;
+    }>>;
+    extends: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString, "many">]>>;
+    environment: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    parseError: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    path: string;
+    name: string;
+    format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+    purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+    isValid: boolean;
+    metadata?: Record<string, unknown> | undefined;
+    environment?: Record<string, unknown> | undefined;
+    dependencies?: {
+        development?: Record<string, string> | undefined;
+        optional?: Record<string, string> | undefined;
+        runtime?: Record<string, string> | undefined;
+        peer?: Record<string, string> | undefined;
+    } | undefined;
+    size?: number | undefined;
+    modifiedAt?: Date | undefined;
+    validationError?: string | undefined;
+    keySettings?: Record<string, unknown> | undefined;
+    extends?: string | string[] | undefined;
+    parsed?: Record<string, unknown> | undefined;
+    compilerOptions?: Record<string, unknown> | undefined;
+    buildConfig?: Record<string, unknown> | undefined;
+    testConfig?: Record<string, unknown> | undefined;
+    lintConfig?: Record<string, unknown> | undefined;
+    scripts?: Record<string, string> | undefined;
+    parseError?: string | undefined;
+}, {
+    path: string;
+    name: string;
+    format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+    purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+    metadata?: Record<string, unknown> | undefined;
+    environment?: Record<string, unknown> | undefined;
+    dependencies?: {
+        development?: Record<string, string> | undefined;
+        optional?: Record<string, string> | undefined;
+        runtime?: Record<string, string> | undefined;
+        peer?: Record<string, string> | undefined;
+    } | undefined;
+    size?: number | undefined;
+    modifiedAt?: Date | undefined;
+    isValid?: boolean | undefined;
+    validationError?: string | undefined;
+    keySettings?: Record<string, unknown> | undefined;
+    extends?: string | string[] | undefined;
+    parsed?: Record<string, unknown> | undefined;
+    compilerOptions?: Record<string, unknown> | undefined;
+    buildConfig?: Record<string, unknown> | undefined;
+    testConfig?: Record<string, unknown> | undefined;
+    lintConfig?: Record<string, unknown> | undefined;
+    scripts?: Record<string, string> | undefined;
+    parseError?: string | undefined;
+}>;
+export type ParsedConfigurationInfo = z.infer<typeof ParsedConfigurationInfoSchema>;
+/**
+ * Test runner type classification
+ */
+export declare const TestRunnerTypeSchema: z.ZodEnum<["unit", "integration", "e2e", "component", "visual", "performance", "accessibility", "other"]>;
+export type TestRunnerType = z.infer<typeof TestRunnerTypeSchema>;
+/**
+ * Information about a detected test framework
+ *
+ * @example
+ * ```typescript
+ * const testFramework: TestFrameworkInfo = {
+ *   name: 'vitest',
+ *   version: '1.2.0',
+ *   type: 'unit',
+ *   configFile: 'vitest.config.ts',
+ *   testPatterns: ['**\/*.test.ts', '**\/*.spec.ts'],
+ *   testDirectory: 'src/__tests__',
+ *   runCommand: 'npm test',
+ *   coverageEnabled: true
+ * };
+ * ```
+ */
+export declare const TestFrameworkInfoSchema: z.ZodObject<{
+    /** Test framework name */
+    name: z.ZodString;
+    /** Detected version (if available) */
+    version: z.ZodOptional<z.ZodString>;
+    /** Type of testing this framework handles */
+    type: z.ZodEnum<["unit", "integration", "e2e", "component", "visual", "performance", "accessibility", "other"]>;
+    /** Configuration file path (if detected) */
+    configFile: z.ZodOptional<z.ZodString>;
+    /** File patterns used to identify test files */
+    testPatterns: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Primary test directory (if detected) */
+    testDirectory: z.ZodOptional<z.ZodString>;
+    /** Command to run tests */
+    runCommand: z.ZodOptional<z.ZodString>;
+    /** Whether code coverage is configured */
+    coverageEnabled: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Coverage tool used (istanbul, c8, etc.) */
+    coverageTool: z.ZodOptional<z.ZodString>;
+    /** Whether watch mode is available */
+    watchModeAvailable: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Related plugins/extensions detected */
+    plugins: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Number of test files detected */
+    testFileCount: z.ZodOptional<z.ZodNumber>;
+    /** Detected assertion library (if different from test runner) */
+    assertionLibrary: z.ZodOptional<z.ZodString>;
+    /** Detected mocking library (if any) */
+    mockingLibrary: z.ZodOptional<z.ZodString>;
+    /** Additional metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    type: "integration" | "other" | "unit" | "visual" | "e2e" | "performance" | "component" | "accessibility";
+    name: string;
+    testPatterns: string[];
+    coverageEnabled: boolean;
+    watchModeAvailable: boolean;
+    plugins: string[];
+    metadata?: Record<string, unknown> | undefined;
+    version?: string | undefined;
+    configFile?: string | undefined;
+    testDirectory?: string | undefined;
+    runCommand?: string | undefined;
+    coverageTool?: string | undefined;
+    testFileCount?: number | undefined;
+    assertionLibrary?: string | undefined;
+    mockingLibrary?: string | undefined;
+}, {
+    type: "integration" | "other" | "unit" | "visual" | "e2e" | "performance" | "component" | "accessibility";
+    name: string;
+    metadata?: Record<string, unknown> | undefined;
+    version?: string | undefined;
+    testPatterns?: string[] | undefined;
+    configFile?: string | undefined;
+    testDirectory?: string | undefined;
+    runCommand?: string | undefined;
+    coverageEnabled?: boolean | undefined;
+    coverageTool?: string | undefined;
+    watchModeAvailable?: boolean | undefined;
+    plugins?: string[] | undefined;
+    testFileCount?: number | undefined;
+    assertionLibrary?: string | undefined;
+    mockingLibrary?: string | undefined;
+}>;
+export type TestFrameworkInfo = z.infer<typeof TestFrameworkInfoSchema>;
+/**
+ * Comprehensive project context combining all detection results
+ * This is the main type used for providing context to AI agents
+ *
+ * @example
+ * ```typescript
+ * const context: ProjectContext = {
+ *   gitStatus: { ... },
+ *   structure: { ... },
+ *   frameworks: [{ name: 'React', ... }],
+ *   configurations: [{ name: 'tsconfig.json', ... }],
+ *   testFrameworks: [{ name: 'vitest', ... }],
+ *   detectedAt: new Date()
+ * };
+ * ```
+ */
+export declare const ProjectContextSchema: z.ZodObject<{
+    /** Git repository status (if applicable) */
+    git: z.ZodOptional<z.ZodObject<{
+        /** Whether the path is a git repository */
+        isRepository: z.ZodBoolean;
+        /** Current branch name (empty string if not in a git repository or detached HEAD) */
+        branch: z.ZodString;
+        /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+        isClean: z.ZodBoolean;
+        /** Whether there are uncommitted changes (modified or deleted files) */
+        hasUncommittedChanges: z.ZodBoolean;
+        /** Whether there are untracked files */
+        hasUntrackedFiles: z.ZodBoolean;
+        /** Whether there are staged changes ready for commit */
+        hasStagedChanges: z.ZodBoolean;
+        /** All changed files (staged, unstaged, and untracked) with their status */
+        changedFiles: z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">;
+        /** Total number of stashes */
+        stashCount: z.ZodNumber;
+        /** Remote tracking information */
+        tracking: z.ZodNullable<z.ZodObject<{
+            /** Name of the remote (e.g., 'origin') */
+            remote: z.ZodNullable<z.ZodString>;
+            /** Full name of the remote branch (e.g., 'origin/main') */
+            remoteBranch: z.ZodNullable<z.ZodString>;
+            /** Number of commits ahead of the remote branch */
+            aheadCount: z.ZodDefault<z.ZodNumber>;
+            /** Number of commits behind the remote branch */
+            behindCount: z.ZodDefault<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        }, {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        }>>;
+        /** Information about the last commit */
+        lastCommit: z.ZodNullable<z.ZodObject<{
+            /** Short commit hash (usually 7 characters) */
+            hash: z.ZodString;
+            /** Commit message */
+            message: z.ZodString;
+            /** Timestamp when the commit was made */
+            timestamp: z.ZodDate;
+        }, "strip", z.ZodTypeAny, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        }, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        }>>;
+        /** @deprecated Use branch instead */
+        remoteBranch: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        /** @deprecated Use tracking.aheadCount instead */
+        ahead: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** @deprecated Use tracking.behindCount instead */
+        behind: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** @deprecated Use changedFiles with staged=true instead */
+        staged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">>>;
+        /** @deprecated Use changedFiles with staged=false instead */
+        unstaged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">>>;
+        /** @deprecated Use changedFiles with status='?' instead */
+        untracked: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+        isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** @deprecated Use lastCommit.hash instead */
+        lastCommitHash: z.ZodOptional<z.ZodString>;
+        /** @deprecated Use lastCommit.message instead */
+        lastCommitMessage: z.ZodOptional<z.ZodString>;
+        /** @deprecated Use lastCommit.timestamp instead */
+        lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
+        /** Whether there are merge conflicts */
+        hasConflicts: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** List of configured remotes */
+        remotes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            url: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            url: string;
+        }, {
+            name: string;
+            url: string;
+        }>, "many">>>;
+        /** Recent commits (last 5) */
+        recentCommits: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Short commit hash (usually 7 characters) */
+            hash: z.ZodString;
+            /** Commit message */
+            message: z.ZodString;
+            /** Timestamp when the commit was made */
+            timestamp: z.ZodDate;
+            /** Author of the commit */
+            author: z.ZodOptional<z.ZodString>;
+            /** Author email */
+            authorEmail: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }>, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        staged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        ahead: number;
+        behind: number;
+        unstaged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        untracked: string[];
+        isDirty: boolean;
+        hasConflicts: boolean;
+        remotes: {
+            name: string;
+            url: string;
+        }[];
+        recentCommits: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[];
+        remoteBranch?: string | null | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+    }, {
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        staged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
+        unstaged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        untracked?: string[] | undefined;
+        isDirty?: boolean | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+        hasConflicts?: boolean | undefined;
+        remotes?: {
+            name: string;
+            url: string;
+        }[] | undefined;
+        recentCommits?: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[] | undefined;
+    }>>;
+    /** Git repository status (if applicable) - kept for backward compatibility */
+    gitStatus: z.ZodOptional<z.ZodObject<{
+        /** Whether the path is a git repository */
+        isRepository: z.ZodBoolean;
+        /** Current branch name (empty string if not in a git repository or detached HEAD) */
+        branch: z.ZodString;
+        /** Whether the working directory is clean (no uncommitted changes, untracked files, or staged files) */
+        isClean: z.ZodBoolean;
+        /** Whether there are uncommitted changes (modified or deleted files) */
+        hasUncommittedChanges: z.ZodBoolean;
+        /** Whether there are untracked files */
+        hasUntrackedFiles: z.ZodBoolean;
+        /** Whether there are staged changes ready for commit */
+        hasStagedChanges: z.ZodBoolean;
+        /** All changed files (staged, unstaged, and untracked) with their status */
+        changedFiles: z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">;
+        /** Total number of stashes */
+        stashCount: z.ZodNumber;
+        /** Remote tracking information */
+        tracking: z.ZodNullable<z.ZodObject<{
+            /** Name of the remote (e.g., 'origin') */
+            remote: z.ZodNullable<z.ZodString>;
+            /** Full name of the remote branch (e.g., 'origin/main') */
+            remoteBranch: z.ZodNullable<z.ZodString>;
+            /** Number of commits ahead of the remote branch */
+            aheadCount: z.ZodDefault<z.ZodNumber>;
+            /** Number of commits behind the remote branch */
+            behindCount: z.ZodDefault<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        }, {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        }>>;
+        /** Information about the last commit */
+        lastCommit: z.ZodNullable<z.ZodObject<{
+            /** Short commit hash (usually 7 characters) */
+            hash: z.ZodString;
+            /** Commit message */
+            message: z.ZodString;
+            /** Timestamp when the commit was made */
+            timestamp: z.ZodDate;
+        }, "strip", z.ZodTypeAny, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        }, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        }>>;
+        /** @deprecated Use branch instead */
+        remoteBranch: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        /** @deprecated Use tracking.aheadCount instead */
+        ahead: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** @deprecated Use tracking.behindCount instead */
+        behind: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** @deprecated Use changedFiles with staged=true instead */
+        staged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">>>;
+        /** @deprecated Use changedFiles with staged=false instead */
+        unstaged: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Relative path to the file from the repository root */
+            path: z.ZodString;
+            /** Git status indicator for this file */
+            status: z.ZodEnum<["M", "A", "D", "R", "C", "U", "?", "!"]>;
+            /** Whether this file change is staged for commit */
+            staged: z.ZodBoolean;
+            /** Original path if the file was renamed (only present for renames) */
+            oldPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }, {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }>, "many">>>;
+        /** @deprecated Use changedFiles with status='?' instead */
+        untracked: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** @deprecated Use hasUncommittedChanges || hasUntrackedFiles || hasStagedChanges instead */
+        isDirty: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** @deprecated Use lastCommit.hash instead */
+        lastCommitHash: z.ZodOptional<z.ZodString>;
+        /** @deprecated Use lastCommit.message instead */
+        lastCommitMessage: z.ZodOptional<z.ZodString>;
+        /** @deprecated Use lastCommit.timestamp instead */
+        lastCommitTimestamp: z.ZodOptional<z.ZodDate>;
+        /** Whether there are merge conflicts */
+        hasConflicts: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** List of configured remotes */
+        remotes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            url: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            url: string;
+        }, {
+            name: string;
+            url: string;
+        }>, "many">>>;
+        /** Recent commits (last 5) */
+        recentCommits: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Short commit hash (usually 7 characters) */
+            hash: z.ZodString;
+            /** Commit message */
+            message: z.ZodString;
+            /** Timestamp when the commit was made */
+            timestamp: z.ZodDate;
+            /** Author of the commit */
+            author: z.ZodOptional<z.ZodString>;
+            /** Author email */
+            authorEmail: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }, {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }>, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        staged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        ahead: number;
+        behind: number;
+        unstaged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        untracked: string[];
+        isDirty: boolean;
+        hasConflicts: boolean;
+        remotes: {
+            name: string;
+            url: string;
+        }[];
+        recentCommits: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[];
+        remoteBranch?: string | null | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+    }, {
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        staged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
+        unstaged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        untracked?: string[] | undefined;
+        isDirty?: boolean | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+        hasConflicts?: boolean | undefined;
+        remotes?: {
+            name: string;
+            url: string;
+        }[] | undefined;
+        recentCommits?: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[] | undefined;
+    }>>;
+    /** Project directory structure */
+    structure: z.ZodOptional<z.ZodObject<{
+        /** Absolute path to the project root */
+        root: z.ZodString;
+        /** Total number of files in the scanned structure */
+        totalFiles: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Total number of directories in the scanned structure */
+        totalDirectories: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        /** Hierarchical list of project entries */
+        entries: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodType<ProjectEntry, z.ZodTypeDef, ProjectEntry>, "many">>>;
+        /** Key configuration/manifest files detected at the root */
+        rootFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Common project directories detected (src, lib, test, etc.) */
+        commonDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether a package.json exists */
+        hasPackageJson: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether a .gitignore exists */
+        hasGitIgnore: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether a README file exists */
+        hasReadme: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether a LICENSE file exists */
+        hasLicense: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Maximum directory depth that was scanned */
+        maxDepthScanned: z.ZodOptional<z.ZodNumber>;
+        /** Maximum directory depth that was scanned (alias for compatibility) */
+        maxDepth: z.ZodOptional<z.ZodNumber>;
+        /** Total size of all files in bytes */
+        totalSize: z.ZodOptional<z.ZodNumber>;
+        /** Directories that were excluded from scanning */
+        excludedDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when the structure was scanned */
+        scannedAt: z.ZodOptional<z.ZodDate>;
+        /** File count by extension */
+        filesByExtension: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>>;
+        /** Top-level directories in the project root */
+        topLevelDirectories: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Detected important folders (src, test, docs) */
+        detectedFolders: z.ZodOptional<z.ZodObject<{
+            src: z.ZodOptional<z.ZodString>;
+            test: z.ZodOptional<z.ZodString>;
+            docs: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            docs?: string | undefined;
+            test?: string | undefined;
+            src?: string | undefined;
+        }, {
+            docs?: string | undefined;
+            test?: string | undefined;
+            src?: string | undefined;
+        }>>;
+        /** Whether this appears to be a monorepo structure */
+        isMonorepo: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Workspace packages if this is a monorepo */
+        workspaces: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        entries: ProjectEntry[];
+        root: string;
+        totalFiles: number;
+        totalDirectories: number;
+        rootFiles: string[];
+        commonDirectories: string[];
+        hasPackageJson: boolean;
+        hasGitIgnore: boolean;
+        hasReadme: boolean;
+        hasLicense: boolean;
+        excludedDirectories: string[];
+        filesByExtension: Record<string, number>;
+        topLevelDirectories: string[];
+        isMonorepo: boolean;
+        maxDepth?: number | undefined;
+        scannedAt?: Date | undefined;
+        maxDepthScanned?: number | undefined;
+        totalSize?: number | undefined;
+        detectedFolders?: {
+            docs?: string | undefined;
+            test?: string | undefined;
+            src?: string | undefined;
+        } | undefined;
+        workspaces?: string[] | undefined;
+    }, {
+        root: string;
+        entries?: ProjectEntry[] | undefined;
+        maxDepth?: number | undefined;
+        scannedAt?: Date | undefined;
+        totalFiles?: number | undefined;
+        totalDirectories?: number | undefined;
+        rootFiles?: string[] | undefined;
+        commonDirectories?: string[] | undefined;
+        hasPackageJson?: boolean | undefined;
+        hasGitIgnore?: boolean | undefined;
+        hasReadme?: boolean | undefined;
+        hasLicense?: boolean | undefined;
+        maxDepthScanned?: number | undefined;
+        totalSize?: number | undefined;
+        excludedDirectories?: string[] | undefined;
+        filesByExtension?: Record<string, number> | undefined;
+        topLevelDirectories?: string[] | undefined;
+        detectedFolders?: {
+            docs?: string | undefined;
+            test?: string | undefined;
+            src?: string | undefined;
+        } | undefined;
+        isMonorepo?: boolean | undefined;
+        workspaces?: string[] | undefined;
+    }>>;
+    /** Detected frameworks and libraries */
+    frameworks: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Framework or library name */
+        name: z.ZodString;
+        /** Detected version (if available) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Framework category */
+        category: z.ZodEnum<["frontend", "backend", "fullstack", "testing", "build", "mobile", "desktop", "other"]>;
+        /** How confident the detection is */
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>>;
+        /** How the framework was detected */
+        detectedVia: z.ZodOptional<z.ZodString>;
+        /** Detailed reasons for how the framework was detected */
+        detectionReasons: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Primary programming language */
+        language: z.ZodOptional<z.ZodString>;
+        /** Related configuration files found */
+        configFiles: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether this is a dev dependency */
+        isDevDependency: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Additional metadata about the framework */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        detectionReasons: string[];
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }, {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        detectionReasons?: string[] | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }>, "many">>>;
+    /** Detected configuration files */
+    configurations: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Configuration file name */
+        name: z.ZodString;
+        /** Relative path from project root */
+        path: z.ZodString;
+        /** File format */
+        format: z.ZodEnum<["json", "yaml", "toml", "javascript", "typescript", "ini", "env", "xml", "other"]>;
+        /** Configuration purpose/category */
+        purpose: z.ZodEnum<["package-manager", "typescript", "linting", "testing", "build", "ci-cd", "containerization", "environment", "git", "editor", "documentation", "security", "other"]>;
+        /** Whether the configuration file is syntactically valid */
+        isValid: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Validation error message if not valid */
+        validationError: z.ZodOptional<z.ZodString>;
+        /** Key settings extracted from the configuration (sanitized, no secrets) */
+        keySettings: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        /** Whether this config extends another configuration */
+        extends: z.ZodOptional<z.ZodString>;
+        /** Size in bytes */
+        size: z.ZodOptional<z.ZodNumber>;
+        /** Last modified timestamp */
+        modifiedAt: z.ZodOptional<z.ZodDate>;
+        /** Additional metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        name: string;
+        format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+        purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+        isValid: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        size?: number | undefined;
+        modifiedAt?: Date | undefined;
+        validationError?: string | undefined;
+        keySettings?: Record<string, unknown> | undefined;
+        extends?: string | undefined;
+    }, {
+        path: string;
+        name: string;
+        format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+        purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+        metadata?: Record<string, unknown> | undefined;
+        size?: number | undefined;
+        modifiedAt?: Date | undefined;
+        isValid?: boolean | undefined;
+        validationError?: string | undefined;
+        keySettings?: Record<string, unknown> | undefined;
+        extends?: string | undefined;
+    }>, "many">>>;
+    /** Detected test frameworks */
+    testFrameworks: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Test framework name */
+        name: z.ZodString;
+        /** Detected version (if available) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Type of testing this framework handles */
+        type: z.ZodEnum<["unit", "integration", "e2e", "component", "visual", "performance", "accessibility", "other"]>;
+        /** Configuration file path (if detected) */
+        configFile: z.ZodOptional<z.ZodString>;
+        /** File patterns used to identify test files */
+        testPatterns: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Primary test directory (if detected) */
+        testDirectory: z.ZodOptional<z.ZodString>;
+        /** Command to run tests */
+        runCommand: z.ZodOptional<z.ZodString>;
+        /** Whether code coverage is configured */
+        coverageEnabled: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Coverage tool used (istanbul, c8, etc.) */
+        coverageTool: z.ZodOptional<z.ZodString>;
+        /** Whether watch mode is available */
+        watchModeAvailable: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Related plugins/extensions detected */
+        plugins: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Number of test files detected */
+        testFileCount: z.ZodOptional<z.ZodNumber>;
+        /** Detected assertion library (if different from test runner) */
+        assertionLibrary: z.ZodOptional<z.ZodString>;
+        /** Detected mocking library (if any) */
+        mockingLibrary: z.ZodOptional<z.ZodString>;
+        /** Additional metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        type: "integration" | "other" | "unit" | "visual" | "e2e" | "performance" | "component" | "accessibility";
+        name: string;
+        testPatterns: string[];
+        coverageEnabled: boolean;
+        watchModeAvailable: boolean;
+        plugins: string[];
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        configFile?: string | undefined;
+        testDirectory?: string | undefined;
+        runCommand?: string | undefined;
+        coverageTool?: string | undefined;
+        testFileCount?: number | undefined;
+        assertionLibrary?: string | undefined;
+        mockingLibrary?: string | undefined;
+    }, {
+        type: "integration" | "other" | "unit" | "visual" | "e2e" | "performance" | "component" | "accessibility";
+        name: string;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        testPatterns?: string[] | undefined;
+        configFile?: string | undefined;
+        testDirectory?: string | undefined;
+        runCommand?: string | undefined;
+        coverageEnabled?: boolean | undefined;
+        coverageTool?: string | undefined;
+        watchModeAvailable?: boolean | undefined;
+        plugins?: string[] | undefined;
+        testFileCount?: number | undefined;
+        assertionLibrary?: string | undefined;
+        mockingLibrary?: string | undefined;
+    }>, "many">>>;
+    /** When the context was detected/generated */
+    detectedAt: z.ZodOptional<z.ZodDate>;
+    /** Errors encountered during detection */
+    errors: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        component: z.ZodString;
+        message: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        message: string;
+        component: string;
+    }, {
+        message: string;
+        component: string;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    errors: {
+        message: string;
+        component: string;
+    }[];
+    frameworks: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        confidence: "high" | "medium" | "low";
+        detectionReasons: string[];
+        configFiles: string[];
+        isDevDependency: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        detectedVia?: string | undefined;
+    }[];
+    configurations: {
+        path: string;
+        name: string;
+        format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+        purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+        isValid: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        size?: number | undefined;
+        modifiedAt?: Date | undefined;
+        validationError?: string | undefined;
+        keySettings?: Record<string, unknown> | undefined;
+        extends?: string | undefined;
+    }[];
+    testFrameworks: {
+        type: "integration" | "other" | "unit" | "visual" | "e2e" | "performance" | "component" | "accessibility";
+        name: string;
+        testPatterns: string[];
+        coverageEnabled: boolean;
+        watchModeAvailable: boolean;
+        plugins: string[];
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        configFile?: string | undefined;
+        testDirectory?: string | undefined;
+        runCommand?: string | undefined;
+        coverageTool?: string | undefined;
+        testFileCount?: number | undefined;
+        assertionLibrary?: string | undefined;
+        mockingLibrary?: string | undefined;
+    }[];
+    git?: {
+        staged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        ahead: number;
+        behind: number;
+        unstaged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        untracked: string[];
+        isDirty: boolean;
+        hasConflicts: boolean;
+        remotes: {
+            name: string;
+            url: string;
+        }[];
+        recentCommits: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[];
+        remoteBranch?: string | null | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+    } | undefined;
+    detectedAt?: Date | undefined;
+    gitStatus?: {
+        staged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount: number;
+            behindCount: number;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        ahead: number;
+        behind: number;
+        unstaged: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        untracked: string[];
+        isDirty: boolean;
+        hasConflicts: boolean;
+        remotes: {
+            name: string;
+            url: string;
+        }[];
+        recentCommits: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[];
+        remoteBranch?: string | null | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+    } | undefined;
+    structure?: {
+        entries: ProjectEntry[];
+        root: string;
+        totalFiles: number;
+        totalDirectories: number;
+        rootFiles: string[];
+        commonDirectories: string[];
+        hasPackageJson: boolean;
+        hasGitIgnore: boolean;
+        hasReadme: boolean;
+        hasLicense: boolean;
+        excludedDirectories: string[];
+        filesByExtension: Record<string, number>;
+        topLevelDirectories: string[];
+        isMonorepo: boolean;
+        maxDepth?: number | undefined;
+        scannedAt?: Date | undefined;
+        maxDepthScanned?: number | undefined;
+        totalSize?: number | undefined;
+        detectedFolders?: {
+            docs?: string | undefined;
+            test?: string | undefined;
+            src?: string | undefined;
+        } | undefined;
+        workspaces?: string[] | undefined;
+    } | undefined;
+}, {
+    errors?: {
+        message: string;
+        component: string;
+    }[] | undefined;
+    git?: {
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        staged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
+        unstaged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        untracked?: string[] | undefined;
+        isDirty?: boolean | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+        hasConflicts?: boolean | undefined;
+        remotes?: {
+            name: string;
+            url: string;
+        }[] | undefined;
+        recentCommits?: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[] | undefined;
+    } | undefined;
+    detectedAt?: Date | undefined;
+    frameworks?: {
+        name: string;
+        category: "backend" | "testing" | "other" | "frontend" | "fullstack" | "build" | "mobile" | "desktop";
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        language?: string | undefined;
+        confidence?: "high" | "medium" | "low" | undefined;
+        detectedVia?: string | undefined;
+        detectionReasons?: string[] | undefined;
+        configFiles?: string[] | undefined;
+        isDevDependency?: boolean | undefined;
+    }[] | undefined;
+    gitStatus?: {
+        isRepository: boolean;
+        branch: string;
+        isClean: boolean;
+        hasUncommittedChanges: boolean;
+        hasUntrackedFiles: boolean;
+        hasStagedChanges: boolean;
+        changedFiles: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[];
+        stashCount: number;
+        tracking: {
+            remote: string | null;
+            remoteBranch: string | null;
+            aheadCount?: number | undefined;
+            behindCount?: number | undefined;
+        } | null;
+        lastCommit: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+        } | null;
+        staged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        remoteBranch?: string | null | undefined;
+        ahead?: number | undefined;
+        behind?: number | undefined;
+        unstaged?: {
+            path: string;
+            status: "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!";
+            staged: boolean;
+            oldPath?: string | undefined;
+        }[] | undefined;
+        untracked?: string[] | undefined;
+        isDirty?: boolean | undefined;
+        lastCommitHash?: string | undefined;
+        lastCommitMessage?: string | undefined;
+        lastCommitTimestamp?: Date | undefined;
+        hasConflicts?: boolean | undefined;
+        remotes?: {
+            name: string;
+            url: string;
+        }[] | undefined;
+        recentCommits?: {
+            timestamp: Date;
+            message: string;
+            hash: string;
+            author?: string | undefined;
+            authorEmail?: string | undefined;
+        }[] | undefined;
+    } | undefined;
+    structure?: {
+        root: string;
+        entries?: ProjectEntry[] | undefined;
+        maxDepth?: number | undefined;
+        scannedAt?: Date | undefined;
+        totalFiles?: number | undefined;
+        totalDirectories?: number | undefined;
+        rootFiles?: string[] | undefined;
+        commonDirectories?: string[] | undefined;
+        hasPackageJson?: boolean | undefined;
+        hasGitIgnore?: boolean | undefined;
+        hasReadme?: boolean | undefined;
+        hasLicense?: boolean | undefined;
+        maxDepthScanned?: number | undefined;
+        totalSize?: number | undefined;
+        excludedDirectories?: string[] | undefined;
+        filesByExtension?: Record<string, number> | undefined;
+        topLevelDirectories?: string[] | undefined;
+        detectedFolders?: {
+            docs?: string | undefined;
+            test?: string | undefined;
+            src?: string | undefined;
+        } | undefined;
+        isMonorepo?: boolean | undefined;
+        workspaces?: string[] | undefined;
+    } | undefined;
+    configurations?: {
+        path: string;
+        name: string;
+        format: "javascript" | "json" | "env" | "xml" | "other" | "typescript" | "yaml" | "toml" | "ini";
+        purpose: "environment" | "testing" | "security" | "other" | "git" | "documentation" | "typescript" | "build" | "package-manager" | "linting" | "ci-cd" | "containerization" | "editor";
+        metadata?: Record<string, unknown> | undefined;
+        size?: number | undefined;
+        modifiedAt?: Date | undefined;
+        isValid?: boolean | undefined;
+        validationError?: string | undefined;
+        keySettings?: Record<string, unknown> | undefined;
+        extends?: string | undefined;
+    }[] | undefined;
+    testFrameworks?: {
+        type: "integration" | "other" | "unit" | "visual" | "e2e" | "performance" | "component" | "accessibility";
+        name: string;
+        metadata?: Record<string, unknown> | undefined;
+        version?: string | undefined;
+        testPatterns?: string[] | undefined;
+        configFile?: string | undefined;
+        testDirectory?: string | undefined;
+        runCommand?: string | undefined;
+        coverageEnabled?: boolean | undefined;
+        coverageTool?: string | undefined;
+        watchModeAvailable?: boolean | undefined;
+        plugins?: string[] | undefined;
+        testFileCount?: number | undefined;
+        assertionLibrary?: string | undefined;
+        mockingLibrary?: string | undefined;
+    }[] | undefined;
+}>;
+export type ProjectContext = z.infer<typeof ProjectContextSchema>;
+/**
+ * Analysis of technology stack including languages, frameworks, and runtime
+ * @example
+ * ```typescript
+ * const stackAnalysis: StackAnalysis = {
+ *   primaryLanguage: 'TypeScript',
+ *   languages: [
+ *     { name: 'TypeScript', percentage: 85, files: 120 },
+ *     { name: 'JavaScript', percentage: 15, files: 20 }
+ *   ],
+ *   frameworks: [
+ *     { name: 'React', version: '18.2.0', category: 'frontend' },
+ *     { name: 'Node.js', version: '18.17.0', category: 'runtime' }
+ *   ],
+ *   buildTools: ['Vite', 'TypeScript'],
+ *   packageManagers: ['npm']
+ * };
+ * ```
+ */
+export declare const StackAnalysisSchema: z.ZodObject<{
+    /** Primary programming language used in the codebase */
+    primaryLanguage: z.ZodString;
+    /** Breakdown of languages used with percentages and file counts */
+    languages: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        percentage: z.ZodNumber;
+        files: z.ZodNumber;
+        extensions: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        percentage: number;
+        files: number;
+        extensions?: string[] | undefined;
+    }, {
+        name: string;
+        percentage: number;
+        files: number;
+        extensions?: string[] | undefined;
+    }>, "many">;
+    /** Detected frameworks and libraries with version information */
+    frameworks: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        version: z.ZodOptional<z.ZodString>;
+        category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "other"]>;
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+        confidence: number;
+        version?: string | undefined;
+    }, {
+        name: string;
+        category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+        version?: string | undefined;
+        confidence?: number | undefined;
+    }>, "many">;
+    /** Build tools and bundlers detected */
+    buildTools: z.ZodArray<z.ZodString, "many">;
+    /** Package managers in use */
+    packageManagers: z.ZodArray<z.ZodEnum<["npm", "yarn", "pnpm", "bun"]>, "many">;
+    /** Runtime environments */
+    runtimes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        version: z.ZodOptional<z.ZodString>;
+        type: z.ZodEnum<["node", "browser", "deno", "bun", "other"]>;
+    }, "strip", z.ZodTypeAny, {
+        type: "browser" | "node" | "other" | "bun" | "deno";
+        name: string;
+        version?: string | undefined;
+    }, {
+        type: "browser" | "node" | "other" | "bun" | "deno";
+        name: string;
+        version?: string | undefined;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    frameworks: {
+        name: string;
+        category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+        confidence: number;
+        version?: string | undefined;
+    }[];
+    primaryLanguage: string;
+    languages: {
+        name: string;
+        percentage: number;
+        files: number;
+        extensions?: string[] | undefined;
+    }[];
+    buildTools: string[];
+    packageManagers: ("npm" | "yarn" | "pnpm" | "bun")[];
+    runtimes: {
+        type: "browser" | "node" | "other" | "bun" | "deno";
+        name: string;
+        version?: string | undefined;
+    }[];
+}, {
+    frameworks: {
+        name: string;
+        category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+        version?: string | undefined;
+        confidence?: number | undefined;
+    }[];
+    primaryLanguage: string;
+    languages: {
+        name: string;
+        percentage: number;
+        files: number;
+        extensions?: string[] | undefined;
+    }[];
+    buildTools: string[];
+    packageManagers: ("npm" | "yarn" | "pnpm" | "bun")[];
+    runtimes?: {
+        type: "browser" | "node" | "other" | "bun" | "deno";
+        name: string;
+        version?: string | undefined;
+    }[] | undefined;
+}>;
+export type StackAnalysis = z.infer<typeof StackAnalysisSchema>;
+/**
+ * Analysis of codebase architecture including components, layers, and patterns
+ * @example
+ * ```typescript
+ * const archAnalysis: ArchitectureAnalysis = {
+ *   pattern: 'layered',
+ *   components: [
+ *     { name: 'UserService', type: 'service', path: 'src/services/user.ts' },
+ *     { name: 'UserController', type: 'controller', path: 'src/controllers/user.ts' }
+ *   ],
+ *   layers: [
+ *     { name: 'presentation', description: 'UI components', paths: ['src/components'] },
+ *     { name: 'business', description: 'Business logic', paths: ['src/services'] }
+ *   ],
+ *   dependencies: { external: 25, internal: 45, circular: 2 }
+ * };
+ * ```
+ */
+export declare const ArchitectureAnalysisSchema: z.ZodObject<{
+    /** Overall architectural pattern detected */
+    pattern: z.ZodEnum<["layered", "microservices", "mvc", "mvp", "mvvm", "component-based", "modular", "monolithic", "hexagonal", "onion", "clean", "other"]>;
+    /** Key components identified in the codebase */
+    components: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        type: z.ZodEnum<["component", "service", "controller", "model", "view", "repository", "factory", "utility", "middleware", "hook", "store", "other"]>;
+        path: z.ZodString;
+        dependencies: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        exports: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        loc: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+        path: string;
+        name: string;
+        dependencies: string[];
+        exports: string[];
+        loc?: number | undefined;
+    }, {
+        type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+        path: string;
+        name: string;
+        dependencies?: string[] | undefined;
+        exports?: string[] | undefined;
+        loc?: number | undefined;
+    }>, "many">;
+    /** Architectural layers or modules */
+    layers: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        description: z.ZodOptional<z.ZodString>;
+        paths: z.ZodArray<z.ZodString, "many">;
+        dependencies: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        dependencies: string[];
+        paths: string[];
+        description?: string | undefined;
+    }, {
+        name: string;
+        paths: string[];
+        description?: string | undefined;
+        dependencies?: string[] | undefined;
+    }>, "many">;
+    /** Dependency analysis summary */
+    dependencies: z.ZodObject<{
+        external: z.ZodNumber;
+        internal: z.ZodNumber;
+        circular: z.ZodNumber;
+        unused: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        external: number;
+        internal: number;
+        circular: number;
+        unused: number;
+    }, {
+        external: number;
+        internal: number;
+        circular: number;
+        unused?: number | undefined;
+    }>;
+    /** Entry points to the application */
+    entryPoints: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        path: z.ZodString;
+        type: z.ZodEnum<["main", "cli", "server", "worker", "test", "other"]>;
+        description: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        type: "main" | "worker" | "server" | "other" | "test" | "cli";
+        path: string;
+        description?: string | undefined;
+    }, {
+        type: "main" | "worker" | "server" | "other" | "test" | "cli";
+        path: string;
+        description?: string | undefined;
+    }>, "many">>>;
+}, "strip", z.ZodTypeAny, {
+    pattern: "other" | "layered" | "microservices" | "mvc" | "mvp" | "mvvm" | "component-based" | "modular" | "monolithic" | "hexagonal" | "onion" | "clean";
+    components: {
+        type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+        path: string;
+        name: string;
+        dependencies: string[];
+        exports: string[];
+        loc?: number | undefined;
+    }[];
+    dependencies: {
+        external: number;
+        internal: number;
+        circular: number;
+        unused: number;
+    };
+    layers: {
+        name: string;
+        dependencies: string[];
+        paths: string[];
+        description?: string | undefined;
+    }[];
+    entryPoints: {
+        type: "main" | "worker" | "server" | "other" | "test" | "cli";
+        path: string;
+        description?: string | undefined;
+    }[];
+}, {
+    pattern: "other" | "layered" | "microservices" | "mvc" | "mvp" | "mvvm" | "component-based" | "modular" | "monolithic" | "hexagonal" | "onion" | "clean";
+    components: {
+        type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+        path: string;
+        name: string;
+        dependencies?: string[] | undefined;
+        exports?: string[] | undefined;
+        loc?: number | undefined;
+    }[];
+    dependencies: {
+        external: number;
+        internal: number;
+        circular: number;
+        unused?: number | undefined;
+    };
+    layers: {
+        name: string;
+        paths: string[];
+        description?: string | undefined;
+        dependencies?: string[] | undefined;
+    }[];
+    entryPoints?: {
+        type: "main" | "worker" | "server" | "other" | "test" | "cli";
+        path: string;
+        description?: string | undefined;
+    }[] | undefined;
+}>;
+export type ArchitectureAnalysis = z.infer<typeof ArchitectureAnalysisSchema>;
+/**
+ * Analysis of coding conventions and style patterns
+ * @example
+ * ```typescript
+ * const conventionAnalysis: ConventionAnalysis = {
+ *   fileNaming: 'camelCase',
+ *   functionNaming: 'camelCase',
+ *   variableNaming: 'camelCase',
+ *   indentation: { type: 'spaces', size: 2 },
+ *   imports: { style: 'es6', grouping: 'type-separate' },
+ *   documentation: { style: 'jsdoc', coverage: 75 },
+ *   organization: {
+ *     testLocation: 'separate-__tests__',
+ *     testNaming: 'suffix-.test',
+ *     sourceStructure: 'src'
+ *   }
+ * };
+ * ```
+ */
+export declare const ConventionAnalysisSchema: z.ZodObject<{
+    /** File naming convention pattern */
+    fileNaming: z.ZodEnum<["camelCase", "PascalCase", "kebab-case", "snake_case", "mixed", "inconsistent"]>;
+    /** Function/method naming convention */
+    functionNaming: z.ZodEnum<["camelCase", "PascalCase", "snake_case", "mixed", "inconsistent"]>;
+    /** Variable naming convention */
+    variableNaming: z.ZodEnum<["camelCase", "PascalCase", "snake_case", "SCREAMING_SNAKE_CASE", "mixed", "inconsistent"]>;
+    /** Class naming convention */
+    classNaming: z.ZodOptional<z.ZodEnum<["PascalCase", "camelCase", "snake_case", "mixed", "inconsistent"]>>;
+    /** Constant naming convention */
+    constantNaming: z.ZodOptional<z.ZodEnum<["SCREAMING_SNAKE_CASE", "camelCase", "PascalCase", "mixed", "inconsistent"]>>;
+    /** Indentation settings */
+    indentation: z.ZodObject<{
+        type: z.ZodEnum<["spaces", "tabs", "mixed"]>;
+        size: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        type: "mixed" | "spaces" | "tabs";
+        size?: number | undefined;
+    }, {
+        type: "mixed" | "spaces" | "tabs";
+        size?: number | undefined;
+    }>;
+    /** Import/export style patterns */
+    imports: z.ZodObject<{
+        style: z.ZodEnum<["es6", "commonjs", "amd", "umd", "mixed"]>;
+        grouping: z.ZodOptional<z.ZodEnum<["none", "type-separate", "source-separate", "alphabetical", "custom"]>>;
+        quotes: z.ZodOptional<z.ZodEnum<["single", "double", "mixed"]>>;
+    }, "strip", z.ZodTypeAny, {
+        style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+        quotes?: "mixed" | "single" | "double" | undefined;
+        grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+    }, {
+        style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+        quotes?: "mixed" | "single" | "double" | undefined;
+        grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+    }>;
+    /** Documentation patterns */
+    documentation: z.ZodObject<{
+        style: z.ZodEnum<["jsdoc", "tsdoc", "inline", "markdown", "none", "mixed"]>;
+        coverage: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+        coverage: number;
+    }, {
+        style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+        coverage: number;
+    }>;
+    /** Code formatting patterns */
+    formatting: z.ZodOptional<z.ZodObject<{
+        lineLength: z.ZodOptional<z.ZodNumber>;
+        semicolons: z.ZodOptional<z.ZodEnum<["required", "optional", "mixed"]>>;
+        quotes: z.ZodOptional<z.ZodEnum<["single", "double", "backtick", "mixed"]>>;
+        trailingCommas: z.ZodOptional<z.ZodEnum<["always", "never", "es5", "mixed"]>>;
+    }, "strip", z.ZodTypeAny, {
+        quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+        lineLength?: number | undefined;
+        semicolons?: "required" | "optional" | "mixed" | undefined;
+        trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+    }, {
+        quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+        lineLength?: number | undefined;
+        semicolons?: "required" | "optional" | "mixed" | undefined;
+        trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+    }>>;
+    /** File organization patterns */
+    organization: z.ZodOptional<z.ZodObject<{
+        /** Test file location patterns */
+        testLocation: z.ZodEnum<["colocated", "separate-tests", "separate-__tests__", "mixed"]>;
+        /** Test file naming patterns */
+        testNaming: z.ZodEnum<["suffix-.test", "suffix-.spec", "suffix-Test", "prefix-test-", "mixed"]>;
+        /** Source directory structure */
+        sourceStructure: z.ZodEnum<["src", "lib", "app", "source", "root-level", "mixed"]>;
+        /** Configuration file organization */
+        configLocation: z.ZodOptional<z.ZodEnum<["root", "config-dir", "mixed"]>>;
+    }, "strip", z.ZodTypeAny, {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+        configLocation?: "root" | "mixed" | "config-dir" | undefined;
+    }, {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+        configLocation?: "root" | "mixed" | "config-dir" | undefined;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    documentation: {
+        style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+        coverage: number;
+    };
+    indentation: {
+        type: "mixed" | "spaces" | "tabs";
+        size?: number | undefined;
+    };
+    imports: {
+        style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+        quotes?: "mixed" | "single" | "double" | undefined;
+        grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+    };
+    fileNaming: "camelCase" | "PascalCase" | "kebab-case" | "snake_case" | "mixed" | "inconsistent";
+    functionNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent";
+    variableNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE";
+    formatting?: {
+        quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+        lineLength?: number | undefined;
+        semicolons?: "required" | "optional" | "mixed" | undefined;
+        trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+    } | undefined;
+    classNaming?: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | undefined;
+    constantNaming?: "camelCase" | "PascalCase" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE" | undefined;
+    organization?: {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+        configLocation?: "root" | "mixed" | "config-dir" | undefined;
+    } | undefined;
+}, {
+    documentation: {
+        style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+        coverage: number;
+    };
+    indentation: {
+        type: "mixed" | "spaces" | "tabs";
+        size?: number | undefined;
+    };
+    imports: {
+        style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+        quotes?: "mixed" | "single" | "double" | undefined;
+        grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+    };
+    fileNaming: "camelCase" | "PascalCase" | "kebab-case" | "snake_case" | "mixed" | "inconsistent";
+    functionNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent";
+    variableNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE";
+    formatting?: {
+        quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+        lineLength?: number | undefined;
+        semicolons?: "required" | "optional" | "mixed" | undefined;
+        trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+    } | undefined;
+    classNaming?: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | undefined;
+    constantNaming?: "camelCase" | "PascalCase" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE" | undefined;
+    organization?: {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+        configLocation?: "root" | "mixed" | "config-dir" | undefined;
+    } | undefined;
+}>;
+export type ConventionAnalysis = z.infer<typeof ConventionAnalysisSchema>;
+/**
+ * Analysis of technical debt including categorization and severity
+ * @example
+ * ```typescript
+ * const debtAnalysis: TechnicalDebtAnalysis = {
+ *   totalScore: 42,
+ *   categories: [
+ *     { category: 'code-smell', count: 15, severity: 'medium', examples: ['Large function in user.ts'] },
+ *     { category: 'duplication', count: 8, severity: 'high', examples: ['Repeated validation logic'] }
+ *   ],
+ *   hotspots: [
+ *     { path: 'src/legacy/old-api.js', score: 95, issues: ['outdated-dependency', 'no-tests'] }
+ *   ],
+ *   trends: { improving: true, changeRate: -5.2 }
+ * };
+ * ```
+ */
+export declare const TechnicalDebtAnalysisSchema: z.ZodObject<{
+    /** Overall technical debt score (0-100, higher is worse) */
+    totalScore: z.ZodNumber;
+    /** Breakdown by debt category */
+    categories: z.ZodArray<z.ZodObject<{
+        category: z.ZodEnum<["code-smell", "duplication", "complexity", "outdated-dependency", "security-vulnerability", "performance", "maintainability", "testability", "documentation", "dead-code", "technical-design", "other"]>;
+        count: z.ZodNumber;
+        severity: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        examples: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        estimatedEffort: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        severity: "critical" | "high" | "medium" | "low";
+        category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+        examples: string[];
+        count: number;
+        estimatedEffort?: string | undefined;
+    }, {
+        severity: "critical" | "high" | "medium" | "low";
+        category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+        count: number;
+        examples?: string[] | undefined;
+        estimatedEffort?: string | undefined;
+    }>, "many">;
+    /** Files or areas with highest technical debt */
+    hotspots: z.ZodArray<z.ZodObject<{
+        path: z.ZodString;
+        score: z.ZodNumber;
+        issues: z.ZodArray<z.ZodString, "many">;
+        loc: z.ZodOptional<z.ZodNumber>;
+        lastModified: z.ZodOptional<z.ZodDate>;
+    }, "strip", z.ZodTypeAny, {
+        issues: string[];
+        path: string;
+        score: number;
+        lastModified?: Date | undefined;
+        loc?: number | undefined;
+    }, {
+        issues: string[];
+        path: string;
+        score: number;
+        lastModified?: Date | undefined;
+        loc?: number | undefined;
+    }>, "many">;
+    /** Metrics and trends */
+    metrics: z.ZodOptional<z.ZodObject<{
+        codeComplexity: z.ZodOptional<z.ZodNumber>;
+        testCoverage: z.ZodOptional<z.ZodNumber>;
+        duplicatedLinesPercent: z.ZodOptional<z.ZodNumber>;
+        maintainabilityIndex: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        codeComplexity?: number | undefined;
+        testCoverage?: number | undefined;
+        duplicatedLinesPercent?: number | undefined;
+        maintainabilityIndex?: number | undefined;
+    }, {
+        codeComplexity?: number | undefined;
+        testCoverage?: number | undefined;
+        duplicatedLinesPercent?: number | undefined;
+        maintainabilityIndex?: number | undefined;
+    }>>;
+    /** Trend analysis */
+    trends: z.ZodOptional<z.ZodObject<{
+        improving: z.ZodBoolean;
+        changeRate: z.ZodNumber;
+        timeframe: z.ZodDefault<z.ZodOptional<z.ZodString>>;
+    }, "strip", z.ZodTypeAny, {
+        improving: boolean;
+        changeRate: number;
+        timeframe: string;
+    }, {
+        improving: boolean;
+        changeRate: number;
+        timeframe?: string | undefined;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    categories: {
+        severity: "critical" | "high" | "medium" | "low";
+        category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+        examples: string[];
+        count: number;
+        estimatedEffort?: string | undefined;
+    }[];
+    totalScore: number;
+    hotspots: {
+        issues: string[];
+        path: string;
+        score: number;
+        lastModified?: Date | undefined;
+        loc?: number | undefined;
+    }[];
+    metrics?: {
+        codeComplexity?: number | undefined;
+        testCoverage?: number | undefined;
+        duplicatedLinesPercent?: number | undefined;
+        maintainabilityIndex?: number | undefined;
+    } | undefined;
+    trends?: {
+        improving: boolean;
+        changeRate: number;
+        timeframe: string;
+    } | undefined;
+}, {
+    categories: {
+        severity: "critical" | "high" | "medium" | "low";
+        category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+        count: number;
+        examples?: string[] | undefined;
+        estimatedEffort?: string | undefined;
+    }[];
+    totalScore: number;
+    hotspots: {
+        issues: string[];
+        path: string;
+        score: number;
+        lastModified?: Date | undefined;
+        loc?: number | undefined;
+    }[];
+    metrics?: {
+        codeComplexity?: number | undefined;
+        testCoverage?: number | undefined;
+        duplicatedLinesPercent?: number | undefined;
+        maintainabilityIndex?: number | undefined;
+    } | undefined;
+    trends?: {
+        improving: boolean;
+        changeRate: number;
+        timeframe?: string | undefined;
+    } | undefined;
+}>;
+export type TechnicalDebtAnalysis = z.infer<typeof TechnicalDebtAnalysisSchema>;
+/**
+ * Analysis of testing patterns and coverage in a codebase
+ * @example
+ * ```typescript
+ * const testingAnalysis: TestingPatternAnalysis = {
+ *   framework: "Jest",
+ *   testCount: 150,
+ *   coverage: { overall: 85, statements: 87, branches: 83, functions: 90 },
+ *   patterns: {
+ *     unit: { count: 120, locations: ["src/__tests__", "src/**\/*.test.ts"] },
+ *     integration: { count: 25, locations: ["tests/integration"] },
+ *     e2e: { count: 5, locations: ["tests/e2e"] }
+ *   },
+ *   conventions: { fileNaming: "suffix-.test", testLocation: "colocated" },
+ *   antiPatterns: [],
+ *   recommendations: ["Add more integration tests", "Improve branch coverage"]
+ * };
+ * ```
+ */
+export declare const TestingPatternAnalysisSchema: z.ZodObject<{
+    /** Primary testing framework detected */
+    framework: z.ZodString;
+    /** Total number of test files found */
+    testCount: z.ZodNumber;
+    /** Test coverage information */
+    coverage: z.ZodOptional<z.ZodObject<{
+        overall: z.ZodOptional<z.ZodNumber>;
+        statements: z.ZodOptional<z.ZodNumber>;
+        branches: z.ZodOptional<z.ZodNumber>;
+        functions: z.ZodOptional<z.ZodNumber>;
+        lines: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        lines?: number | undefined;
+        overall?: number | undefined;
+        statements?: number | undefined;
+        branches?: number | undefined;
+        functions?: number | undefined;
+    }, {
+        lines?: number | undefined;
+        overall?: number | undefined;
+        statements?: number | undefined;
+        branches?: number | undefined;
+        functions?: number | undefined;
+    }>>;
+    /** Test pattern categorization */
+    patterns: z.ZodObject<{
+        unit: z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>;
+        integration: z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>;
+        e2e: z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>;
+        component: z.ZodOptional<z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>>;
+        performance: z.ZodOptional<z.ZodObject<{
+            count: z.ZodNumber;
+            locations: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            count: number;
+            locations: string[];
+        }, {
+            count: number;
+            locations: string[];
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        integration: {
+            count: number;
+            locations: string[];
+        };
+        unit: {
+            count: number;
+            locations: string[];
+        };
+        e2e: {
+            count: number;
+            locations: string[];
+        };
+        performance?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+        component?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+    }, {
+        integration: {
+            count: number;
+            locations: string[];
+        };
+        unit: {
+            count: number;
+            locations: string[];
+        };
+        e2e: {
+            count: number;
+            locations: string[];
+        };
+        performance?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+        component?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+    }>;
+    /** Testing conventions detected */
+    conventions: z.ZodObject<{
+        testFileNaming: z.ZodEnum<["suffix-.test", "suffix-.spec", "suffix-Test", "prefix-test-", "mixed"]>;
+        testLocation: z.ZodEnum<["colocated", "separate-tests", "separate-__tests__", "mixed"]>;
+        testStructure: z.ZodOptional<z.ZodEnum<["flat", "mirrored", "grouped", "mixed"]>>;
+    }, "strip", z.ZodTypeAny, {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+    }, {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+    }>;
+    /** Testing anti-patterns identified */
+    antiPatterns: z.ZodArray<z.ZodObject<{
+        type: z.ZodEnum<["no-tests", "god-test", "mystery-guest", "resource-optimism", "test-code-duplication", "assertion-roulette", "conditional-test-logic", "hardcoded-test-data", "other"]>;
+        description: z.ZodString;
+        examples: z.ZodArray<z.ZodString, "many">;
+        severity: z.ZodEnum<["low", "medium", "high", "critical"]>;
+    }, "strip", z.ZodTypeAny, {
+        type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+        description: string;
+        severity: "critical" | "high" | "medium" | "low";
+        examples: string[];
+    }, {
+        type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+        description: string;
+        severity: "critical" | "high" | "medium" | "low";
+        examples: string[];
+    }>, "many">;
+    /** Recommendations for testing improvements */
+    recommendations: z.ZodArray<z.ZodString, "many">;
+    /** Additional testing metrics */
+    metrics: z.ZodOptional<z.ZodObject<{
+        avgTestsPerFile: z.ZodOptional<z.ZodNumber>;
+        avgAssertionsPerTest: z.ZodOptional<z.ZodNumber>;
+        testToSourceRatio: z.ZodOptional<z.ZodNumber>;
+        mockedDependenciesCount: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        avgTestsPerFile?: number | undefined;
+        avgAssertionsPerTest?: number | undefined;
+        testToSourceRatio?: number | undefined;
+        mockedDependenciesCount?: number | undefined;
+    }, {
+        avgTestsPerFile?: number | undefined;
+        avgAssertionsPerTest?: number | undefined;
+        testToSourceRatio?: number | undefined;
+        mockedDependenciesCount?: number | undefined;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    framework: string;
+    conventions: {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+    };
+    patterns: {
+        integration: {
+            count: number;
+            locations: string[];
+        };
+        unit: {
+            count: number;
+            locations: string[];
+        };
+        e2e: {
+            count: number;
+            locations: string[];
+        };
+        performance?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+        component?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+    };
+    testCount: number;
+    antiPatterns: {
+        type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+        description: string;
+        severity: "critical" | "high" | "medium" | "low";
+        examples: string[];
+    }[];
+    recommendations: string[];
+    metrics?: {
+        avgTestsPerFile?: number | undefined;
+        avgAssertionsPerTest?: number | undefined;
+        testToSourceRatio?: number | undefined;
+        mockedDependenciesCount?: number | undefined;
+    } | undefined;
+    coverage?: {
+        lines?: number | undefined;
+        overall?: number | undefined;
+        statements?: number | undefined;
+        branches?: number | undefined;
+        functions?: number | undefined;
+    } | undefined;
+}, {
+    framework: string;
+    conventions: {
+        testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+        testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+        testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+    };
+    patterns: {
+        integration: {
+            count: number;
+            locations: string[];
+        };
+        unit: {
+            count: number;
+            locations: string[];
+        };
+        e2e: {
+            count: number;
+            locations: string[];
+        };
+        performance?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+        component?: {
+            count: number;
+            locations: string[];
+        } | undefined;
+    };
+    testCount: number;
+    antiPatterns: {
+        type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+        description: string;
+        severity: "critical" | "high" | "medium" | "low";
+        examples: string[];
+    }[];
+    recommendations: string[];
+    metrics?: {
+        avgTestsPerFile?: number | undefined;
+        avgAssertionsPerTest?: number | undefined;
+        testToSourceRatio?: number | undefined;
+        mockedDependenciesCount?: number | undefined;
+    } | undefined;
+    coverage?: {
+        lines?: number | undefined;
+        overall?: number | undefined;
+        statements?: number | undefined;
+        branches?: number | undefined;
+        functions?: number | undefined;
+    } | undefined;
+}>;
+export type TestingPatternAnalysis = z.infer<typeof TestingPatternAnalysisSchema>;
+/**
+ * Analysis of third-party integrations and dependencies in a codebase
+ * @example
+ * ```typescript
+ * const integrationAnalysis: IntegrationAnalysis = {
+ *   dependencies: {
+ *     production: [{ name: "react", version: "18.2.0", category: "frontend" }],
+ *     development: [{ name: "jest", version: "29.0.0", category: "testing" }],
+ *     outdated: [{ name: "lodash", current: "4.17.20", latest: "4.17.21", risk: "low" }],
+ *     security: []
+ *   },
+ *   apis: {
+ *     consumed: [{ url: "https://api.example.com", method: "GET", authenticated: true }],
+ *     exposed: [{ path: "/api/users", method: "POST", authenticated: true }]
+ *   },
+ *   services: { databases: ["PostgreSQL"], caches: ["Redis"], queues: [], cloud: ["AWS S3"] }
+ * };
+ * ```
+ */
+export declare const IntegrationAnalysisSchema: z.ZodObject<{
+    /** Dependency analysis */
+    dependencies: z.ZodObject<{
+        /** Production dependencies */
+        production: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            version: z.ZodString;
+            category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "security", "utility", "other"]>;
+            license: z.ZodOptional<z.ZodString>;
+            size: z.ZodOptional<z.ZodNumber>;
+            lastUpdated: z.ZodOptional<z.ZodDate>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }, {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }>, "many">;
+        /** Development dependencies */
+        development: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            version: z.ZodString;
+            category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "security", "utility", "other"]>;
+            license: z.ZodOptional<z.ZodString>;
+            size: z.ZodOptional<z.ZodNumber>;
+            lastUpdated: z.ZodOptional<z.ZodDate>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }, {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }>, "many">;
+        /** Outdated dependencies */
+        outdated: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            currentVersion: z.ZodString;
+            latestVersion: z.ZodString;
+            majorVersionsBehind: z.ZodOptional<z.ZodNumber>;
+            minorVersionsBehind: z.ZodOptional<z.ZodNumber>;
+            patchVersionsBehind: z.ZodOptional<z.ZodNumber>;
+            risk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            breaking: z.ZodOptional<z.ZodBoolean>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }, {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }>, "many">;
+        /** Security vulnerabilities */
+        security: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            severity: z.ZodEnum<["low", "moderate", "high", "critical"]>;
+            vulnerability: z.ZodString;
+            patchedVersion: z.ZodOptional<z.ZodString>;
+            cve: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }, {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }>, "many">;
+    }, "strip", z.ZodTypeAny, {
+        development: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        security: {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }[];
+        production: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        outdated: {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }[];
+    }, {
+        development: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        security: {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }[];
+        production: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        outdated: {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }[];
+    }>;
+    /** API integrations */
+    apis: z.ZodObject<{
+        /** External APIs consumed */
+        consumed: z.ZodArray<z.ZodObject<{
+            url: z.ZodString;
+            method: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]>;
+            authenticated: z.ZodOptional<z.ZodBoolean>;
+            rateLimit: z.ZodOptional<z.ZodBoolean>;
+            provider: z.ZodOptional<z.ZodString>;
+            usageCount: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }, {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }>, "many">;
+        /** APIs exposed by this service */
+        exposed: z.ZodArray<z.ZodObject<{
+            path: z.ZodString;
+            method: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]>;
+            authenticated: z.ZodOptional<z.ZodBoolean>;
+            deprecated: z.ZodOptional<z.ZodBoolean>;
+            version: z.ZodOptional<z.ZodString>;
+            documentation: z.ZodOptional<z.ZodBoolean>;
+        }, "strip", z.ZodTypeAny, {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }, {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }>, "many">;
+    }, "strip", z.ZodTypeAny, {
+        consumed: {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }[];
+        exposed: {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }[];
+    }, {
+        consumed: {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }[];
+        exposed: {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }[];
+    }>;
+    /** Service integrations */
+    services: z.ZodObject<{
+        /** Database integrations */
+        databases: z.ZodArray<z.ZodString, "many">;
+        /** Cache systems */
+        caches: z.ZodArray<z.ZodString, "many">;
+        /** Message queues */
+        queues: z.ZodArray<z.ZodString, "many">;
+        /** Cloud services */
+        cloud: z.ZodArray<z.ZodString, "many">;
+        /** Monitoring and analytics */
+        monitoring: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        /** Authentication services */
+        auth: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        /** Payment processors */
+        payments: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        databases: string[];
+        caches: string[];
+        queues: string[];
+        cloud: string[];
+        monitoring?: string[] | undefined;
+        auth?: string[] | undefined;
+        payments?: string[] | undefined;
+    }, {
+        databases: string[];
+        caches: string[];
+        queues: string[];
+        cloud: string[];
+        monitoring?: string[] | undefined;
+        auth?: string[] | undefined;
+        payments?: string[] | undefined;
+    }>;
+    /** Integration health metrics */
+    health: z.ZodOptional<z.ZodObject<{
+        dependencyRisk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        securityRisk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        maintenanceLoad: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        updateFrequency: z.ZodEnum<["current", "behind", "legacy", "abandoned"]>;
+    }, "strip", z.ZodTypeAny, {
+        dependencyRisk: "critical" | "high" | "medium" | "low";
+        securityRisk: "critical" | "high" | "medium" | "low";
+        maintenanceLoad: "critical" | "high" | "medium" | "low";
+        updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+    }, {
+        dependencyRisk: "critical" | "high" | "medium" | "low";
+        securityRisk: "critical" | "high" | "medium" | "low";
+        maintenanceLoad: "critical" | "high" | "medium" | "low";
+        updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+    }>>;
+    /** Integration recommendations */
+    recommendations: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+}, "strip", z.ZodTypeAny, {
+    services: {
+        databases: string[];
+        caches: string[];
+        queues: string[];
+        cloud: string[];
+        monitoring?: string[] | undefined;
+        auth?: string[] | undefined;
+        payments?: string[] | undefined;
+    };
+    dependencies: {
+        development: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        security: {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }[];
+        production: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        outdated: {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }[];
+    };
+    apis: {
+        consumed: {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }[];
+        exposed: {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }[];
+    };
+    health?: {
+        dependencyRisk: "critical" | "high" | "medium" | "low";
+        securityRisk: "critical" | "high" | "medium" | "low";
+        maintenanceLoad: "critical" | "high" | "medium" | "low";
+        updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+    } | undefined;
+    recommendations?: string[] | undefined;
+}, {
+    services: {
+        databases: string[];
+        caches: string[];
+        queues: string[];
+        cloud: string[];
+        monitoring?: string[] | undefined;
+        auth?: string[] | undefined;
+        payments?: string[] | undefined;
+    };
+    dependencies: {
+        development: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        security: {
+            name: string;
+            severity: "critical" | "high" | "low" | "moderate";
+            vulnerability: string;
+            patchedVersion?: string | undefined;
+            cve?: string | undefined;
+        }[];
+        production: {
+            name: string;
+            category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version: string;
+            lastUpdated?: Date | undefined;
+            license?: string | undefined;
+            size?: number | undefined;
+        }[];
+        outdated: {
+            name: string;
+            currentVersion: string;
+            latestVersion: string;
+            risk: "critical" | "high" | "medium" | "low";
+            majorVersionsBehind?: number | undefined;
+            minorVersionsBehind?: number | undefined;
+            patchVersionsBehind?: number | undefined;
+            breaking?: boolean | undefined;
+        }[];
+    };
+    apis: {
+        consumed: {
+            url: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            provider?: string | undefined;
+            authenticated?: boolean | undefined;
+            rateLimit?: boolean | undefined;
+            usageCount?: number | undefined;
+        }[];
+        exposed: {
+            path: string;
+            method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+            deprecated?: boolean | undefined;
+            version?: string | undefined;
+            documentation?: boolean | undefined;
+            authenticated?: boolean | undefined;
+        }[];
+    };
+    health?: {
+        dependencyRisk: "critical" | "high" | "medium" | "low";
+        securityRisk: "critical" | "high" | "medium" | "low";
+        maintenanceLoad: "critical" | "high" | "medium" | "low";
+        updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+    } | undefined;
+    recommendations?: string[] | undefined;
+}>;
+export type IntegrationAnalysis = z.infer<typeof IntegrationAnalysisSchema>;
+/**
+ * Comprehensive codebase analysis combining all analysis types
+ * This is the main output type for codebase analysis operations
+ *
+ * @example
+ * ```typescript
+ * const analysis: CodebaseAnalysis = {
+ *   timestamp: new Date(),
+ *   projectPath: '/path/to/project',
+ *   stack: { primaryLanguage: 'TypeScript', ... },
+ *   architecture: { pattern: 'layered', ... },
+ *   conventions: { fileNaming: 'camelCase', ... },
+ *   technicalDebt: { totalScore: 42, ... },
+ *   summary: {
+ *     totalFiles: 150,
+ *     totalLines: 25000,
+ *     analysisVersion: '1.0.0'
+ *   }
+ * };
+ * ```
+ */
+export declare const CodebaseAnalysisSchema: z.ZodObject<{
+    /** When the analysis was performed */
+    timestamp: z.ZodDate;
+    /** Path to the analyzed project */
+    projectPath: z.ZodString;
+    /** Technology stack analysis */
+    stack: z.ZodObject<{
+        /** Primary programming language used in the codebase */
+        primaryLanguage: z.ZodString;
+        /** Breakdown of languages used with percentages and file counts */
+        languages: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            percentage: z.ZodNumber;
+            files: z.ZodNumber;
+            extensions: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            percentage: number;
+            files: number;
+            extensions?: string[] | undefined;
+        }, {
+            name: string;
+            percentage: number;
+            files: number;
+            extensions?: string[] | undefined;
+        }>, "many">;
+        /** Detected frameworks and libraries with version information */
+        frameworks: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            version: z.ZodOptional<z.ZodString>;
+            category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "other"]>;
+            confidence: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            confidence: number;
+            version?: string | undefined;
+        }, {
+            name: string;
+            category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version?: string | undefined;
+            confidence?: number | undefined;
+        }>, "many">;
+        /** Build tools and bundlers detected */
+        buildTools: z.ZodArray<z.ZodString, "many">;
+        /** Package managers in use */
+        packageManagers: z.ZodArray<z.ZodEnum<["npm", "yarn", "pnpm", "bun"]>, "many">;
+        /** Runtime environments */
+        runtimes: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            version: z.ZodOptional<z.ZodString>;
+            type: z.ZodEnum<["node", "browser", "deno", "bun", "other"]>;
+        }, "strip", z.ZodTypeAny, {
+            type: "browser" | "node" | "other" | "bun" | "deno";
+            name: string;
+            version?: string | undefined;
+        }, {
+            type: "browser" | "node" | "other" | "bun" | "deno";
+            name: string;
+            version?: string | undefined;
+        }>, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        frameworks: {
+            name: string;
+            category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            confidence: number;
+            version?: string | undefined;
+        }[];
+        primaryLanguage: string;
+        languages: {
+            name: string;
+            percentage: number;
+            files: number;
+            extensions?: string[] | undefined;
+        }[];
+        buildTools: string[];
+        packageManagers: ("npm" | "yarn" | "pnpm" | "bun")[];
+        runtimes: {
+            type: "browser" | "node" | "other" | "bun" | "deno";
+            name: string;
+            version?: string | undefined;
+        }[];
+    }, {
+        frameworks: {
+            name: string;
+            category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version?: string | undefined;
+            confidence?: number | undefined;
+        }[];
+        primaryLanguage: string;
+        languages: {
+            name: string;
+            percentage: number;
+            files: number;
+            extensions?: string[] | undefined;
+        }[];
+        buildTools: string[];
+        packageManagers: ("npm" | "yarn" | "pnpm" | "bun")[];
+        runtimes?: {
+            type: "browser" | "node" | "other" | "bun" | "deno";
+            name: string;
+            version?: string | undefined;
+        }[] | undefined;
+    }>;
+    /** Architecture analysis */
+    architecture: z.ZodObject<{
+        /** Overall architectural pattern detected */
+        pattern: z.ZodEnum<["layered", "microservices", "mvc", "mvp", "mvvm", "component-based", "modular", "monolithic", "hexagonal", "onion", "clean", "other"]>;
+        /** Key components identified in the codebase */
+        components: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            type: z.ZodEnum<["component", "service", "controller", "model", "view", "repository", "factory", "utility", "middleware", "hook", "store", "other"]>;
+            path: z.ZodString;
+            dependencies: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            exports: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            loc: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+            path: string;
+            name: string;
+            dependencies: string[];
+            exports: string[];
+            loc?: number | undefined;
+        }, {
+            type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+            path: string;
+            name: string;
+            dependencies?: string[] | undefined;
+            exports?: string[] | undefined;
+            loc?: number | undefined;
+        }>, "many">;
+        /** Architectural layers or modules */
+        layers: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            description: z.ZodOptional<z.ZodString>;
+            paths: z.ZodArray<z.ZodString, "many">;
+            dependencies: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            dependencies: string[];
+            paths: string[];
+            description?: string | undefined;
+        }, {
+            name: string;
+            paths: string[];
+            description?: string | undefined;
+            dependencies?: string[] | undefined;
+        }>, "many">;
+        /** Dependency analysis summary */
+        dependencies: z.ZodObject<{
+            external: z.ZodNumber;
+            internal: z.ZodNumber;
+            circular: z.ZodNumber;
+            unused: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        }, "strip", z.ZodTypeAny, {
+            external: number;
+            internal: number;
+            circular: number;
+            unused: number;
+        }, {
+            external: number;
+            internal: number;
+            circular: number;
+            unused?: number | undefined;
+        }>;
+        /** Entry points to the application */
+        entryPoints: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            path: z.ZodString;
+            type: z.ZodEnum<["main", "cli", "server", "worker", "test", "other"]>;
+            description: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            type: "main" | "worker" | "server" | "other" | "test" | "cli";
+            path: string;
+            description?: string | undefined;
+        }, {
+            type: "main" | "worker" | "server" | "other" | "test" | "cli";
+            path: string;
+            description?: string | undefined;
+        }>, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        pattern: "other" | "layered" | "microservices" | "mvc" | "mvp" | "mvvm" | "component-based" | "modular" | "monolithic" | "hexagonal" | "onion" | "clean";
+        components: {
+            type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+            path: string;
+            name: string;
+            dependencies: string[];
+            exports: string[];
+            loc?: number | undefined;
+        }[];
+        dependencies: {
+            external: number;
+            internal: number;
+            circular: number;
+            unused: number;
+        };
+        layers: {
+            name: string;
+            dependencies: string[];
+            paths: string[];
+            description?: string | undefined;
+        }[];
+        entryPoints: {
+            type: "main" | "worker" | "server" | "other" | "test" | "cli";
+            path: string;
+            description?: string | undefined;
+        }[];
+    }, {
+        pattern: "other" | "layered" | "microservices" | "mvc" | "mvp" | "mvvm" | "component-based" | "modular" | "monolithic" | "hexagonal" | "onion" | "clean";
+        components: {
+            type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+            path: string;
+            name: string;
+            dependencies?: string[] | undefined;
+            exports?: string[] | undefined;
+            loc?: number | undefined;
+        }[];
+        dependencies: {
+            external: number;
+            internal: number;
+            circular: number;
+            unused?: number | undefined;
+        };
+        layers: {
+            name: string;
+            paths: string[];
+            description?: string | undefined;
+            dependencies?: string[] | undefined;
+        }[];
+        entryPoints?: {
+            type: "main" | "worker" | "server" | "other" | "test" | "cli";
+            path: string;
+            description?: string | undefined;
+        }[] | undefined;
+    }>;
+    /** Coding convention analysis */
+    conventions: z.ZodObject<{
+        /** File naming convention pattern */
+        fileNaming: z.ZodEnum<["camelCase", "PascalCase", "kebab-case", "snake_case", "mixed", "inconsistent"]>;
+        /** Function/method naming convention */
+        functionNaming: z.ZodEnum<["camelCase", "PascalCase", "snake_case", "mixed", "inconsistent"]>;
+        /** Variable naming convention */
+        variableNaming: z.ZodEnum<["camelCase", "PascalCase", "snake_case", "SCREAMING_SNAKE_CASE", "mixed", "inconsistent"]>;
+        /** Class naming convention */
+        classNaming: z.ZodOptional<z.ZodEnum<["PascalCase", "camelCase", "snake_case", "mixed", "inconsistent"]>>;
+        /** Constant naming convention */
+        constantNaming: z.ZodOptional<z.ZodEnum<["SCREAMING_SNAKE_CASE", "camelCase", "PascalCase", "mixed", "inconsistent"]>>;
+        /** Indentation settings */
+        indentation: z.ZodObject<{
+            type: z.ZodEnum<["spaces", "tabs", "mixed"]>;
+            size: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            type: "mixed" | "spaces" | "tabs";
+            size?: number | undefined;
+        }, {
+            type: "mixed" | "spaces" | "tabs";
+            size?: number | undefined;
+        }>;
+        /** Import/export style patterns */
+        imports: z.ZodObject<{
+            style: z.ZodEnum<["es6", "commonjs", "amd", "umd", "mixed"]>;
+            grouping: z.ZodOptional<z.ZodEnum<["none", "type-separate", "source-separate", "alphabetical", "custom"]>>;
+            quotes: z.ZodOptional<z.ZodEnum<["single", "double", "mixed"]>>;
+        }, "strip", z.ZodTypeAny, {
+            style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+            quotes?: "mixed" | "single" | "double" | undefined;
+            grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+        }, {
+            style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+            quotes?: "mixed" | "single" | "double" | undefined;
+            grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+        }>;
+        /** Documentation patterns */
+        documentation: z.ZodObject<{
+            style: z.ZodEnum<["jsdoc", "tsdoc", "inline", "markdown", "none", "mixed"]>;
+            coverage: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+            coverage: number;
+        }, {
+            style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+            coverage: number;
+        }>;
+        /** Code formatting patterns */
+        formatting: z.ZodOptional<z.ZodObject<{
+            lineLength: z.ZodOptional<z.ZodNumber>;
+            semicolons: z.ZodOptional<z.ZodEnum<["required", "optional", "mixed"]>>;
+            quotes: z.ZodOptional<z.ZodEnum<["single", "double", "backtick", "mixed"]>>;
+            trailingCommas: z.ZodOptional<z.ZodEnum<["always", "never", "es5", "mixed"]>>;
+        }, "strip", z.ZodTypeAny, {
+            quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+            lineLength?: number | undefined;
+            semicolons?: "required" | "optional" | "mixed" | undefined;
+            trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+        }, {
+            quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+            lineLength?: number | undefined;
+            semicolons?: "required" | "optional" | "mixed" | undefined;
+            trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+        }>>;
+        /** File organization patterns */
+        organization: z.ZodOptional<z.ZodObject<{
+            /** Test file location patterns */
+            testLocation: z.ZodEnum<["colocated", "separate-tests", "separate-__tests__", "mixed"]>;
+            /** Test file naming patterns */
+            testNaming: z.ZodEnum<["suffix-.test", "suffix-.spec", "suffix-Test", "prefix-test-", "mixed"]>;
+            /** Source directory structure */
+            sourceStructure: z.ZodEnum<["src", "lib", "app", "source", "root-level", "mixed"]>;
+            /** Configuration file organization */
+            configLocation: z.ZodOptional<z.ZodEnum<["root", "config-dir", "mixed"]>>;
+        }, "strip", z.ZodTypeAny, {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+            configLocation?: "root" | "mixed" | "config-dir" | undefined;
+        }, {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+            configLocation?: "root" | "mixed" | "config-dir" | undefined;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        documentation: {
+            style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+            coverage: number;
+        };
+        indentation: {
+            type: "mixed" | "spaces" | "tabs";
+            size?: number | undefined;
+        };
+        imports: {
+            style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+            quotes?: "mixed" | "single" | "double" | undefined;
+            grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+        };
+        fileNaming: "camelCase" | "PascalCase" | "kebab-case" | "snake_case" | "mixed" | "inconsistent";
+        functionNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent";
+        variableNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE";
+        formatting?: {
+            quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+            lineLength?: number | undefined;
+            semicolons?: "required" | "optional" | "mixed" | undefined;
+            trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+        } | undefined;
+        classNaming?: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | undefined;
+        constantNaming?: "camelCase" | "PascalCase" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE" | undefined;
+        organization?: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+            configLocation?: "root" | "mixed" | "config-dir" | undefined;
+        } | undefined;
+    }, {
+        documentation: {
+            style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+            coverage: number;
+        };
+        indentation: {
+            type: "mixed" | "spaces" | "tabs";
+            size?: number | undefined;
+        };
+        imports: {
+            style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+            quotes?: "mixed" | "single" | "double" | undefined;
+            grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+        };
+        fileNaming: "camelCase" | "PascalCase" | "kebab-case" | "snake_case" | "mixed" | "inconsistent";
+        functionNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent";
+        variableNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE";
+        formatting?: {
+            quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+            lineLength?: number | undefined;
+            semicolons?: "required" | "optional" | "mixed" | undefined;
+            trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+        } | undefined;
+        classNaming?: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | undefined;
+        constantNaming?: "camelCase" | "PascalCase" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE" | undefined;
+        organization?: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+            configLocation?: "root" | "mixed" | "config-dir" | undefined;
+        } | undefined;
+    }>;
+    /** Technical debt analysis */
+    technicalDebt: z.ZodObject<{
+        /** Overall technical debt score (0-100, higher is worse) */
+        totalScore: z.ZodNumber;
+        /** Breakdown by debt category */
+        categories: z.ZodArray<z.ZodObject<{
+            category: z.ZodEnum<["code-smell", "duplication", "complexity", "outdated-dependency", "security-vulnerability", "performance", "maintainability", "testability", "documentation", "dead-code", "technical-design", "other"]>;
+            count: z.ZodNumber;
+            severity: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            examples: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            estimatedEffort: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            severity: "critical" | "high" | "medium" | "low";
+            category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+            examples: string[];
+            count: number;
+            estimatedEffort?: string | undefined;
+        }, {
+            severity: "critical" | "high" | "medium" | "low";
+            category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+            count: number;
+            examples?: string[] | undefined;
+            estimatedEffort?: string | undefined;
+        }>, "many">;
+        /** Files or areas with highest technical debt */
+        hotspots: z.ZodArray<z.ZodObject<{
+            path: z.ZodString;
+            score: z.ZodNumber;
+            issues: z.ZodArray<z.ZodString, "many">;
+            loc: z.ZodOptional<z.ZodNumber>;
+            lastModified: z.ZodOptional<z.ZodDate>;
+        }, "strip", z.ZodTypeAny, {
+            issues: string[];
+            path: string;
+            score: number;
+            lastModified?: Date | undefined;
+            loc?: number | undefined;
+        }, {
+            issues: string[];
+            path: string;
+            score: number;
+            lastModified?: Date | undefined;
+            loc?: number | undefined;
+        }>, "many">;
+        /** Metrics and trends */
+        metrics: z.ZodOptional<z.ZodObject<{
+            codeComplexity: z.ZodOptional<z.ZodNumber>;
+            testCoverage: z.ZodOptional<z.ZodNumber>;
+            duplicatedLinesPercent: z.ZodOptional<z.ZodNumber>;
+            maintainabilityIndex: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            codeComplexity?: number | undefined;
+            testCoverage?: number | undefined;
+            duplicatedLinesPercent?: number | undefined;
+            maintainabilityIndex?: number | undefined;
+        }, {
+            codeComplexity?: number | undefined;
+            testCoverage?: number | undefined;
+            duplicatedLinesPercent?: number | undefined;
+            maintainabilityIndex?: number | undefined;
+        }>>;
+        /** Trend analysis */
+        trends: z.ZodOptional<z.ZodObject<{
+            improving: z.ZodBoolean;
+            changeRate: z.ZodNumber;
+            timeframe: z.ZodDefault<z.ZodOptional<z.ZodString>>;
+        }, "strip", z.ZodTypeAny, {
+            improving: boolean;
+            changeRate: number;
+            timeframe: string;
+        }, {
+            improving: boolean;
+            changeRate: number;
+            timeframe?: string | undefined;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        categories: {
+            severity: "critical" | "high" | "medium" | "low";
+            category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+            examples: string[];
+            count: number;
+            estimatedEffort?: string | undefined;
+        }[];
+        totalScore: number;
+        hotspots: {
+            issues: string[];
+            path: string;
+            score: number;
+            lastModified?: Date | undefined;
+            loc?: number | undefined;
+        }[];
+        metrics?: {
+            codeComplexity?: number | undefined;
+            testCoverage?: number | undefined;
+            duplicatedLinesPercent?: number | undefined;
+            maintainabilityIndex?: number | undefined;
+        } | undefined;
+        trends?: {
+            improving: boolean;
+            changeRate: number;
+            timeframe: string;
+        } | undefined;
+    }, {
+        categories: {
+            severity: "critical" | "high" | "medium" | "low";
+            category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+            count: number;
+            examples?: string[] | undefined;
+            estimatedEffort?: string | undefined;
+        }[];
+        totalScore: number;
+        hotspots: {
+            issues: string[];
+            path: string;
+            score: number;
+            lastModified?: Date | undefined;
+            loc?: number | undefined;
+        }[];
+        metrics?: {
+            codeComplexity?: number | undefined;
+            testCoverage?: number | undefined;
+            duplicatedLinesPercent?: number | undefined;
+            maintainabilityIndex?: number | undefined;
+        } | undefined;
+        trends?: {
+            improving: boolean;
+            changeRate: number;
+            timeframe?: string | undefined;
+        } | undefined;
+    }>;
+    /** Testing pattern analysis */
+    testingPatterns: z.ZodOptional<z.ZodObject<{
+        /** Primary testing framework detected */
+        framework: z.ZodString;
+        /** Total number of test files found */
+        testCount: z.ZodNumber;
+        /** Test coverage information */
+        coverage: z.ZodOptional<z.ZodObject<{
+            overall: z.ZodOptional<z.ZodNumber>;
+            statements: z.ZodOptional<z.ZodNumber>;
+            branches: z.ZodOptional<z.ZodNumber>;
+            functions: z.ZodOptional<z.ZodNumber>;
+            lines: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        }, {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        }>>;
+        /** Test pattern categorization */
+        patterns: z.ZodObject<{
+            unit: z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>;
+            integration: z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>;
+            e2e: z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>;
+            component: z.ZodOptional<z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>>;
+            performance: z.ZodOptional<z.ZodObject<{
+                count: z.ZodNumber;
+                locations: z.ZodArray<z.ZodString, "many">;
+            }, "strip", z.ZodTypeAny, {
+                count: number;
+                locations: string[];
+            }, {
+                count: number;
+                locations: string[];
+            }>>;
+        }, "strip", z.ZodTypeAny, {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        }, {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        }>;
+        /** Testing conventions detected */
+        conventions: z.ZodObject<{
+            testFileNaming: z.ZodEnum<["suffix-.test", "suffix-.spec", "suffix-Test", "prefix-test-", "mixed"]>;
+            testLocation: z.ZodEnum<["colocated", "separate-tests", "separate-__tests__", "mixed"]>;
+            testStructure: z.ZodOptional<z.ZodEnum<["flat", "mirrored", "grouped", "mixed"]>>;
+        }, "strip", z.ZodTypeAny, {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        }, {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        }>;
+        /** Testing anti-patterns identified */
+        antiPatterns: z.ZodArray<z.ZodObject<{
+            type: z.ZodEnum<["no-tests", "god-test", "mystery-guest", "resource-optimism", "test-code-duplication", "assertion-roulette", "conditional-test-logic", "hardcoded-test-data", "other"]>;
+            description: z.ZodString;
+            examples: z.ZodArray<z.ZodString, "many">;
+            severity: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        }, "strip", z.ZodTypeAny, {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }, {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }>, "many">;
+        /** Recommendations for testing improvements */
+        recommendations: z.ZodArray<z.ZodString, "many">;
+        /** Additional testing metrics */
+        metrics: z.ZodOptional<z.ZodObject<{
+            avgTestsPerFile: z.ZodOptional<z.ZodNumber>;
+            avgAssertionsPerTest: z.ZodOptional<z.ZodNumber>;
+            testToSourceRatio: z.ZodOptional<z.ZodNumber>;
+            mockedDependenciesCount: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        }, {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        framework: string;
+        conventions: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        };
+        patterns: {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        };
+        testCount: number;
+        antiPatterns: {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }[];
+        recommendations: string[];
+        metrics?: {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        } | undefined;
+        coverage?: {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        } | undefined;
+    }, {
+        framework: string;
+        conventions: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        };
+        patterns: {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        };
+        testCount: number;
+        antiPatterns: {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }[];
+        recommendations: string[];
+        metrics?: {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        } | undefined;
+        coverage?: {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        } | undefined;
+    }>>;
+    /** Integration and dependency analysis */
+    integrations: z.ZodOptional<z.ZodObject<{
+        /** Dependency analysis */
+        dependencies: z.ZodObject<{
+            /** Production dependencies */
+            production: z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                version: z.ZodString;
+                category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "security", "utility", "other"]>;
+                license: z.ZodOptional<z.ZodString>;
+                size: z.ZodOptional<z.ZodNumber>;
+                lastUpdated: z.ZodOptional<z.ZodDate>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }, {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }>, "many">;
+            /** Development dependencies */
+            development: z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                version: z.ZodString;
+                category: z.ZodEnum<["frontend", "backend", "testing", "build", "runtime", "database", "ui", "state-management", "security", "utility", "other"]>;
+                license: z.ZodOptional<z.ZodString>;
+                size: z.ZodOptional<z.ZodNumber>;
+                lastUpdated: z.ZodOptional<z.ZodDate>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }, {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }>, "many">;
+            /** Outdated dependencies */
+            outdated: z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                currentVersion: z.ZodString;
+                latestVersion: z.ZodString;
+                majorVersionsBehind: z.ZodOptional<z.ZodNumber>;
+                minorVersionsBehind: z.ZodOptional<z.ZodNumber>;
+                patchVersionsBehind: z.ZodOptional<z.ZodNumber>;
+                risk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+                breaking: z.ZodOptional<z.ZodBoolean>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }, {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }>, "many">;
+            /** Security vulnerabilities */
+            security: z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                severity: z.ZodEnum<["low", "moderate", "high", "critical"]>;
+                vulnerability: z.ZodString;
+                patchedVersion: z.ZodOptional<z.ZodString>;
+                cve: z.ZodOptional<z.ZodString>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }, {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }>, "many">;
+        }, "strip", z.ZodTypeAny, {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        }, {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        }>;
+        /** API integrations */
+        apis: z.ZodObject<{
+            /** External APIs consumed */
+            consumed: z.ZodArray<z.ZodObject<{
+                url: z.ZodString;
+                method: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]>;
+                authenticated: z.ZodOptional<z.ZodBoolean>;
+                rateLimit: z.ZodOptional<z.ZodBoolean>;
+                provider: z.ZodOptional<z.ZodString>;
+                usageCount: z.ZodOptional<z.ZodNumber>;
+            }, "strip", z.ZodTypeAny, {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }, {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }>, "many">;
+            /** APIs exposed by this service */
+            exposed: z.ZodArray<z.ZodObject<{
+                path: z.ZodString;
+                method: z.ZodEnum<["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]>;
+                authenticated: z.ZodOptional<z.ZodBoolean>;
+                deprecated: z.ZodOptional<z.ZodBoolean>;
+                version: z.ZodOptional<z.ZodString>;
+                documentation: z.ZodOptional<z.ZodBoolean>;
+            }, "strip", z.ZodTypeAny, {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }, {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }>, "many">;
+        }, "strip", z.ZodTypeAny, {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        }, {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        }>;
+        /** Service integrations */
+        services: z.ZodObject<{
+            /** Database integrations */
+            databases: z.ZodArray<z.ZodString, "many">;
+            /** Cache systems */
+            caches: z.ZodArray<z.ZodString, "many">;
+            /** Message queues */
+            queues: z.ZodArray<z.ZodString, "many">;
+            /** Cloud services */
+            cloud: z.ZodArray<z.ZodString, "many">;
+            /** Monitoring and analytics */
+            monitoring: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+            /** Authentication services */
+            auth: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+            /** Payment processors */
+            payments: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        }, "strip", z.ZodTypeAny, {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        }, {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        }>;
+        /** Integration health metrics */
+        health: z.ZodOptional<z.ZodObject<{
+            dependencyRisk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            securityRisk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            maintenanceLoad: z.ZodEnum<["low", "medium", "high", "critical"]>;
+            updateFrequency: z.ZodEnum<["current", "behind", "legacy", "abandoned"]>;
+        }, "strip", z.ZodTypeAny, {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        }, {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        }>>;
+        /** Integration recommendations */
+        recommendations: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        services: {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        };
+        dependencies: {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        };
+        apis: {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        };
+        health?: {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        } | undefined;
+        recommendations?: string[] | undefined;
+    }, {
+        services: {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        };
+        dependencies: {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        };
+        apis: {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        };
+        health?: {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        } | undefined;
+        recommendations?: string[] | undefined;
+    }>>;
+    /** High-level summary metrics */
+    summary: z.ZodObject<{
+        totalFiles: z.ZodNumber;
+        totalLines: z.ZodNumber;
+        analysisVersion: z.ZodString;
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+        warnings: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        warnings: string[];
+        confidence: number;
+        totalFiles: number;
+        totalLines: number;
+        analysisVersion: string;
+    }, {
+        totalFiles: number;
+        totalLines: number;
+        analysisVersion: string;
+        warnings?: string[] | undefined;
+        confidence?: number | undefined;
+    }>;
+    /** Metadata about the analysis process */
+    metadata: z.ZodOptional<z.ZodObject<{
+        analysisTools: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        excludedPaths: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        analysisTime: z.ZodOptional<z.ZodNumber>;
+        errors: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            component: z.ZodString;
+            error: z.ZodString;
+            severity: z.ZodEnum<["warning", "error"]>;
+        }, "strip", z.ZodTypeAny, {
+            error: string;
+            severity: "error" | "warning";
+            component: string;
+        }, {
+            error: string;
+            severity: "error" | "warning";
+            component: string;
+        }>, "many">>>;
+    }, "strip", z.ZodTypeAny, {
+        errors: {
+            error: string;
+            severity: "error" | "warning";
+            component: string;
+        }[];
+        analysisTools: string[];
+        excludedPaths: string[];
+        analysisTime?: number | undefined;
+    }, {
+        errors?: {
+            error: string;
+            severity: "error" | "warning";
+            component: string;
+        }[] | undefined;
+        analysisTools?: string[] | undefined;
+        excludedPaths?: string[] | undefined;
+        analysisTime?: number | undefined;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    timestamp: Date;
+    conventions: {
+        documentation: {
+            style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+            coverage: number;
+        };
+        indentation: {
+            type: "mixed" | "spaces" | "tabs";
+            size?: number | undefined;
+        };
+        imports: {
+            style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+            quotes?: "mixed" | "single" | "double" | undefined;
+            grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+        };
+        fileNaming: "camelCase" | "PascalCase" | "kebab-case" | "snake_case" | "mixed" | "inconsistent";
+        functionNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent";
+        variableNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE";
+        formatting?: {
+            quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+            lineLength?: number | undefined;
+            semicolons?: "required" | "optional" | "mixed" | undefined;
+            trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+        } | undefined;
+        classNaming?: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | undefined;
+        constantNaming?: "camelCase" | "PascalCase" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE" | undefined;
+        organization?: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+            configLocation?: "root" | "mixed" | "config-dir" | undefined;
+        } | undefined;
+    };
+    summary: {
+        warnings: string[];
+        confidence: number;
+        totalFiles: number;
+        totalLines: number;
+        analysisVersion: string;
+    };
+    stack: {
+        frameworks: {
+            name: string;
+            category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            confidence: number;
+            version?: string | undefined;
+        }[];
+        primaryLanguage: string;
+        languages: {
+            name: string;
+            percentage: number;
+            files: number;
+            extensions?: string[] | undefined;
+        }[];
+        buildTools: string[];
+        packageManagers: ("npm" | "yarn" | "pnpm" | "bun")[];
+        runtimes: {
+            type: "browser" | "node" | "other" | "bun" | "deno";
+            name: string;
+            version?: string | undefined;
+        }[];
+    };
+    projectPath: string;
+    architecture: {
+        pattern: "other" | "layered" | "microservices" | "mvc" | "mvp" | "mvvm" | "component-based" | "modular" | "monolithic" | "hexagonal" | "onion" | "clean";
+        components: {
+            type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+            path: string;
+            name: string;
+            dependencies: string[];
+            exports: string[];
+            loc?: number | undefined;
+        }[];
+        dependencies: {
+            external: number;
+            internal: number;
+            circular: number;
+            unused: number;
+        };
+        layers: {
+            name: string;
+            dependencies: string[];
+            paths: string[];
+            description?: string | undefined;
+        }[];
+        entryPoints: {
+            type: "main" | "worker" | "server" | "other" | "test" | "cli";
+            path: string;
+            description?: string | undefined;
+        }[];
+    };
+    technicalDebt: {
+        categories: {
+            severity: "critical" | "high" | "medium" | "low";
+            category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+            examples: string[];
+            count: number;
+            estimatedEffort?: string | undefined;
+        }[];
+        totalScore: number;
+        hotspots: {
+            issues: string[];
+            path: string;
+            score: number;
+            lastModified?: Date | undefined;
+            loc?: number | undefined;
+        }[];
+        metrics?: {
+            codeComplexity?: number | undefined;
+            testCoverage?: number | undefined;
+            duplicatedLinesPercent?: number | undefined;
+            maintainabilityIndex?: number | undefined;
+        } | undefined;
+        trends?: {
+            improving: boolean;
+            changeRate: number;
+            timeframe: string;
+        } | undefined;
+    };
+    metadata?: {
+        errors: {
+            error: string;
+            severity: "error" | "warning";
+            component: string;
+        }[];
+        analysisTools: string[];
+        excludedPaths: string[];
+        analysisTime?: number | undefined;
+    } | undefined;
+    integrations?: {
+        services: {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        };
+        dependencies: {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        };
+        apis: {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        };
+        health?: {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        } | undefined;
+        recommendations?: string[] | undefined;
+    } | undefined;
+    testingPatterns?: {
+        framework: string;
+        conventions: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        };
+        patterns: {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        };
+        testCount: number;
+        antiPatterns: {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }[];
+        recommendations: string[];
+        metrics?: {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        } | undefined;
+        coverage?: {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        } | undefined;
+    } | undefined;
+}, {
+    timestamp: Date;
+    conventions: {
+        documentation: {
+            style: "none" | "inline" | "mixed" | "jsdoc" | "tsdoc" | "markdown";
+            coverage: number;
+        };
+        indentation: {
+            type: "mixed" | "spaces" | "tabs";
+            size?: number | undefined;
+        };
+        imports: {
+            style: "es6" | "mixed" | "commonjs" | "amd" | "umd";
+            quotes?: "mixed" | "single" | "double" | undefined;
+            grouping?: "custom" | "none" | "type-separate" | "source-separate" | "alphabetical" | undefined;
+        };
+        fileNaming: "camelCase" | "PascalCase" | "kebab-case" | "snake_case" | "mixed" | "inconsistent";
+        functionNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent";
+        variableNaming: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE";
+        formatting?: {
+            quotes?: "mixed" | "single" | "double" | "backtick" | undefined;
+            lineLength?: number | undefined;
+            semicolons?: "required" | "optional" | "mixed" | undefined;
+            trailingCommas?: "never" | "always" | "es5" | "mixed" | undefined;
+        } | undefined;
+        classNaming?: "camelCase" | "PascalCase" | "snake_case" | "mixed" | "inconsistent" | undefined;
+        constantNaming?: "camelCase" | "PascalCase" | "mixed" | "inconsistent" | "SCREAMING_SNAKE_CASE" | undefined;
+        organization?: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            sourceStructure: "source" | "src" | "mixed" | "lib" | "app" | "root-level";
+            configLocation?: "root" | "mixed" | "config-dir" | undefined;
+        } | undefined;
+    };
+    summary: {
+        totalFiles: number;
+        totalLines: number;
+        analysisVersion: string;
+        warnings?: string[] | undefined;
+        confidence?: number | undefined;
+    };
+    stack: {
+        frameworks: {
+            name: string;
+            category: "backend" | "testing" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+            version?: string | undefined;
+            confidence?: number | undefined;
+        }[];
+        primaryLanguage: string;
+        languages: {
+            name: string;
+            percentage: number;
+            files: number;
+            extensions?: string[] | undefined;
+        }[];
+        buildTools: string[];
+        packageManagers: ("npm" | "yarn" | "pnpm" | "bun")[];
+        runtimes?: {
+            type: "browser" | "node" | "other" | "bun" | "deno";
+            name: string;
+            version?: string | undefined;
+        }[] | undefined;
+    };
+    projectPath: string;
+    architecture: {
+        pattern: "other" | "layered" | "microservices" | "mvc" | "mvp" | "mvvm" | "component-based" | "modular" | "monolithic" | "hexagonal" | "onion" | "clean";
+        components: {
+            type: "model" | "service" | "repository" | "utility" | "other" | "component" | "controller" | "view" | "factory" | "middleware" | "hook" | "store";
+            path: string;
+            name: string;
+            dependencies?: string[] | undefined;
+            exports?: string[] | undefined;
+            loc?: number | undefined;
+        }[];
+        dependencies: {
+            external: number;
+            internal: number;
+            circular: number;
+            unused?: number | undefined;
+        };
+        layers: {
+            name: string;
+            paths: string[];
+            description?: string | undefined;
+            dependencies?: string[] | undefined;
+        }[];
+        entryPoints?: {
+            type: "main" | "worker" | "server" | "other" | "test" | "cli";
+            path: string;
+            description?: string | undefined;
+        }[] | undefined;
+    };
+    technicalDebt: {
+        categories: {
+            severity: "critical" | "high" | "medium" | "low";
+            category: "other" | "documentation" | "dead-code" | "code-smell" | "security-vulnerability" | "performance" | "duplication" | "complexity" | "outdated-dependency" | "maintainability" | "testability" | "technical-design";
+            count: number;
+            examples?: string[] | undefined;
+            estimatedEffort?: string | undefined;
+        }[];
+        totalScore: number;
+        hotspots: {
+            issues: string[];
+            path: string;
+            score: number;
+            lastModified?: Date | undefined;
+            loc?: number | undefined;
+        }[];
+        metrics?: {
+            codeComplexity?: number | undefined;
+            testCoverage?: number | undefined;
+            duplicatedLinesPercent?: number | undefined;
+            maintainabilityIndex?: number | undefined;
+        } | undefined;
+        trends?: {
+            improving: boolean;
+            changeRate: number;
+            timeframe?: string | undefined;
+        } | undefined;
+    };
+    metadata?: {
+        errors?: {
+            error: string;
+            severity: "error" | "warning";
+            component: string;
+        }[] | undefined;
+        analysisTools?: string[] | undefined;
+        excludedPaths?: string[] | undefined;
+        analysisTime?: number | undefined;
+    } | undefined;
+    integrations?: {
+        services: {
+            databases: string[];
+            caches: string[];
+            queues: string[];
+            cloud: string[];
+            monitoring?: string[] | undefined;
+            auth?: string[] | undefined;
+            payments?: string[] | undefined;
+        };
+        dependencies: {
+            development: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            security: {
+                name: string;
+                severity: "critical" | "high" | "low" | "moderate";
+                vulnerability: string;
+                patchedVersion?: string | undefined;
+                cve?: string | undefined;
+            }[];
+            production: {
+                name: string;
+                category: "backend" | "testing" | "security" | "utility" | "other" | "ui" | "frontend" | "build" | "runtime" | "database" | "state-management";
+                version: string;
+                lastUpdated?: Date | undefined;
+                license?: string | undefined;
+                size?: number | undefined;
+            }[];
+            outdated: {
+                name: string;
+                currentVersion: string;
+                latestVersion: string;
+                risk: "critical" | "high" | "medium" | "low";
+                majorVersionsBehind?: number | undefined;
+                minorVersionsBehind?: number | undefined;
+                patchVersionsBehind?: number | undefined;
+                breaking?: boolean | undefined;
+            }[];
+        };
+        apis: {
+            consumed: {
+                url: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                provider?: string | undefined;
+                authenticated?: boolean | undefined;
+                rateLimit?: boolean | undefined;
+                usageCount?: number | undefined;
+            }[];
+            exposed: {
+                path: string;
+                method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
+                deprecated?: boolean | undefined;
+                version?: string | undefined;
+                documentation?: boolean | undefined;
+                authenticated?: boolean | undefined;
+            }[];
+        };
+        health?: {
+            dependencyRisk: "critical" | "high" | "medium" | "low";
+            securityRisk: "critical" | "high" | "medium" | "low";
+            maintenanceLoad: "critical" | "high" | "medium" | "low";
+            updateFrequency: "current" | "behind" | "legacy" | "abandoned";
+        } | undefined;
+        recommendations?: string[] | undefined;
+    } | undefined;
+    testingPatterns?: {
+        framework: string;
+        conventions: {
+            testLocation: "mixed" | "colocated" | "separate-tests" | "separate-__tests__";
+            testFileNaming: "mixed" | "suffix-.test" | "suffix-.spec" | "suffix-Test" | "prefix-test-";
+            testStructure?: "flat" | "mixed" | "mirrored" | "grouped" | undefined;
+        };
+        patterns: {
+            integration: {
+                count: number;
+                locations: string[];
+            };
+            unit: {
+                count: number;
+                locations: string[];
+            };
+            e2e: {
+                count: number;
+                locations: string[];
+            };
+            performance?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+            component?: {
+                count: number;
+                locations: string[];
+            } | undefined;
+        };
+        testCount: number;
+        antiPatterns: {
+            type: "other" | "mystery-guest" | "assertion-roulette" | "test-code-duplication" | "no-tests" | "god-test" | "resource-optimism" | "conditional-test-logic" | "hardcoded-test-data";
+            description: string;
+            severity: "critical" | "high" | "medium" | "low";
+            examples: string[];
+        }[];
+        recommendations: string[];
+        metrics?: {
+            avgTestsPerFile?: number | undefined;
+            avgAssertionsPerTest?: number | undefined;
+            testToSourceRatio?: number | undefined;
+            mockedDependenciesCount?: number | undefined;
+        } | undefined;
+        coverage?: {
+            lines?: number | undefined;
+            overall?: number | undefined;
+            statements?: number | undefined;
+            branches?: number | undefined;
+            functions?: number | undefined;
+        } | undefined;
+    } | undefined;
+}>;
+export type CodebaseAnalysis = z.infer<typeof CodebaseAnalysisSchema>;
+/**
+ * Types of code symbols that can be tracked in a repository map
+ * Used for code navigation, search, and understanding codebase structure
+ *
+ * @example
+ * ```typescript
+ * const symbolType: SymbolType = 'function';
+ * const validType = SymbolTypeSchema.parse('class');
+ * ```
+ */
+export declare const SymbolTypeSchema: z.ZodEnum<["function", "class", "interface", "type", "enum", "variable", "constant", "property", "method", "module", "import", "export", "parameter", "generic", "decorator", "unknown"]>;
+export type SymbolType = z.infer<typeof SymbolTypeSchema>;
+/**
+ * A code symbol representing a named entity in the codebase
+ * Symbols are the atomic units of code structure (functions, classes, variables, etc.)
+ *
+ * @example
+ * ```typescript
+ * const symbol: CodeSymbol = {
+ *   name: 'calculateTotal',
+ *   type: 'function',
+ *   filePath: 'src/utils/math.ts',
+ *   startLine: 15,
+ *   endLine: 25,
+ *   startColumn: 0,
+ *   endColumn: 1,
+ *   signature: 'function calculateTotal(items: Item[]): number',
+ *   exported: true,
+ *   documentation: 'Calculates the total price of all items'
+ * };
+ * ```
+ */
+export declare const CodeSymbolSchema: z.ZodObject<{
+    /** The symbol's name/identifier */
+    name: z.ZodString;
+    /** The type/kind of this symbol */
+    type: z.ZodEnum<["function", "class", "interface", "type", "enum", "variable", "constant", "property", "method", "module", "import", "export", "parameter", "generic", "decorator", "unknown"]>;
+    /** File path where this symbol is defined (relative to repository root) */
+    filePath: z.ZodString;
+    /** Line number where the symbol definition starts (1-based) */
+    startLine: z.ZodNumber;
+    /** Line number where the symbol definition ends (1-based) */
+    endLine: z.ZodNumber;
+    /** Column number where the symbol starts (0-based) */
+    startColumn: z.ZodOptional<z.ZodNumber>;
+    /** Column number where the symbol ends (0-based) */
+    endColumn: z.ZodOptional<z.ZodNumber>;
+    /** Full signature of the symbol (e.g., function signature with parameters) */
+    signature: z.ZodOptional<z.ZodString>;
+    /** Whether this symbol is exported/public */
+    exported: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether this symbol is a default export */
+    isDefault: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Documentation string (JSDoc, docstring, etc.) */
+    documentation: z.ZodOptional<z.ZodString>;
+    /** Parent symbol name (for nested symbols like methods in a class) */
+    parent: z.ZodOptional<z.ZodString>;
+    /** Child symbol names (for container symbols like classes) */
+    children: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Type annotations if available */
+    typeAnnotation: z.ZodOptional<z.ZodString>;
+    /** Modifiers (public, private, static, async, etc.) */
+    modifiers: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Language-specific metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+    name: string;
+    filePath: string;
+    children: string[];
+    startLine: number;
+    endLine: number;
+    exported: boolean;
+    isDefault: boolean;
+    modifiers: string[];
+    metadata?: Record<string, unknown> | undefined;
+    documentation?: string | undefined;
+    startColumn?: number | undefined;
+    endColumn?: number | undefined;
+    signature?: string | undefined;
+    parent?: string | undefined;
+    typeAnnotation?: string | undefined;
+}, {
+    type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+    name: string;
+    filePath: string;
+    startLine: number;
+    endLine: number;
+    metadata?: Record<string, unknown> | undefined;
+    documentation?: string | undefined;
+    children?: string[] | undefined;
+    startColumn?: number | undefined;
+    endColumn?: number | undefined;
+    signature?: string | undefined;
+    exported?: boolean | undefined;
+    isDefault?: boolean | undefined;
+    parent?: string | undefined;
+    typeAnnotation?: string | undefined;
+    modifiers?: string[] | undefined;
+}>;
+export type CodeSymbol = z.infer<typeof CodeSymbolSchema>;
+/**
+ * A reference to a symbol from another location in the codebase
+ * Tracks where symbols are used (called, instantiated, referenced)
+ *
+ * @example
+ * ```typescript
+ * const reference: SymbolReference = {
+ *   symbolName: 'calculateTotal',
+ *   symbolType: 'function',
+ *   sourceFile: 'src/components/Cart.tsx',
+ *   sourceLine: 42,
+ *   sourceColumn: 10,
+ *   targetFile: 'src/utils/math.ts',
+ *   targetLine: 15,
+ *   referenceType: 'call'
+ * };
+ * ```
+ */
+export declare const SymbolReferenceSchema: z.ZodObject<{
+    /** Name of the referenced symbol */
+    symbolName: z.ZodString;
+    /** Type of the referenced symbol */
+    symbolType: z.ZodOptional<z.ZodEnum<["function", "class", "interface", "type", "enum", "variable", "constant", "property", "method", "module", "import", "export", "parameter", "generic", "decorator", "unknown"]>>;
+    /** File where the reference occurs (relative to repository root) */
+    sourceFile: z.ZodString;
+    /** Line number where the reference occurs (1-based) */
+    sourceLine: z.ZodNumber;
+    /** Column number where the reference occurs (0-based) */
+    sourceColumn: z.ZodOptional<z.ZodNumber>;
+    /** File where the symbol is defined (relative to repository root) */
+    targetFile: z.ZodString;
+    /** Line number where the symbol is defined (1-based) */
+    targetLine: z.ZodOptional<z.ZodNumber>;
+    /** Type of reference (how the symbol is being used) */
+    referenceType: z.ZodDefault<z.ZodOptional<z.ZodEnum<["call", "instantiation", "assignment", "read", "write", "import", "export", "extension", "implementation", "type", "decorator", "parameter", "return", "unknown"]>>>;
+    /** Whether this is a dynamic reference (computed property, reflection, etc.) */
+    isDynamic: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Confidence score for inferred references (0-1) */
+    confidence: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    confidence: number;
+    symbolName: string;
+    sourceFile: string;
+    sourceLine: number;
+    targetFile: string;
+    referenceType: "type" | "unknown" | "read" | "write" | "implementation" | "import" | "export" | "parameter" | "decorator" | "call" | "instantiation" | "assignment" | "extension" | "return";
+    isDynamic: boolean;
+    symbolType?: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator" | undefined;
+    sourceColumn?: number | undefined;
+    targetLine?: number | undefined;
+}, {
+    symbolName: string;
+    sourceFile: string;
+    sourceLine: number;
+    targetFile: string;
+    confidence?: number | undefined;
+    symbolType?: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator" | undefined;
+    sourceColumn?: number | undefined;
+    targetLine?: number | undefined;
+    referenceType?: "type" | "unknown" | "read" | "write" | "implementation" | "import" | "export" | "parameter" | "decorator" | "call" | "instantiation" | "assignment" | "extension" | "return" | undefined;
+    isDynamic?: boolean | undefined;
+}>;
+export type SymbolReference = z.infer<typeof SymbolReferenceSchema>;
+/**
+ * An import edge representing a dependency between files
+ * Tracks the import graph of the codebase
+ *
+ * @example
+ * ```typescript
+ * const importEdge: ImportEdge = {
+ *   sourceFile: 'src/components/Cart.tsx',
+ *   targetFile: 'src/utils/math.ts',
+ *   importedSymbols: ['calculateTotal', 'formatPrice'],
+ *   isTypeOnly: false,
+ *   importType: 'named'
+ * };
+ * ```
+ */
+export declare const ImportEdgeSchema: z.ZodObject<{
+    /** File that contains the import statement (relative to repository root) */
+    sourceFile: z.ZodString;
+    /** File being imported (relative to repository root) */
+    targetFile: z.ZodString;
+    /** The original import specifier as written in code */
+    importSpecifier: z.ZodOptional<z.ZodString>;
+    /** List of specific symbols imported (empty for namespace/default imports) */
+    importedSymbols: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Whether this is a type-only import (TypeScript) */
+    isTypeOnly: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Whether this is a dynamic import (import()) */
+    isDynamic: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Type of import statement */
+    importType: z.ZodDefault<z.ZodOptional<z.ZodEnum<["named", "default", "namespace", "side-effect", "dynamic", "require", "reexport"]>>>;
+    /** Line number of the import statement (1-based) */
+    line: z.ZodOptional<z.ZodNumber>;
+    /** Whether this import is used (not just declared) */
+    isUsed: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Resolved absolute or package path */
+    resolvedPath: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    sourceFile: string;
+    targetFile: string;
+    isDynamic: boolean;
+    importedSymbols: string[];
+    isTypeOnly: boolean;
+    importType: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport";
+    isUsed: boolean;
+    line?: number | undefined;
+    importSpecifier?: string | undefined;
+    resolvedPath?: string | undefined;
+}, {
+    sourceFile: string;
+    targetFile: string;
+    line?: number | undefined;
+    isDynamic?: boolean | undefined;
+    importSpecifier?: string | undefined;
+    importedSymbols?: string[] | undefined;
+    isTypeOnly?: boolean | undefined;
+    importType?: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport" | undefined;
+    isUsed?: boolean | undefined;
+    resolvedPath?: string | undefined;
+}>;
+export type ImportEdge = z.infer<typeof ImportEdgeSchema>;
+/**
+ * A code file with its symbols and imports
+ * Represents a single source file in the repository
+ *
+ * @example
+ * ```typescript
+ * const codeFile: CodeFile = {
+ *   path: 'src/utils/math.ts',
+ *   language: 'typescript',
+ *   symbols: [
+ *     { name: 'calculateTotal', type: 'function', ... }
+ *   ],
+ *   imports: [
+ *     { sourceFile: 'src/utils/math.ts', targetFile: 'lodash', ... }
+ *   ],
+ *   lineCount: 150,
+ *   lastModified: new Date('2024-01-15')
+ * };
+ * ```
+ */
+export declare const CodeFileSchema: z.ZodObject<{
+    /** File path relative to repository root */
+    path: z.ZodString;
+    /** Programming language of the file */
+    language: z.ZodOptional<z.ZodString>;
+    /** Symbols defined in this file */
+    symbols: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** The symbol's name/identifier */
+        name: z.ZodString;
+        /** The type/kind of this symbol */
+        type: z.ZodEnum<["function", "class", "interface", "type", "enum", "variable", "constant", "property", "method", "module", "import", "export", "parameter", "generic", "decorator", "unknown"]>;
+        /** File path where this symbol is defined (relative to repository root) */
+        filePath: z.ZodString;
+        /** Line number where the symbol definition starts (1-based) */
+        startLine: z.ZodNumber;
+        /** Line number where the symbol definition ends (1-based) */
+        endLine: z.ZodNumber;
+        /** Column number where the symbol starts (0-based) */
+        startColumn: z.ZodOptional<z.ZodNumber>;
+        /** Column number where the symbol ends (0-based) */
+        endColumn: z.ZodOptional<z.ZodNumber>;
+        /** Full signature of the symbol (e.g., function signature with parameters) */
+        signature: z.ZodOptional<z.ZodString>;
+        /** Whether this symbol is exported/public */
+        exported: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether this symbol is a default export */
+        isDefault: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Documentation string (JSDoc, docstring, etc.) */
+        documentation: z.ZodOptional<z.ZodString>;
+        /** Parent symbol name (for nested symbols like methods in a class) */
+        parent: z.ZodOptional<z.ZodString>;
+        /** Child symbol names (for container symbols like classes) */
+        children: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Type annotations if available */
+        typeAnnotation: z.ZodOptional<z.ZodString>;
+        /** Modifiers (public, private, static, async, etc.) */
+        modifiers: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Language-specific metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+        name: string;
+        filePath: string;
+        children: string[];
+        startLine: number;
+        endLine: number;
+        exported: boolean;
+        isDefault: boolean;
+        modifiers: string[];
+        metadata?: Record<string, unknown> | undefined;
+        documentation?: string | undefined;
+        startColumn?: number | undefined;
+        endColumn?: number | undefined;
+        signature?: string | undefined;
+        parent?: string | undefined;
+        typeAnnotation?: string | undefined;
+    }, {
+        type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+        name: string;
+        filePath: string;
+        startLine: number;
+        endLine: number;
+        metadata?: Record<string, unknown> | undefined;
+        documentation?: string | undefined;
+        children?: string[] | undefined;
+        startColumn?: number | undefined;
+        endColumn?: number | undefined;
+        signature?: string | undefined;
+        exported?: boolean | undefined;
+        isDefault?: boolean | undefined;
+        parent?: string | undefined;
+        typeAnnotation?: string | undefined;
+        modifiers?: string[] | undefined;
+    }>, "many">>>;
+    /** Import statements in this file */
+    imports: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** File that contains the import statement (relative to repository root) */
+        sourceFile: z.ZodString;
+        /** File being imported (relative to repository root) */
+        targetFile: z.ZodString;
+        /** The original import specifier as written in code */
+        importSpecifier: z.ZodOptional<z.ZodString>;
+        /** List of specific symbols imported (empty for namespace/default imports) */
+        importedSymbols: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Whether this is a type-only import (TypeScript) */
+        isTypeOnly: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether this is a dynamic import (import()) */
+        isDynamic: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Type of import statement */
+        importType: z.ZodDefault<z.ZodOptional<z.ZodEnum<["named", "default", "namespace", "side-effect", "dynamic", "require", "reexport"]>>>;
+        /** Line number of the import statement (1-based) */
+        line: z.ZodOptional<z.ZodNumber>;
+        /** Whether this import is used (not just declared) */
+        isUsed: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Resolved absolute or package path */
+        resolvedPath: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        sourceFile: string;
+        targetFile: string;
+        isDynamic: boolean;
+        importedSymbols: string[];
+        isTypeOnly: boolean;
+        importType: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport";
+        isUsed: boolean;
+        line?: number | undefined;
+        importSpecifier?: string | undefined;
+        resolvedPath?: string | undefined;
+    }, {
+        sourceFile: string;
+        targetFile: string;
+        line?: number | undefined;
+        isDynamic?: boolean | undefined;
+        importSpecifier?: string | undefined;
+        importedSymbols?: string[] | undefined;
+        isTypeOnly?: boolean | undefined;
+        importType?: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport" | undefined;
+        isUsed?: boolean | undefined;
+        resolvedPath?: string | undefined;
+    }>, "many">>>;
+    /** Export statements in this file (re-exports) */
+    exports: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Exported symbol name (or '*' for namespace export) */
+        name: z.ZodString;
+        /** Original name if aliased */
+        originalName: z.ZodOptional<z.ZodString>;
+        /** Source file for re-exports */
+        fromFile: z.ZodOptional<z.ZodString>;
+        /** Whether this is a default export */
+        isDefault: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Whether this is a type-only export */
+        isTypeOnly: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        isDefault: boolean;
+        isTypeOnly: boolean;
+        originalName?: string | undefined;
+        fromFile?: string | undefined;
+    }, {
+        name: string;
+        isDefault?: boolean | undefined;
+        isTypeOnly?: boolean | undefined;
+        originalName?: string | undefined;
+        fromFile?: string | undefined;
+    }>, "many">>>;
+    /** Total line count of the file */
+    lineCount: z.ZodOptional<z.ZodNumber>;
+    /** File size in bytes */
+    size: z.ZodOptional<z.ZodNumber>;
+    /** Last modification timestamp */
+    lastModified: z.ZodOptional<z.ZodDate>;
+    /** SHA/hash of the file content for change detection */
+    contentHash: z.ZodOptional<z.ZodString>;
+    /** Whether this file has parsing errors */
+    hasErrors: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Parsing errors if any */
+    errors: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        message: z.ZodString;
+        line: z.ZodOptional<z.ZodNumber>;
+        column: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        message: string;
+        line?: number | undefined;
+        column?: number | undefined;
+    }, {
+        message: string;
+        line?: number | undefined;
+        column?: number | undefined;
+    }>, "many">>>;
+    /** File-level metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    path: string;
+    errors: {
+        message: string;
+        line?: number | undefined;
+        column?: number | undefined;
+    }[];
+    imports: {
+        sourceFile: string;
+        targetFile: string;
+        isDynamic: boolean;
+        importedSymbols: string[];
+        isTypeOnly: boolean;
+        importType: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport";
+        isUsed: boolean;
+        line?: number | undefined;
+        importSpecifier?: string | undefined;
+        resolvedPath?: string | undefined;
+    }[];
+    exports: {
+        name: string;
+        isDefault: boolean;
+        isTypeOnly: boolean;
+        originalName?: string | undefined;
+        fromFile?: string | undefined;
+    }[];
+    symbols: {
+        type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+        name: string;
+        filePath: string;
+        children: string[];
+        startLine: number;
+        endLine: number;
+        exported: boolean;
+        isDefault: boolean;
+        modifiers: string[];
+        metadata?: Record<string, unknown> | undefined;
+        documentation?: string | undefined;
+        startColumn?: number | undefined;
+        endColumn?: number | undefined;
+        signature?: string | undefined;
+        parent?: string | undefined;
+        typeAnnotation?: string | undefined;
+    }[];
+    hasErrors: boolean;
+    metadata?: Record<string, unknown> | undefined;
+    lastModified?: Date | undefined;
+    language?: string | undefined;
+    size?: number | undefined;
+    lineCount?: number | undefined;
+    contentHash?: string | undefined;
+}, {
+    path: string;
+    metadata?: Record<string, unknown> | undefined;
+    lastModified?: Date | undefined;
+    errors?: {
+        message: string;
+        line?: number | undefined;
+        column?: number | undefined;
+    }[] | undefined;
+    language?: string | undefined;
+    imports?: {
+        sourceFile: string;
+        targetFile: string;
+        line?: number | undefined;
+        isDynamic?: boolean | undefined;
+        importSpecifier?: string | undefined;
+        importedSymbols?: string[] | undefined;
+        isTypeOnly?: boolean | undefined;
+        importType?: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport" | undefined;
+        isUsed?: boolean | undefined;
+        resolvedPath?: string | undefined;
+    }[] | undefined;
+    size?: number | undefined;
+    exports?: {
+        name: string;
+        isDefault?: boolean | undefined;
+        isTypeOnly?: boolean | undefined;
+        originalName?: string | undefined;
+        fromFile?: string | undefined;
+    }[] | undefined;
+    symbols?: {
+        type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+        name: string;
+        filePath: string;
+        startLine: number;
+        endLine: number;
+        metadata?: Record<string, unknown> | undefined;
+        documentation?: string | undefined;
+        children?: string[] | undefined;
+        startColumn?: number | undefined;
+        endColumn?: number | undefined;
+        signature?: string | undefined;
+        exported?: boolean | undefined;
+        isDefault?: boolean | undefined;
+        parent?: string | undefined;
+        typeAnnotation?: string | undefined;
+        modifiers?: string[] | undefined;
+    }[] | undefined;
+    lineCount?: number | undefined;
+    contentHash?: string | undefined;
+    hasErrors?: boolean | undefined;
+}>;
+export type CodeFile = z.infer<typeof CodeFileSchema>;
+/**
+ * A complete map of a repository's code structure
+ * Contains all files, symbols, references, and their relationships
+ *
+ * @example
+ * ```typescript
+ * const repoMap: RepositoryMap = {
+ *   rootPath: '/path/to/repo',
+ *   files: [
+ *     { path: 'src/index.ts', language: 'typescript', symbols: [...] }
+ *   ],
+ *   references: [
+ *     { symbolName: 'App', sourceFile: 'src/main.ts', targetFile: 'src/App.tsx', ... }
+ *   ],
+ *   createdAt: new Date(),
+ *   version: '1.0.0'
+ * };
+ * ```
+ */
+export declare const RepositoryMapSchema: z.ZodObject<{
+    /** Root path of the repository */
+    rootPath: z.ZodString;
+    /** Name of the repository */
+    name: z.ZodOptional<z.ZodString>;
+    /** List of all code files in the repository */
+    files: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** File path relative to repository root */
+        path: z.ZodString;
+        /** Programming language of the file */
+        language: z.ZodOptional<z.ZodString>;
+        /** Symbols defined in this file */
+        symbols: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** The symbol's name/identifier */
+            name: z.ZodString;
+            /** The type/kind of this symbol */
+            type: z.ZodEnum<["function", "class", "interface", "type", "enum", "variable", "constant", "property", "method", "module", "import", "export", "parameter", "generic", "decorator", "unknown"]>;
+            /** File path where this symbol is defined (relative to repository root) */
+            filePath: z.ZodString;
+            /** Line number where the symbol definition starts (1-based) */
+            startLine: z.ZodNumber;
+            /** Line number where the symbol definition ends (1-based) */
+            endLine: z.ZodNumber;
+            /** Column number where the symbol starts (0-based) */
+            startColumn: z.ZodOptional<z.ZodNumber>;
+            /** Column number where the symbol ends (0-based) */
+            endColumn: z.ZodOptional<z.ZodNumber>;
+            /** Full signature of the symbol (e.g., function signature with parameters) */
+            signature: z.ZodOptional<z.ZodString>;
+            /** Whether this symbol is exported/public */
+            exported: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+            /** Whether this symbol is a default export */
+            isDefault: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+            /** Documentation string (JSDoc, docstring, etc.) */
+            documentation: z.ZodOptional<z.ZodString>;
+            /** Parent symbol name (for nested symbols like methods in a class) */
+            parent: z.ZodOptional<z.ZodString>;
+            /** Child symbol names (for container symbols like classes) */
+            children: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Type annotations if available */
+            typeAnnotation: z.ZodOptional<z.ZodString>;
+            /** Modifiers (public, private, static, async, etc.) */
+            modifiers: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Language-specific metadata */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+            name: string;
+            filePath: string;
+            children: string[];
+            startLine: number;
+            endLine: number;
+            exported: boolean;
+            isDefault: boolean;
+            modifiers: string[];
+            metadata?: Record<string, unknown> | undefined;
+            documentation?: string | undefined;
+            startColumn?: number | undefined;
+            endColumn?: number | undefined;
+            signature?: string | undefined;
+            parent?: string | undefined;
+            typeAnnotation?: string | undefined;
+        }, {
+            type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+            name: string;
+            filePath: string;
+            startLine: number;
+            endLine: number;
+            metadata?: Record<string, unknown> | undefined;
+            documentation?: string | undefined;
+            children?: string[] | undefined;
+            startColumn?: number | undefined;
+            endColumn?: number | undefined;
+            signature?: string | undefined;
+            exported?: boolean | undefined;
+            isDefault?: boolean | undefined;
+            parent?: string | undefined;
+            typeAnnotation?: string | undefined;
+            modifiers?: string[] | undefined;
+        }>, "many">>>;
+        /** Import statements in this file */
+        imports: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** File that contains the import statement (relative to repository root) */
+            sourceFile: z.ZodString;
+            /** File being imported (relative to repository root) */
+            targetFile: z.ZodString;
+            /** The original import specifier as written in code */
+            importSpecifier: z.ZodOptional<z.ZodString>;
+            /** List of specific symbols imported (empty for namespace/default imports) */
+            importedSymbols: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Whether this is a type-only import (TypeScript) */
+            isTypeOnly: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+            /** Whether this is a dynamic import (import()) */
+            isDynamic: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+            /** Type of import statement */
+            importType: z.ZodDefault<z.ZodOptional<z.ZodEnum<["named", "default", "namespace", "side-effect", "dynamic", "require", "reexport"]>>>;
+            /** Line number of the import statement (1-based) */
+            line: z.ZodOptional<z.ZodNumber>;
+            /** Whether this import is used (not just declared) */
+            isUsed: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+            /** Resolved absolute or package path */
+            resolvedPath: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            sourceFile: string;
+            targetFile: string;
+            isDynamic: boolean;
+            importedSymbols: string[];
+            isTypeOnly: boolean;
+            importType: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport";
+            isUsed: boolean;
+            line?: number | undefined;
+            importSpecifier?: string | undefined;
+            resolvedPath?: string | undefined;
+        }, {
+            sourceFile: string;
+            targetFile: string;
+            line?: number | undefined;
+            isDynamic?: boolean | undefined;
+            importSpecifier?: string | undefined;
+            importedSymbols?: string[] | undefined;
+            isTypeOnly?: boolean | undefined;
+            importType?: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport" | undefined;
+            isUsed?: boolean | undefined;
+            resolvedPath?: string | undefined;
+        }>, "many">>>;
+        /** Export statements in this file (re-exports) */
+        exports: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Exported symbol name (or '*' for namespace export) */
+            name: z.ZodString;
+            /** Original name if aliased */
+            originalName: z.ZodOptional<z.ZodString>;
+            /** Source file for re-exports */
+            fromFile: z.ZodOptional<z.ZodString>;
+            /** Whether this is a default export */
+            isDefault: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+            /** Whether this is a type-only export */
+            isTypeOnly: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            isDefault: boolean;
+            isTypeOnly: boolean;
+            originalName?: string | undefined;
+            fromFile?: string | undefined;
+        }, {
+            name: string;
+            isDefault?: boolean | undefined;
+            isTypeOnly?: boolean | undefined;
+            originalName?: string | undefined;
+            fromFile?: string | undefined;
+        }>, "many">>>;
+        /** Total line count of the file */
+        lineCount: z.ZodOptional<z.ZodNumber>;
+        /** File size in bytes */
+        size: z.ZodOptional<z.ZodNumber>;
+        /** Last modification timestamp */
+        lastModified: z.ZodOptional<z.ZodDate>;
+        /** SHA/hash of the file content for change detection */
+        contentHash: z.ZodOptional<z.ZodString>;
+        /** Whether this file has parsing errors */
+        hasErrors: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Parsing errors if any */
+        errors: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            message: z.ZodString;
+            line: z.ZodOptional<z.ZodNumber>;
+            column: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            message: string;
+            line?: number | undefined;
+            column?: number | undefined;
+        }, {
+            message: string;
+            line?: number | undefined;
+            column?: number | undefined;
+        }>, "many">>>;
+        /** File-level metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        path: string;
+        errors: {
+            message: string;
+            line?: number | undefined;
+            column?: number | undefined;
+        }[];
+        imports: {
+            sourceFile: string;
+            targetFile: string;
+            isDynamic: boolean;
+            importedSymbols: string[];
+            isTypeOnly: boolean;
+            importType: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport";
+            isUsed: boolean;
+            line?: number | undefined;
+            importSpecifier?: string | undefined;
+            resolvedPath?: string | undefined;
+        }[];
+        exports: {
+            name: string;
+            isDefault: boolean;
+            isTypeOnly: boolean;
+            originalName?: string | undefined;
+            fromFile?: string | undefined;
+        }[];
+        symbols: {
+            type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+            name: string;
+            filePath: string;
+            children: string[];
+            startLine: number;
+            endLine: number;
+            exported: boolean;
+            isDefault: boolean;
+            modifiers: string[];
+            metadata?: Record<string, unknown> | undefined;
+            documentation?: string | undefined;
+            startColumn?: number | undefined;
+            endColumn?: number | undefined;
+            signature?: string | undefined;
+            parent?: string | undefined;
+            typeAnnotation?: string | undefined;
+        }[];
+        hasErrors: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        lastModified?: Date | undefined;
+        language?: string | undefined;
+        size?: number | undefined;
+        lineCount?: number | undefined;
+        contentHash?: string | undefined;
+    }, {
+        path: string;
+        metadata?: Record<string, unknown> | undefined;
+        lastModified?: Date | undefined;
+        errors?: {
+            message: string;
+            line?: number | undefined;
+            column?: number | undefined;
+        }[] | undefined;
+        language?: string | undefined;
+        imports?: {
+            sourceFile: string;
+            targetFile: string;
+            line?: number | undefined;
+            isDynamic?: boolean | undefined;
+            importSpecifier?: string | undefined;
+            importedSymbols?: string[] | undefined;
+            isTypeOnly?: boolean | undefined;
+            importType?: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport" | undefined;
+            isUsed?: boolean | undefined;
+            resolvedPath?: string | undefined;
+        }[] | undefined;
+        size?: number | undefined;
+        exports?: {
+            name: string;
+            isDefault?: boolean | undefined;
+            isTypeOnly?: boolean | undefined;
+            originalName?: string | undefined;
+            fromFile?: string | undefined;
+        }[] | undefined;
+        symbols?: {
+            type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+            name: string;
+            filePath: string;
+            startLine: number;
+            endLine: number;
+            metadata?: Record<string, unknown> | undefined;
+            documentation?: string | undefined;
+            children?: string[] | undefined;
+            startColumn?: number | undefined;
+            endColumn?: number | undefined;
+            signature?: string | undefined;
+            exported?: boolean | undefined;
+            isDefault?: boolean | undefined;
+            parent?: string | undefined;
+            typeAnnotation?: string | undefined;
+            modifiers?: string[] | undefined;
+        }[] | undefined;
+        lineCount?: number | undefined;
+        contentHash?: string | undefined;
+        hasErrors?: boolean | undefined;
+    }>, "many">>>;
+    /** All symbol references across the codebase */
+    references: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Name of the referenced symbol */
+        symbolName: z.ZodString;
+        /** Type of the referenced symbol */
+        symbolType: z.ZodOptional<z.ZodEnum<["function", "class", "interface", "type", "enum", "variable", "constant", "property", "method", "module", "import", "export", "parameter", "generic", "decorator", "unknown"]>>;
+        /** File where the reference occurs (relative to repository root) */
+        sourceFile: z.ZodString;
+        /** Line number where the reference occurs (1-based) */
+        sourceLine: z.ZodNumber;
+        /** Column number where the reference occurs (0-based) */
+        sourceColumn: z.ZodOptional<z.ZodNumber>;
+        /** File where the symbol is defined (relative to repository root) */
+        targetFile: z.ZodString;
+        /** Line number where the symbol is defined (1-based) */
+        targetLine: z.ZodOptional<z.ZodNumber>;
+        /** Type of reference (how the symbol is being used) */
+        referenceType: z.ZodDefault<z.ZodOptional<z.ZodEnum<["call", "instantiation", "assignment", "read", "write", "import", "export", "extension", "implementation", "type", "decorator", "parameter", "return", "unknown"]>>>;
+        /** Whether this is a dynamic reference (computed property, reflection, etc.) */
+        isDynamic: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Confidence score for inferred references (0-1) */
+        confidence: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        confidence: number;
+        symbolName: string;
+        sourceFile: string;
+        sourceLine: number;
+        targetFile: string;
+        referenceType: "type" | "unknown" | "read" | "write" | "implementation" | "import" | "export" | "parameter" | "decorator" | "call" | "instantiation" | "assignment" | "extension" | "return";
+        isDynamic: boolean;
+        symbolType?: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator" | undefined;
+        sourceColumn?: number | undefined;
+        targetLine?: number | undefined;
+    }, {
+        symbolName: string;
+        sourceFile: string;
+        sourceLine: number;
+        targetFile: string;
+        confidence?: number | undefined;
+        symbolType?: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator" | undefined;
+        sourceColumn?: number | undefined;
+        targetLine?: number | undefined;
+        referenceType?: "type" | "unknown" | "read" | "write" | "implementation" | "import" | "export" | "parameter" | "decorator" | "call" | "instantiation" | "assignment" | "extension" | "return" | undefined;
+        isDynamic?: boolean | undefined;
+    }>, "many">>>;
+    /** Summary statistics about the repository */
+    stats: z.ZodOptional<z.ZodObject<{
+        /** Total number of files */
+        totalFiles: z.ZodNumber;
+        /** Total number of symbols */
+        totalSymbols: z.ZodNumber;
+        /** Total number of references */
+        totalReferences: z.ZodNumber;
+        /** Total lines of code */
+        totalLines: z.ZodOptional<z.ZodNumber>;
+        /** Breakdown of files by language */
+        languageBreakdown: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        /** Breakdown of symbols by type */
+        symbolTypeBreakdown: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+    }, "strip", z.ZodTypeAny, {
+        totalFiles: number;
+        totalSymbols: number;
+        totalReferences: number;
+        totalLines?: number | undefined;
+        languageBreakdown?: Record<string, number> | undefined;
+        symbolTypeBreakdown?: Record<string, number> | undefined;
+    }, {
+        totalFiles: number;
+        totalSymbols: number;
+        totalReferences: number;
+        totalLines?: number | undefined;
+        languageBreakdown?: Record<string, number> | undefined;
+        symbolTypeBreakdown?: Record<string, number> | undefined;
+    }>>;
+    /** When this map was created/last updated */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Version of the map format/schema */
+    version: z.ZodDefault<z.ZodOptional<z.ZodString>>;
+    /** Git commit hash at time of mapping */
+    commitHash: z.ZodOptional<z.ZodString>;
+    /** Branch name at time of mapping */
+    branch: z.ZodOptional<z.ZodString>;
+    /** Configuration used for generating this map */
+    config: z.ZodOptional<z.ZodObject<{
+        /** File patterns that were included */
+        includePatterns: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** File patterns that were excluded */
+        excludePatterns: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Languages that were parsed */
+        languages: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Maximum file size that was processed */
+        maxFileSize: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        includePatterns: string[];
+        excludePatterns: string[];
+        languages: string[];
+        maxFileSize?: number | undefined;
+    }, {
+        maxFileSize?: number | undefined;
+        includePatterns?: string[] | undefined;
+        excludePatterns?: string[] | undefined;
+        languages?: string[] | undefined;
+    }>>;
+    /** Errors encountered during mapping */
+    errors: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** File path where error occurred */
+        file: z.ZodOptional<z.ZodString>;
+        /** Error message */
+        message: z.ZodString;
+        /** Error severity */
+        severity: z.ZodEnum<["warning", "error"]>;
+    }, "strip", z.ZodTypeAny, {
+        message: string;
+        severity: "error" | "warning";
+        file?: string | undefined;
+    }, {
+        message: string;
+        severity: "error" | "warning";
+        file?: string | undefined;
+    }>, "many">>>;
+    /** Additional metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    version: string;
+    errors: {
+        message: string;
+        severity: "error" | "warning";
+        file?: string | undefined;
+    }[];
+    files: {
+        path: string;
+        errors: {
+            message: string;
+            line?: number | undefined;
+            column?: number | undefined;
+        }[];
+        imports: {
+            sourceFile: string;
+            targetFile: string;
+            isDynamic: boolean;
+            importedSymbols: string[];
+            isTypeOnly: boolean;
+            importType: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport";
+            isUsed: boolean;
+            line?: number | undefined;
+            importSpecifier?: string | undefined;
+            resolvedPath?: string | undefined;
+        }[];
+        exports: {
+            name: string;
+            isDefault: boolean;
+            isTypeOnly: boolean;
+            originalName?: string | undefined;
+            fromFile?: string | undefined;
+        }[];
+        symbols: {
+            type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+            name: string;
+            filePath: string;
+            children: string[];
+            startLine: number;
+            endLine: number;
+            exported: boolean;
+            isDefault: boolean;
+            modifiers: string[];
+            metadata?: Record<string, unknown> | undefined;
+            documentation?: string | undefined;
+            startColumn?: number | undefined;
+            endColumn?: number | undefined;
+            signature?: string | undefined;
+            parent?: string | undefined;
+            typeAnnotation?: string | undefined;
+        }[];
+        hasErrors: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        lastModified?: Date | undefined;
+        language?: string | undefined;
+        size?: number | undefined;
+        lineCount?: number | undefined;
+        contentHash?: string | undefined;
+    }[];
+    rootPath: string;
+    references: {
+        confidence: number;
+        symbolName: string;
+        sourceFile: string;
+        sourceLine: number;
+        targetFile: string;
+        referenceType: "type" | "unknown" | "read" | "write" | "implementation" | "import" | "export" | "parameter" | "decorator" | "call" | "instantiation" | "assignment" | "extension" | "return";
+        isDynamic: boolean;
+        symbolType?: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator" | undefined;
+        sourceColumn?: number | undefined;
+        targetLine?: number | undefined;
+    }[];
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    createdAt?: Date | undefined;
+    config?: {
+        includePatterns: string[];
+        excludePatterns: string[];
+        languages: string[];
+        maxFileSize?: number | undefined;
+    } | undefined;
+    stats?: {
+        totalFiles: number;
+        totalSymbols: number;
+        totalReferences: number;
+        totalLines?: number | undefined;
+        languageBreakdown?: Record<string, number> | undefined;
+        symbolTypeBreakdown?: Record<string, number> | undefined;
+    } | undefined;
+    branch?: string | undefined;
+    commitHash?: string | undefined;
+}, {
+    rootPath: string;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    createdAt?: Date | undefined;
+    config?: {
+        maxFileSize?: number | undefined;
+        includePatterns?: string[] | undefined;
+        excludePatterns?: string[] | undefined;
+        languages?: string[] | undefined;
+    } | undefined;
+    version?: string | undefined;
+    errors?: {
+        message: string;
+        severity: "error" | "warning";
+        file?: string | undefined;
+    }[] | undefined;
+    stats?: {
+        totalFiles: number;
+        totalSymbols: number;
+        totalReferences: number;
+        totalLines?: number | undefined;
+        languageBreakdown?: Record<string, number> | undefined;
+        symbolTypeBreakdown?: Record<string, number> | undefined;
+    } | undefined;
+    branch?: string | undefined;
+    files?: {
+        path: string;
+        metadata?: Record<string, unknown> | undefined;
+        lastModified?: Date | undefined;
+        errors?: {
+            message: string;
+            line?: number | undefined;
+            column?: number | undefined;
+        }[] | undefined;
+        language?: string | undefined;
+        imports?: {
+            sourceFile: string;
+            targetFile: string;
+            line?: number | undefined;
+            isDynamic?: boolean | undefined;
+            importSpecifier?: string | undefined;
+            importedSymbols?: string[] | undefined;
+            isTypeOnly?: boolean | undefined;
+            importType?: "default" | "require" | "namespace" | "named" | "side-effect" | "dynamic" | "reexport" | undefined;
+            isUsed?: boolean | undefined;
+            resolvedPath?: string | undefined;
+        }[] | undefined;
+        size?: number | undefined;
+        exports?: {
+            name: string;
+            isDefault?: boolean | undefined;
+            isTypeOnly?: boolean | undefined;
+            originalName?: string | undefined;
+            fromFile?: string | undefined;
+        }[] | undefined;
+        symbols?: {
+            type: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator";
+            name: string;
+            filePath: string;
+            startLine: number;
+            endLine: number;
+            metadata?: Record<string, unknown> | undefined;
+            documentation?: string | undefined;
+            children?: string[] | undefined;
+            startColumn?: number | undefined;
+            endColumn?: number | undefined;
+            signature?: string | undefined;
+            exported?: boolean | undefined;
+            isDefault?: boolean | undefined;
+            parent?: string | undefined;
+            typeAnnotation?: string | undefined;
+            modifiers?: string[] | undefined;
+        }[] | undefined;
+        lineCount?: number | undefined;
+        contentHash?: string | undefined;
+        hasErrors?: boolean | undefined;
+    }[] | undefined;
+    references?: {
+        symbolName: string;
+        sourceFile: string;
+        sourceLine: number;
+        targetFile: string;
+        confidence?: number | undefined;
+        symbolType?: "function" | "property" | "type" | "unknown" | "enum" | "module" | "method" | "constant" | "class" | "interface" | "variable" | "import" | "export" | "parameter" | "generic" | "decorator" | undefined;
+        sourceColumn?: number | undefined;
+        targetLine?: number | undefined;
+        referenceType?: "type" | "unknown" | "read" | "write" | "implementation" | "import" | "export" | "parameter" | "decorator" | "call" | "instantiation" | "assignment" | "extension" | "return" | undefined;
+        isDynamic?: boolean | undefined;
+    }[] | undefined;
+    commitHash?: string | undefined;
+}>;
+export type RepositoryMap = z.infer<typeof RepositoryMapSchema>;
+/**
+ * Supported image media types for multimodal inputs
+ * Includes common web and design formats
+ */
+export declare const ImageMediaTypeSchema: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+export type ImageMediaType = z.infer<typeof ImageMediaTypeSchema>;
+/**
+ * Multimodal input type discriminator
+ * Used to identify the type of multimodal content being provided
+ */
+export declare const MultimodalInputTypeSchema: z.ZodEnum<["image", "web_page", "design_mockup"]>;
+export type MultimodalInputType = z.infer<typeof MultimodalInputTypeSchema>;
+/**
+ * Source metadata for tracking where multimodal inputs originated
+ * Provides context about the input's origin for audit trails and debugging
+ *
+ * @example
+ * ```typescript
+ * const sourceMetadata: SourceMetadata = {
+ *   provider: 'figma',
+ *   originalUrl: 'https://figma.com/file/abc123',
+ *   capturedAt: new Date(),
+ *   capturedBy: 'design-agent',
+ *   version: '2.1.0',
+ *   additionalInfo: { nodeId: '123:456' }
+ * };
+ * ```
+ */
+export declare const SourceMetadataSchema: z.ZodObject<{
+    /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+    provider: z.ZodOptional<z.ZodString>;
+    /** Original URL where the content was sourced from */
+    originalUrl: z.ZodOptional<z.ZodString>;
+    /** Timestamp when the content was captured/retrieved */
+    capturedAt: z.ZodOptional<z.ZodDate>;
+    /** Identifier of the agent or process that captured the content */
+    capturedBy: z.ZodOptional<z.ZodString>;
+    /** Version identifier for the source content (if applicable) */
+    version: z.ZodOptional<z.ZodString>;
+    /** Additional provider-specific metadata */
+    additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    version?: string | undefined;
+    provider?: string | undefined;
+    originalUrl?: string | undefined;
+    capturedAt?: Date | undefined;
+    capturedBy?: string | undefined;
+    additionalInfo?: Record<string, unknown> | undefined;
+}, {
+    version?: string | undefined;
+    provider?: string | undefined;
+    originalUrl?: string | undefined;
+    capturedAt?: Date | undefined;
+    capturedBy?: string | undefined;
+    additionalInfo?: Record<string, unknown> | undefined;
+}>;
+export type SourceMetadata = z.infer<typeof SourceMetadataSchema>;
+/**
+ * Base schema for all multimodal inputs
+ * Contains common fields shared across all input types
+ */
+export declare const BaseMultimodalInputSchema: z.ZodObject<{
+    /** Unique identifier for this input */
+    id: z.ZodOptional<z.ZodString>;
+    /** Human-readable name/label for the input */
+    name: z.ZodOptional<z.ZodString>;
+    /** Description of what this input contains or represents */
+    description: z.ZodOptional<z.ZodString>;
+    /** Source metadata for tracking input origin */
+    source: z.ZodOptional<z.ZodObject<{
+        /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+        provider: z.ZodOptional<z.ZodString>;
+        /** Original URL where the content was sourced from */
+        originalUrl: z.ZodOptional<z.ZodString>;
+        /** Timestamp when the content was captured/retrieved */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Identifier of the agent or process that captured the content */
+        capturedBy: z.ZodOptional<z.ZodString>;
+        /** Version identifier for the source content (if applicable) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Additional provider-specific metadata */
+        additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }>>;
+    /** Tags for categorization and filtering */
+    tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when this input was created/added */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Additional custom metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    tags: string[];
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    id?: string | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+}, {
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+}>;
+export type BaseMultimodalInput = z.infer<typeof BaseMultimodalInputSchema>;
+/**
+ * Image input schema for providing images to agents
+ * Supports both base64-encoded data and URL references
+ *
+ * @example
+ * ```typescript
+ * // Base64 image input
+ * const base64Image: ImageInput = {
+ *   type: 'image',
+ *   name: 'screenshot.png',
+ *   mediaType: 'image/png',
+ *   data: 'iVBORw0KGgoAAAANSUhEUgAA...',
+ *   encoding: 'base64',
+ *   width: 1920,
+ *   height: 1080,
+ * };
+ *
+ * // URL image input
+ * const urlImage: ImageInput = {
+ *   type: 'image',
+ *   name: 'product-photo.jpg',
+ *   mediaType: 'image/jpeg',
+ *   url: 'https://example.com/images/product.jpg',
+ * };
+ * ```
+ */
+export declare const ImageInputSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    /** Unique identifier for this input */
+    id: z.ZodOptional<z.ZodString>;
+    /** Human-readable name/label for the input */
+    name: z.ZodOptional<z.ZodString>;
+    /** Description of what this input contains or represents */
+    description: z.ZodOptional<z.ZodString>;
+    /** Source metadata for tracking input origin */
+    source: z.ZodOptional<z.ZodObject<{
+        /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+        provider: z.ZodOptional<z.ZodString>;
+        /** Original URL where the content was sourced from */
+        originalUrl: z.ZodOptional<z.ZodString>;
+        /** Timestamp when the content was captured/retrieved */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Identifier of the agent or process that captured the content */
+        capturedBy: z.ZodOptional<z.ZodString>;
+        /** Version identifier for the source content (if applicable) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Additional provider-specific metadata */
+        additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }>>;
+    /** Tags for categorization and filtering */
+    tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when this input was created/added */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Additional custom metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+} & {
+    /** Discriminator for image type */
+    type: z.ZodLiteral<"image">;
+    /** MIME type of the image */
+    mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+    /**
+     * Base64-encoded image data
+     * Mutually exclusive with `url` - provide either data or url, not both
+     */
+    data: z.ZodOptional<z.ZodString>;
+    /**
+     * URL to the image resource
+     * Mutually exclusive with `data` - provide either url or data, not both
+     */
+    url: z.ZodOptional<z.ZodString>;
+    /** Encoding format for the data field (always 'base64' when data is provided) */
+    encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+    /** Image width in pixels (if known) */
+    width: z.ZodOptional<z.ZodNumber>;
+    /** Image height in pixels (if known) */
+    height: z.ZodOptional<z.ZodNumber>;
+    /** File size in bytes (if known) */
+    fileSize: z.ZodOptional<z.ZodNumber>;
+    /** Alt text for accessibility and context */
+    altText: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    type: "image";
+    tags: string[];
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}, {
+    type: "image";
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}>, {
+    type: "image";
+    tags: string[];
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}, {
+    type: "image";
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}>, {
+    type: "image";
+    tags: string[];
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}, {
+    type: "image";
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}>;
+export type ImageInput = z.infer<typeof ImageInputSchema>;
+/**
+ * Web page input schema for providing web page content/context to agents
+ * Can include both the URL and optionally captured content
+ *
+ * @example
+ * ```typescript
+ * const webPageInput: WebPageInput = {
+ *   type: 'web_page',
+ *   name: 'Product Landing Page',
+ *   url: 'https://example.com/products/widget',
+ *   title: 'Amazing Widget - Example Corp',
+ *   capturedHtml: '<html>...</html>',
+ *   capturedText: 'Plain text content...',
+ *   screenshot: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *   },
+ *   viewport: { width: 1920, height: 1080 },
+ * };
+ * ```
+ */
+export declare const WebPageInputSchema: z.ZodObject<{
+    /** Unique identifier for this input */
+    id: z.ZodOptional<z.ZodString>;
+    /** Human-readable name/label for the input */
+    name: z.ZodOptional<z.ZodString>;
+    /** Description of what this input contains or represents */
+    description: z.ZodOptional<z.ZodString>;
+    /** Source metadata for tracking input origin */
+    source: z.ZodOptional<z.ZodObject<{
+        /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+        provider: z.ZodOptional<z.ZodString>;
+        /** Original URL where the content was sourced from */
+        originalUrl: z.ZodOptional<z.ZodString>;
+        /** Timestamp when the content was captured/retrieved */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Identifier of the agent or process that captured the content */
+        capturedBy: z.ZodOptional<z.ZodString>;
+        /** Version identifier for the source content (if applicable) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Additional provider-specific metadata */
+        additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }>>;
+    /** Tags for categorization and filtering */
+    tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when this input was created/added */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Additional custom metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+} & {
+    /** Discriminator for web page type */
+    type: z.ZodLiteral<"web_page">;
+    /** URL of the web page */
+    url: z.ZodString;
+    /** Page title (if captured) */
+    title: z.ZodOptional<z.ZodString>;
+    /** Full HTML content of the page (if captured) */
+    capturedHtml: z.ZodOptional<z.ZodString>;
+    /** Plain text content extracted from the page (if captured) */
+    capturedText: z.ZodOptional<z.ZodString>;
+    /** Markdown representation of the page content (if converted) */
+    capturedMarkdown: z.ZodOptional<z.ZodString>;
+    /**
+     * Screenshot of the page
+     * Stored as a nested ImageInput without the refinements to avoid circular validation
+     */
+    screenshot: z.ZodOptional<z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        type: z.ZodLiteral<"image">;
+        mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+        data: z.ZodOptional<z.ZodString>;
+        url: z.ZodOptional<z.ZodString>;
+        encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+        width: z.ZodOptional<z.ZodNumber>;
+        height: z.ZodOptional<z.ZodNumber>;
+        fileSize: z.ZodOptional<z.ZodNumber>;
+        altText: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>>;
+    /** Viewport dimensions used when capturing the page */
+    viewport: z.ZodOptional<z.ZodObject<{
+        width: z.ZodNumber;
+        height: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        width: number;
+        height: number;
+    }, {
+        width: number;
+        height: number;
+    }>>;
+    /** HTTP status code when the page was fetched */
+    statusCode: z.ZodOptional<z.ZodNumber>;
+    /** Response headers (selected relevant headers) */
+    headers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+    /** Timestamp when the page was captured */
+    capturedAt: z.ZodOptional<z.ZodDate>;
+    /** Whether JavaScript was executed during capture */
+    jsExecuted: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Links found on the page */
+    links: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        href: z.ZodString;
+        text: z.ZodOptional<z.ZodString>;
+        rel: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        href: string;
+        text?: string | undefined;
+        rel?: string | undefined;
+    }, {
+        href: string;
+        text?: string | undefined;
+        rel?: string | undefined;
+    }>, "many">>;
+    /** Page load metrics */
+    loadMetrics: z.ZodOptional<z.ZodObject<{
+        /** Time to first byte in milliseconds */
+        ttfb: z.ZodOptional<z.ZodNumber>;
+        /** DOM content loaded time in milliseconds */
+        domContentLoaded: z.ZodOptional<z.ZodNumber>;
+        /** Full page load time in milliseconds */
+        loadComplete: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        ttfb?: number | undefined;
+        domContentLoaded?: number | undefined;
+        loadComplete?: number | undefined;
+    }, {
+        ttfb?: number | undefined;
+        domContentLoaded?: number | undefined;
+        loadComplete?: number | undefined;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    type: "web_page";
+    url: string;
+    tags: string[];
+    jsExecuted: boolean;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    headers?: Record<string, string> | undefined;
+    viewport?: {
+        width: number;
+        height: number;
+    } | undefined;
+    screenshot?: {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | undefined;
+    title?: string | undefined;
+    id?: string | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    capturedAt?: Date | undefined;
+    capturedHtml?: string | undefined;
+    capturedText?: string | undefined;
+    capturedMarkdown?: string | undefined;
+    statusCode?: number | undefined;
+    links?: {
+        href: string;
+        text?: string | undefined;
+        rel?: string | undefined;
+    }[] | undefined;
+    loadMetrics?: {
+        ttfb?: number | undefined;
+        domContentLoaded?: number | undefined;
+        loadComplete?: number | undefined;
+    } | undefined;
+}, {
+    type: "web_page";
+    url: string;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    headers?: Record<string, string> | undefined;
+    viewport?: {
+        width: number;
+        height: number;
+    } | undefined;
+    screenshot?: {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | undefined;
+    title?: string | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    capturedAt?: Date | undefined;
+    capturedHtml?: string | undefined;
+    capturedText?: string | undefined;
+    capturedMarkdown?: string | undefined;
+    statusCode?: number | undefined;
+    jsExecuted?: boolean | undefined;
+    links?: {
+        href: string;
+        text?: string | undefined;
+        rel?: string | undefined;
+    }[] | undefined;
+    loadMetrics?: {
+        ttfb?: number | undefined;
+        domContentLoaded?: number | undefined;
+        loadComplete?: number | undefined;
+    } | undefined;
+}>;
+export type WebPageInput = z.infer<typeof WebPageInputSchema>;
+/**
+ * Design tool/platform identifiers for mockup inputs
+ */
+export declare const DesignToolSchema: z.ZodEnum<["figma", "sketch", "adobe_xd", "invision", "zeplin", "framer", "canva", "photoshop", "illustrator", "other"]>;
+export type DesignTool = z.infer<typeof DesignToolSchema>;
+/**
+ * Design mockup input schema for providing design files/exports to agents
+ * Supports various design tools like Figma, Sketch, Adobe XD, etc.
+ *
+ * @example
+ * ```typescript
+ * const mockupInput: DesignMockupInput = {
+ *   type: 'design_mockup',
+ *   name: 'Login Screen - Mobile',
+ *   designTool: 'figma',
+ *   fileId: 'abc123xyz',
+ *   nodeId: '123:456',
+ *   fileUrl: 'https://figma.com/file/abc123xyz/Login-Screens',
+ *   exportedImage: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *     width: 375,
+ *     height: 812,
+ *   },
+ *   exportFormat: 'png',
+ *   exportScale: 2,
+ *   designTokens: {
+ *     colors: { primary: '#007AFF', secondary: '#5856D6' },
+ *     typography: { heading: 'SF Pro Display', body: 'SF Pro Text' },
+ *   },
+ * };
+ * ```
+ */
+export declare const DesignMockupInputSchema: z.ZodObject<{
+    /** Unique identifier for this input */
+    id: z.ZodOptional<z.ZodString>;
+    /** Human-readable name/label for the input */
+    name: z.ZodOptional<z.ZodString>;
+    /** Description of what this input contains or represents */
+    description: z.ZodOptional<z.ZodString>;
+    /** Source metadata for tracking input origin */
+    source: z.ZodOptional<z.ZodObject<{
+        /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+        provider: z.ZodOptional<z.ZodString>;
+        /** Original URL where the content was sourced from */
+        originalUrl: z.ZodOptional<z.ZodString>;
+        /** Timestamp when the content was captured/retrieved */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Identifier of the agent or process that captured the content */
+        capturedBy: z.ZodOptional<z.ZodString>;
+        /** Version identifier for the source content (if applicable) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Additional provider-specific metadata */
+        additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }>>;
+    /** Tags for categorization and filtering */
+    tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when this input was created/added */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Additional custom metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+} & {
+    /** Discriminator for design mockup type */
+    type: z.ZodLiteral<"design_mockup">;
+    /** Design tool/platform used to create the mockup */
+    designTool: z.ZodEnum<["figma", "sketch", "adobe_xd", "invision", "zeplin", "framer", "canva", "photoshop", "illustrator", "other"]>;
+    /** Unique file identifier in the design tool */
+    fileId: z.ZodOptional<z.ZodString>;
+    /** Node/frame/artboard identifier within the file */
+    nodeId: z.ZodOptional<z.ZodString>;
+    /** Direct URL to the design file or frame */
+    fileUrl: z.ZodOptional<z.ZodString>;
+    /**
+     * Exported image of the mockup
+     * Stored as a nested structure to avoid circular refinement issues
+     */
+    exportedImage: z.ZodOptional<z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        type: z.ZodLiteral<"image">;
+        mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+        data: z.ZodOptional<z.ZodString>;
+        url: z.ZodOptional<z.ZodString>;
+        encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+        width: z.ZodOptional<z.ZodNumber>;
+        height: z.ZodOptional<z.ZodNumber>;
+        fileSize: z.ZodOptional<z.ZodNumber>;
+        altText: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>>;
+    /** Format used for export (png, svg, pdf, etc.) */
+    exportFormat: z.ZodOptional<z.ZodEnum<["png", "jpeg", "svg", "pdf", "webp"]>>;
+    /** Export scale factor (1x, 2x, 3x, etc.) */
+    exportScale: z.ZodOptional<z.ZodNumber>;
+    /** Frame/artboard name in the design tool */
+    frameName: z.ZodOptional<z.ZodString>;
+    /** Page name containing the frame */
+    pageName: z.ZodOptional<z.ZodString>;
+    /** Design dimensions (if different from exported image) */
+    designDimensions: z.ZodOptional<z.ZodObject<{
+        width: z.ZodNumber;
+        height: z.ZodNumber;
+        unit: z.ZodDefault<z.ZodOptional<z.ZodEnum<["px", "pt", "dp", "sp", "em", "rem", "%"]>>>;
+    }, "strip", z.ZodTypeAny, {
+        width: number;
+        height: number;
+        unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+    }, {
+        width: number;
+        height: number;
+        unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+    }>>;
+    /** Design tokens extracted from the mockup */
+    designTokens: z.ZodOptional<z.ZodObject<{
+        /** Color palette */
+        colors: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        /** Typography definitions */
+        typography: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodObject<{
+            fontFamily: z.ZodOptional<z.ZodString>;
+            fontSize: z.ZodOptional<z.ZodNumber>;
+            fontWeight: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+            lineHeight: z.ZodOptional<z.ZodNumber>;
+            letterSpacing: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }, {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }>]>>>;
+        /** Spacing values */
+        spacing: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        /** Border radius values */
+        borderRadius: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        /** Shadow definitions */
+        shadows: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+    }, "strip", z.ZodTypeAny, {
+        colors?: Record<string, string> | undefined;
+        typography?: Record<string, string | {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }> | undefined;
+        spacing?: Record<string, number> | undefined;
+        borderRadius?: Record<string, number> | undefined;
+        shadows?: Record<string, string> | undefined;
+    }, {
+        colors?: Record<string, string> | undefined;
+        typography?: Record<string, string | {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }> | undefined;
+        spacing?: Record<string, number> | undefined;
+        borderRadius?: Record<string, number> | undefined;
+        shadows?: Record<string, string> | undefined;
+    }>>;
+    /** Components/symbols used in the mockup */
+    components: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        id: z.ZodOptional<z.ZodString>;
+        type: z.ZodOptional<z.ZodString>;
+        bounds: z.ZodOptional<z.ZodObject<{
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        }, {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        type?: string | undefined;
+        id?: string | undefined;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+    }, {
+        name: string;
+        type?: string | undefined;
+        id?: string | undefined;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+    }>, "many">>;
+    /** Version/revision of the design file */
+    fileVersion: z.ZodOptional<z.ZodString>;
+    /** Last modified timestamp from the design tool */
+    lastModified: z.ZodOptional<z.ZodDate>;
+    /** Collaborators/editors of the design file */
+    collaborators: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    /** Comments or annotations on this mockup */
+    annotations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        text: z.ZodString;
+        author: z.ZodOptional<z.ZodString>;
+        position: z.ZodOptional<z.ZodObject<{
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            x: number;
+            y: number;
+        }, {
+            x: number;
+            y: number;
+        }>>;
+        createdAt: z.ZodOptional<z.ZodDate>;
+    }, "strip", z.ZodTypeAny, {
+        text: string;
+        createdAt?: Date | undefined;
+        position?: {
+            x: number;
+            y: number;
+        } | undefined;
+        id?: string | undefined;
+        author?: string | undefined;
+    }, {
+        text: string;
+        createdAt?: Date | undefined;
+        position?: {
+            x: number;
+            y: number;
+        } | undefined;
+        id?: string | undefined;
+        author?: string | undefined;
+    }>, "many">>;
+}, "strip", z.ZodTypeAny, {
+    type: "design_mockup";
+    tags: string[];
+    designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    id?: string | undefined;
+    lastModified?: Date | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    fileId?: string | undefined;
+    nodeId?: string | undefined;
+    fileUrl?: string | undefined;
+    exportedImage?: {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | undefined;
+    exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+    exportScale?: number | undefined;
+    frameName?: string | undefined;
+    pageName?: string | undefined;
+    designDimensions?: {
+        width: number;
+        height: number;
+        unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+    } | undefined;
+    designTokens?: {
+        colors?: Record<string, string> | undefined;
+        typography?: Record<string, string | {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }> | undefined;
+        spacing?: Record<string, number> | undefined;
+        borderRadius?: Record<string, number> | undefined;
+        shadows?: Record<string, string> | undefined;
+    } | undefined;
+    components?: {
+        name: string;
+        type?: string | undefined;
+        id?: string | undefined;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+    }[] | undefined;
+    fileVersion?: string | undefined;
+    collaborators?: string[] | undefined;
+    annotations?: {
+        text: string;
+        createdAt?: Date | undefined;
+        position?: {
+            x: number;
+            y: number;
+        } | undefined;
+        id?: string | undefined;
+        author?: string | undefined;
+    }[] | undefined;
+}, {
+    type: "design_mockup";
+    designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    lastModified?: Date | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    fileId?: string | undefined;
+    nodeId?: string | undefined;
+    fileUrl?: string | undefined;
+    exportedImage?: {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | undefined;
+    exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+    exportScale?: number | undefined;
+    frameName?: string | undefined;
+    pageName?: string | undefined;
+    designDimensions?: {
+        width: number;
+        height: number;
+        unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+    } | undefined;
+    designTokens?: {
+        colors?: Record<string, string> | undefined;
+        typography?: Record<string, string | {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }> | undefined;
+        spacing?: Record<string, number> | undefined;
+        borderRadius?: Record<string, number> | undefined;
+        shadows?: Record<string, string> | undefined;
+    } | undefined;
+    components?: {
+        name: string;
+        type?: string | undefined;
+        id?: string | undefined;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+    }[] | undefined;
+    fileVersion?: string | undefined;
+    collaborators?: string[] | undefined;
+    annotations?: {
+        text: string;
+        createdAt?: Date | undefined;
+        position?: {
+            x: number;
+            y: number;
+        } | undefined;
+        id?: string | undefined;
+        author?: string | undefined;
+    }[] | undefined;
+}>;
+export type DesignMockupInput = z.infer<typeof DesignMockupInputSchema>;
+/**
+ * Union type for all multimodal inputs
+ * Uses discriminated union based on the 'type' field for type-safe handling
+ *
+ * @example
+ * ```typescript
+ * function processMultimodalInput(input: MultimodalInput) {
+ *   switch (input.type) {
+ *     case 'image':
+ *       // TypeScript knows this is ImageInput
+ *       console.log(`Processing image: ${input.mediaType}`);
+ *       break;
+ *     case 'web_page':
+ *       // TypeScript knows this is WebPageInput
+ *       console.log(`Processing web page: ${input.url}`);
+ *       break;
+ *     case 'design_mockup':
+ *       // TypeScript knows this is DesignMockupInput
+ *       console.log(`Processing mockup from: ${input.designTool}`);
+ *       break;
+ *   }
+ * }
+ * ```
+ */
+export declare const MultimodalInputSchema: z.ZodUnion<[z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    /** Unique identifier for this input */
+    id: z.ZodOptional<z.ZodString>;
+    /** Human-readable name/label for the input */
+    name: z.ZodOptional<z.ZodString>;
+    /** Description of what this input contains or represents */
+    description: z.ZodOptional<z.ZodString>;
+    /** Source metadata for tracking input origin */
+    source: z.ZodOptional<z.ZodObject<{
+        /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+        provider: z.ZodOptional<z.ZodString>;
+        /** Original URL where the content was sourced from */
+        originalUrl: z.ZodOptional<z.ZodString>;
+        /** Timestamp when the content was captured/retrieved */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Identifier of the agent or process that captured the content */
+        capturedBy: z.ZodOptional<z.ZodString>;
+        /** Version identifier for the source content (if applicable) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Additional provider-specific metadata */
+        additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }>>;
+    /** Tags for categorization and filtering */
+    tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when this input was created/added */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Additional custom metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+} & {
+    /** Discriminator for image type */
+    type: z.ZodLiteral<"image">;
+    /** MIME type of the image */
+    mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+    /**
+     * Base64-encoded image data
+     * Mutually exclusive with `url` - provide either data or url, not both
+     */
+    data: z.ZodOptional<z.ZodString>;
+    /**
+     * URL to the image resource
+     * Mutually exclusive with `data` - provide either url or data, not both
+     */
+    url: z.ZodOptional<z.ZodString>;
+    /** Encoding format for the data field (always 'base64' when data is provided) */
+    encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+    /** Image width in pixels (if known) */
+    width: z.ZodOptional<z.ZodNumber>;
+    /** Image height in pixels (if known) */
+    height: z.ZodOptional<z.ZodNumber>;
+    /** File size in bytes (if known) */
+    fileSize: z.ZodOptional<z.ZodNumber>;
+    /** Alt text for accessibility and context */
+    altText: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    type: "image";
+    tags: string[];
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}, {
+    type: "image";
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}>, {
+    type: "image";
+    tags: string[];
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}, {
+    type: "image";
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}>, {
+    type: "image";
+    tags: string[];
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}, {
+    type: "image";
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+    data?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    url?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    fileSize?: number | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    encoding?: "base64" | undefined;
+    altText?: string | undefined;
+}>, z.ZodObject<{
+    /** Unique identifier for this input */
+    id: z.ZodOptional<z.ZodString>;
+    /** Human-readable name/label for the input */
+    name: z.ZodOptional<z.ZodString>;
+    /** Description of what this input contains or represents */
+    description: z.ZodOptional<z.ZodString>;
+    /** Source metadata for tracking input origin */
+    source: z.ZodOptional<z.ZodObject<{
+        /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+        provider: z.ZodOptional<z.ZodString>;
+        /** Original URL where the content was sourced from */
+        originalUrl: z.ZodOptional<z.ZodString>;
+        /** Timestamp when the content was captured/retrieved */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Identifier of the agent or process that captured the content */
+        capturedBy: z.ZodOptional<z.ZodString>;
+        /** Version identifier for the source content (if applicable) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Additional provider-specific metadata */
+        additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }>>;
+    /** Tags for categorization and filtering */
+    tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when this input was created/added */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Additional custom metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+} & {
+    /** Discriminator for web page type */
+    type: z.ZodLiteral<"web_page">;
+    /** URL of the web page */
+    url: z.ZodString;
+    /** Page title (if captured) */
+    title: z.ZodOptional<z.ZodString>;
+    /** Full HTML content of the page (if captured) */
+    capturedHtml: z.ZodOptional<z.ZodString>;
+    /** Plain text content extracted from the page (if captured) */
+    capturedText: z.ZodOptional<z.ZodString>;
+    /** Markdown representation of the page content (if converted) */
+    capturedMarkdown: z.ZodOptional<z.ZodString>;
+    /**
+     * Screenshot of the page
+     * Stored as a nested ImageInput without the refinements to avoid circular validation
+     */
+    screenshot: z.ZodOptional<z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        type: z.ZodLiteral<"image">;
+        mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+        data: z.ZodOptional<z.ZodString>;
+        url: z.ZodOptional<z.ZodString>;
+        encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+        width: z.ZodOptional<z.ZodNumber>;
+        height: z.ZodOptional<z.ZodNumber>;
+        fileSize: z.ZodOptional<z.ZodNumber>;
+        altText: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>>;
+    /** Viewport dimensions used when capturing the page */
+    viewport: z.ZodOptional<z.ZodObject<{
+        width: z.ZodNumber;
+        height: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        width: number;
+        height: number;
+    }, {
+        width: number;
+        height: number;
+    }>>;
+    /** HTTP status code when the page was fetched */
+    statusCode: z.ZodOptional<z.ZodNumber>;
+    /** Response headers (selected relevant headers) */
+    headers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+    /** Timestamp when the page was captured */
+    capturedAt: z.ZodOptional<z.ZodDate>;
+    /** Whether JavaScript was executed during capture */
+    jsExecuted: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    /** Links found on the page */
+    links: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        href: z.ZodString;
+        text: z.ZodOptional<z.ZodString>;
+        rel: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        href: string;
+        text?: string | undefined;
+        rel?: string | undefined;
+    }, {
+        href: string;
+        text?: string | undefined;
+        rel?: string | undefined;
+    }>, "many">>;
+    /** Page load metrics */
+    loadMetrics: z.ZodOptional<z.ZodObject<{
+        /** Time to first byte in milliseconds */
+        ttfb: z.ZodOptional<z.ZodNumber>;
+        /** DOM content loaded time in milliseconds */
+        domContentLoaded: z.ZodOptional<z.ZodNumber>;
+        /** Full page load time in milliseconds */
+        loadComplete: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        ttfb?: number | undefined;
+        domContentLoaded?: number | undefined;
+        loadComplete?: number | undefined;
+    }, {
+        ttfb?: number | undefined;
+        domContentLoaded?: number | undefined;
+        loadComplete?: number | undefined;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    type: "web_page";
+    url: string;
+    tags: string[];
+    jsExecuted: boolean;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    headers?: Record<string, string> | undefined;
+    viewport?: {
+        width: number;
+        height: number;
+    } | undefined;
+    screenshot?: {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | undefined;
+    title?: string | undefined;
+    id?: string | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    capturedAt?: Date | undefined;
+    capturedHtml?: string | undefined;
+    capturedText?: string | undefined;
+    capturedMarkdown?: string | undefined;
+    statusCode?: number | undefined;
+    links?: {
+        href: string;
+        text?: string | undefined;
+        rel?: string | undefined;
+    }[] | undefined;
+    loadMetrics?: {
+        ttfb?: number | undefined;
+        domContentLoaded?: number | undefined;
+        loadComplete?: number | undefined;
+    } | undefined;
+}, {
+    type: "web_page";
+    url: string;
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    headers?: Record<string, string> | undefined;
+    viewport?: {
+        width: number;
+        height: number;
+    } | undefined;
+    screenshot?: {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | undefined;
+    title?: string | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    capturedAt?: Date | undefined;
+    capturedHtml?: string | undefined;
+    capturedText?: string | undefined;
+    capturedMarkdown?: string | undefined;
+    statusCode?: number | undefined;
+    jsExecuted?: boolean | undefined;
+    links?: {
+        href: string;
+        text?: string | undefined;
+        rel?: string | undefined;
+    }[] | undefined;
+    loadMetrics?: {
+        ttfb?: number | undefined;
+        domContentLoaded?: number | undefined;
+        loadComplete?: number | undefined;
+    } | undefined;
+}>, z.ZodObject<{
+    /** Unique identifier for this input */
+    id: z.ZodOptional<z.ZodString>;
+    /** Human-readable name/label for the input */
+    name: z.ZodOptional<z.ZodString>;
+    /** Description of what this input contains or represents */
+    description: z.ZodOptional<z.ZodString>;
+    /** Source metadata for tracking input origin */
+    source: z.ZodOptional<z.ZodObject<{
+        /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+        provider: z.ZodOptional<z.ZodString>;
+        /** Original URL where the content was sourced from */
+        originalUrl: z.ZodOptional<z.ZodString>;
+        /** Timestamp when the content was captured/retrieved */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Identifier of the agent or process that captured the content */
+        capturedBy: z.ZodOptional<z.ZodString>;
+        /** Version identifier for the source content (if applicable) */
+        version: z.ZodOptional<z.ZodString>;
+        /** Additional provider-specific metadata */
+        additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }, {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    }>>;
+    /** Tags for categorization and filtering */
+    tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+    /** Timestamp when this input was created/added */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Additional custom metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+} & {
+    /** Discriminator for design mockup type */
+    type: z.ZodLiteral<"design_mockup">;
+    /** Design tool/platform used to create the mockup */
+    designTool: z.ZodEnum<["figma", "sketch", "adobe_xd", "invision", "zeplin", "framer", "canva", "photoshop", "illustrator", "other"]>;
+    /** Unique file identifier in the design tool */
+    fileId: z.ZodOptional<z.ZodString>;
+    /** Node/frame/artboard identifier within the file */
+    nodeId: z.ZodOptional<z.ZodString>;
+    /** Direct URL to the design file or frame */
+    fileUrl: z.ZodOptional<z.ZodString>;
+    /**
+     * Exported image of the mockup
+     * Stored as a nested structure to avoid circular refinement issues
+     */
+    exportedImage: z.ZodOptional<z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        type: z.ZodLiteral<"image">;
+        mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+        data: z.ZodOptional<z.ZodString>;
+        url: z.ZodOptional<z.ZodString>;
+        encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+        width: z.ZodOptional<z.ZodNumber>;
+        height: z.ZodOptional<z.ZodNumber>;
+        fileSize: z.ZodOptional<z.ZodNumber>;
+        altText: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>>;
+    /** Format used for export (png, svg, pdf, etc.) */
+    exportFormat: z.ZodOptional<z.ZodEnum<["png", "jpeg", "svg", "pdf", "webp"]>>;
+    /** Export scale factor (1x, 2x, 3x, etc.) */
+    exportScale: z.ZodOptional<z.ZodNumber>;
+    /** Frame/artboard name in the design tool */
+    frameName: z.ZodOptional<z.ZodString>;
+    /** Page name containing the frame */
+    pageName: z.ZodOptional<z.ZodString>;
+    /** Design dimensions (if different from exported image) */
+    designDimensions: z.ZodOptional<z.ZodObject<{
+        width: z.ZodNumber;
+        height: z.ZodNumber;
+        unit: z.ZodDefault<z.ZodOptional<z.ZodEnum<["px", "pt", "dp", "sp", "em", "rem", "%"]>>>;
+    }, "strip", z.ZodTypeAny, {
+        width: number;
+        height: number;
+        unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+    }, {
+        width: number;
+        height: number;
+        unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+    }>>;
+    /** Design tokens extracted from the mockup */
+    designTokens: z.ZodOptional<z.ZodObject<{
+        /** Color palette */
+        colors: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        /** Typography definitions */
+        typography: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodObject<{
+            fontFamily: z.ZodOptional<z.ZodString>;
+            fontSize: z.ZodOptional<z.ZodNumber>;
+            fontWeight: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+            lineHeight: z.ZodOptional<z.ZodNumber>;
+            letterSpacing: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }, {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }>]>>>;
+        /** Spacing values */
+        spacing: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        /** Border radius values */
+        borderRadius: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        /** Shadow definitions */
+        shadows: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+    }, "strip", z.ZodTypeAny, {
+        colors?: Record<string, string> | undefined;
+        typography?: Record<string, string | {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }> | undefined;
+        spacing?: Record<string, number> | undefined;
+        borderRadius?: Record<string, number> | undefined;
+        shadows?: Record<string, string> | undefined;
+    }, {
+        colors?: Record<string, string> | undefined;
+        typography?: Record<string, string | {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }> | undefined;
+        spacing?: Record<string, number> | undefined;
+        borderRadius?: Record<string, number> | undefined;
+        shadows?: Record<string, string> | undefined;
+    }>>;
+    /** Components/symbols used in the mockup */
+    components: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        id: z.ZodOptional<z.ZodString>;
+        type: z.ZodOptional<z.ZodString>;
+        bounds: z.ZodOptional<z.ZodObject<{
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        }, {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        type?: string | undefined;
+        id?: string | undefined;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+    }, {
+        name: string;
+        type?: string | undefined;
+        id?: string | undefined;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+    }>, "many">>;
+    /** Version/revision of the design file */
+    fileVersion: z.ZodOptional<z.ZodString>;
+    /** Last modified timestamp from the design tool */
+    lastModified: z.ZodOptional<z.ZodDate>;
+    /** Collaborators/editors of the design file */
+    collaborators: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    /** Comments or annotations on this mockup */
+    annotations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        id: z.ZodOptional<z.ZodString>;
+        text: z.ZodString;
+        author: z.ZodOptional<z.ZodString>;
+        position: z.ZodOptional<z.ZodObject<{
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            x: number;
+            y: number;
+        }, {
+            x: number;
+            y: number;
+        }>>;
+        createdAt: z.ZodOptional<z.ZodDate>;
+    }, "strip", z.ZodTypeAny, {
+        text: string;
+        createdAt?: Date | undefined;
+        position?: {
+            x: number;
+            y: number;
+        } | undefined;
+        id?: string | undefined;
+        author?: string | undefined;
+    }, {
+        text: string;
+        createdAt?: Date | undefined;
+        position?: {
+            x: number;
+            y: number;
+        } | undefined;
+        id?: string | undefined;
+        author?: string | undefined;
+    }>, "many">>;
+}, "strip", z.ZodTypeAny, {
+    type: "design_mockup";
+    tags: string[];
+    designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    id?: string | undefined;
+    lastModified?: Date | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    fileId?: string | undefined;
+    nodeId?: string | undefined;
+    fileUrl?: string | undefined;
+    exportedImage?: {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | undefined;
+    exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+    exportScale?: number | undefined;
+    frameName?: string | undefined;
+    pageName?: string | undefined;
+    designDimensions?: {
+        width: number;
+        height: number;
+        unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+    } | undefined;
+    designTokens?: {
+        colors?: Record<string, string> | undefined;
+        typography?: Record<string, string | {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }> | undefined;
+        spacing?: Record<string, number> | undefined;
+        borderRadius?: Record<string, number> | undefined;
+        shadows?: Record<string, string> | undefined;
+    } | undefined;
+    components?: {
+        name: string;
+        type?: string | undefined;
+        id?: string | undefined;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+    }[] | undefined;
+    fileVersion?: string | undefined;
+    collaborators?: string[] | undefined;
+    annotations?: {
+        text: string;
+        createdAt?: Date | undefined;
+        position?: {
+            x: number;
+            y: number;
+        } | undefined;
+        id?: string | undefined;
+        author?: string | undefined;
+    }[] | undefined;
+}, {
+    type: "design_mockup";
+    designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+    metadata?: Record<string, unknown> | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    createdAt?: Date | undefined;
+    tags?: string[] | undefined;
+    id?: string | undefined;
+    lastModified?: Date | undefined;
+    source?: {
+        version?: string | undefined;
+        provider?: string | undefined;
+        originalUrl?: string | undefined;
+        capturedAt?: Date | undefined;
+        capturedBy?: string | undefined;
+        additionalInfo?: Record<string, unknown> | undefined;
+    } | undefined;
+    fileId?: string | undefined;
+    nodeId?: string | undefined;
+    fileUrl?: string | undefined;
+    exportedImage?: {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | undefined;
+    exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+    exportScale?: number | undefined;
+    frameName?: string | undefined;
+    pageName?: string | undefined;
+    designDimensions?: {
+        width: number;
+        height: number;
+        unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+    } | undefined;
+    designTokens?: {
+        colors?: Record<string, string> | undefined;
+        typography?: Record<string, string | {
+            fontFamily?: string | undefined;
+            fontSize?: number | undefined;
+            fontWeight?: string | number | undefined;
+            lineHeight?: number | undefined;
+            letterSpacing?: number | undefined;
+        }> | undefined;
+        spacing?: Record<string, number> | undefined;
+        borderRadius?: Record<string, number> | undefined;
+        shadows?: Record<string, string> | undefined;
+    } | undefined;
+    components?: {
+        name: string;
+        type?: string | undefined;
+        id?: string | undefined;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+    }[] | undefined;
+    fileVersion?: string | undefined;
+    collaborators?: string[] | undefined;
+    annotations?: {
+        text: string;
+        createdAt?: Date | undefined;
+        position?: {
+            x: number;
+            y: number;
+        } | undefined;
+        id?: string | undefined;
+        author?: string | undefined;
+    }[] | undefined;
+}>]>;
+export type MultimodalInput = z.infer<typeof MultimodalInputSchema>;
+/**
+ * Collection of multimodal inputs for batch processing
+ * Useful for tasks that require multiple inputs of different types
+ *
+ * @example
+ * ```typescript
+ * const inputCollection: MultimodalInputCollection = {
+ *   inputs: [
+ *     { type: 'design_mockup', designTool: 'figma', ... },
+ *     { type: 'web_page', url: 'https://example.com', ... },
+ *     { type: 'image', mediaType: 'image/png', data: '...', ... },
+ *   ],
+ *   context: 'Implement the login screen based on the Figma mockup',
+ * };
+ * ```
+ */
+export declare const MultimodalInputCollectionSchema: z.ZodObject<{
+    /** Array of multimodal inputs */
+    inputs: z.ZodArray<z.ZodUnion<[z.ZodEffects<z.ZodEffects<z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        /** Discriminator for image type */
+        type: z.ZodLiteral<"image">;
+        /** MIME type of the image */
+        mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+        /**
+         * Base64-encoded image data
+         * Mutually exclusive with `url` - provide either data or url, not both
+         */
+        data: z.ZodOptional<z.ZodString>;
+        /**
+         * URL to the image resource
+         * Mutually exclusive with `data` - provide either url or data, not both
+         */
+        url: z.ZodOptional<z.ZodString>;
+        /** Encoding format for the data field (always 'base64' when data is provided) */
+        encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+        /** Image width in pixels (if known) */
+        width: z.ZodOptional<z.ZodNumber>;
+        /** Image height in pixels (if known) */
+        height: z.ZodOptional<z.ZodNumber>;
+        /** File size in bytes (if known) */
+        fileSize: z.ZodOptional<z.ZodNumber>;
+        /** Alt text for accessibility and context */
+        altText: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>, z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        /** Discriminator for web page type */
+        type: z.ZodLiteral<"web_page">;
+        /** URL of the web page */
+        url: z.ZodString;
+        /** Page title (if captured) */
+        title: z.ZodOptional<z.ZodString>;
+        /** Full HTML content of the page (if captured) */
+        capturedHtml: z.ZodOptional<z.ZodString>;
+        /** Plain text content extracted from the page (if captured) */
+        capturedText: z.ZodOptional<z.ZodString>;
+        /** Markdown representation of the page content (if converted) */
+        capturedMarkdown: z.ZodOptional<z.ZodString>;
+        /**
+         * Screenshot of the page
+         * Stored as a nested ImageInput without the refinements to avoid circular validation
+         */
+        screenshot: z.ZodOptional<z.ZodObject<{
+            /** Unique identifier for this input */
+            id: z.ZodOptional<z.ZodString>;
+            /** Human-readable name/label for the input */
+            name: z.ZodOptional<z.ZodString>;
+            /** Description of what this input contains or represents */
+            description: z.ZodOptional<z.ZodString>;
+            /** Source metadata for tracking input origin */
+            source: z.ZodOptional<z.ZodObject<{
+                /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                provider: z.ZodOptional<z.ZodString>;
+                /** Original URL where the content was sourced from */
+                originalUrl: z.ZodOptional<z.ZodString>;
+                /** Timestamp when the content was captured/retrieved */
+                capturedAt: z.ZodOptional<z.ZodDate>;
+                /** Identifier of the agent or process that captured the content */
+                capturedBy: z.ZodOptional<z.ZodString>;
+                /** Version identifier for the source content (if applicable) */
+                version: z.ZodOptional<z.ZodString>;
+                /** Additional provider-specific metadata */
+                additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, "strip", z.ZodTypeAny, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }>>;
+            /** Tags for categorization and filtering */
+            tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Timestamp when this input was created/added */
+            createdAt: z.ZodOptional<z.ZodDate>;
+            /** Additional custom metadata */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        } & {
+            type: z.ZodLiteral<"image">;
+            mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+            data: z.ZodOptional<z.ZodString>;
+            url: z.ZodOptional<z.ZodString>;
+            encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+            width: z.ZodOptional<z.ZodNumber>;
+            height: z.ZodOptional<z.ZodNumber>;
+            fileSize: z.ZodOptional<z.ZodNumber>;
+            altText: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }, {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }>>;
+        /** Viewport dimensions used when capturing the page */
+        viewport: z.ZodOptional<z.ZodObject<{
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            width: number;
+            height: number;
+        }, {
+            width: number;
+            height: number;
+        }>>;
+        /** HTTP status code when the page was fetched */
+        statusCode: z.ZodOptional<z.ZodNumber>;
+        /** Response headers (selected relevant headers) */
+        headers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        /** Timestamp when the page was captured */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Whether JavaScript was executed during capture */
+        jsExecuted: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Links found on the page */
+        links: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            href: z.ZodString;
+            text: z.ZodOptional<z.ZodString>;
+            rel: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }, {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }>, "many">>;
+        /** Page load metrics */
+        loadMetrics: z.ZodOptional<z.ZodObject<{
+            /** Time to first byte in milliseconds */
+            ttfb: z.ZodOptional<z.ZodNumber>;
+            /** DOM content loaded time in milliseconds */
+            domContentLoaded: z.ZodOptional<z.ZodNumber>;
+            /** Full page load time in milliseconds */
+            loadComplete: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        }, {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        type: "web_page";
+        url: string;
+        tags: string[];
+        jsExecuted: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        headers?: Record<string, string> | undefined;
+        viewport?: {
+            width: number;
+            height: number;
+        } | undefined;
+        screenshot?: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        title?: string | undefined;
+        id?: string | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        capturedAt?: Date | undefined;
+        capturedHtml?: string | undefined;
+        capturedText?: string | undefined;
+        capturedMarkdown?: string | undefined;
+        statusCode?: number | undefined;
+        links?: {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }[] | undefined;
+        loadMetrics?: {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        } | undefined;
+    }, {
+        type: "web_page";
+        url: string;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        headers?: Record<string, string> | undefined;
+        viewport?: {
+            width: number;
+            height: number;
+        } | undefined;
+        screenshot?: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        title?: string | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        capturedAt?: Date | undefined;
+        capturedHtml?: string | undefined;
+        capturedText?: string | undefined;
+        capturedMarkdown?: string | undefined;
+        statusCode?: number | undefined;
+        jsExecuted?: boolean | undefined;
+        links?: {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }[] | undefined;
+        loadMetrics?: {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        } | undefined;
+    }>, z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        /** Discriminator for design mockup type */
+        type: z.ZodLiteral<"design_mockup">;
+        /** Design tool/platform used to create the mockup */
+        designTool: z.ZodEnum<["figma", "sketch", "adobe_xd", "invision", "zeplin", "framer", "canva", "photoshop", "illustrator", "other"]>;
+        /** Unique file identifier in the design tool */
+        fileId: z.ZodOptional<z.ZodString>;
+        /** Node/frame/artboard identifier within the file */
+        nodeId: z.ZodOptional<z.ZodString>;
+        /** Direct URL to the design file or frame */
+        fileUrl: z.ZodOptional<z.ZodString>;
+        /**
+         * Exported image of the mockup
+         * Stored as a nested structure to avoid circular refinement issues
+         */
+        exportedImage: z.ZodOptional<z.ZodObject<{
+            /** Unique identifier for this input */
+            id: z.ZodOptional<z.ZodString>;
+            /** Human-readable name/label for the input */
+            name: z.ZodOptional<z.ZodString>;
+            /** Description of what this input contains or represents */
+            description: z.ZodOptional<z.ZodString>;
+            /** Source metadata for tracking input origin */
+            source: z.ZodOptional<z.ZodObject<{
+                /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                provider: z.ZodOptional<z.ZodString>;
+                /** Original URL where the content was sourced from */
+                originalUrl: z.ZodOptional<z.ZodString>;
+                /** Timestamp when the content was captured/retrieved */
+                capturedAt: z.ZodOptional<z.ZodDate>;
+                /** Identifier of the agent or process that captured the content */
+                capturedBy: z.ZodOptional<z.ZodString>;
+                /** Version identifier for the source content (if applicable) */
+                version: z.ZodOptional<z.ZodString>;
+                /** Additional provider-specific metadata */
+                additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, "strip", z.ZodTypeAny, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }>>;
+            /** Tags for categorization and filtering */
+            tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Timestamp when this input was created/added */
+            createdAt: z.ZodOptional<z.ZodDate>;
+            /** Additional custom metadata */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        } & {
+            type: z.ZodLiteral<"image">;
+            mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+            data: z.ZodOptional<z.ZodString>;
+            url: z.ZodOptional<z.ZodString>;
+            encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+            width: z.ZodOptional<z.ZodNumber>;
+            height: z.ZodOptional<z.ZodNumber>;
+            fileSize: z.ZodOptional<z.ZodNumber>;
+            altText: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }, {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }>>;
+        /** Format used for export (png, svg, pdf, etc.) */
+        exportFormat: z.ZodOptional<z.ZodEnum<["png", "jpeg", "svg", "pdf", "webp"]>>;
+        /** Export scale factor (1x, 2x, 3x, etc.) */
+        exportScale: z.ZodOptional<z.ZodNumber>;
+        /** Frame/artboard name in the design tool */
+        frameName: z.ZodOptional<z.ZodString>;
+        /** Page name containing the frame */
+        pageName: z.ZodOptional<z.ZodString>;
+        /** Design dimensions (if different from exported image) */
+        designDimensions: z.ZodOptional<z.ZodObject<{
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+            unit: z.ZodDefault<z.ZodOptional<z.ZodEnum<["px", "pt", "dp", "sp", "em", "rem", "%"]>>>;
+        }, "strip", z.ZodTypeAny, {
+            width: number;
+            height: number;
+            unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+        }, {
+            width: number;
+            height: number;
+            unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+        }>>;
+        /** Design tokens extracted from the mockup */
+        designTokens: z.ZodOptional<z.ZodObject<{
+            /** Color palette */
+            colors: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+            /** Typography definitions */
+            typography: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodObject<{
+                fontFamily: z.ZodOptional<z.ZodString>;
+                fontSize: z.ZodOptional<z.ZodNumber>;
+                fontWeight: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+                lineHeight: z.ZodOptional<z.ZodNumber>;
+                letterSpacing: z.ZodOptional<z.ZodNumber>;
+            }, "strip", z.ZodTypeAny, {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }, {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }>]>>>;
+            /** Spacing values */
+            spacing: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+            /** Border radius values */
+            borderRadius: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+            /** Shadow definitions */
+            shadows: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        }, "strip", z.ZodTypeAny, {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        }, {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        }>>;
+        /** Components/symbols used in the mockup */
+        components: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            id: z.ZodOptional<z.ZodString>;
+            type: z.ZodOptional<z.ZodString>;
+            bounds: z.ZodOptional<z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+            }, "strip", z.ZodTypeAny, {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            }, {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            }>>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }, {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }>, "many">>;
+        /** Version/revision of the design file */
+        fileVersion: z.ZodOptional<z.ZodString>;
+        /** Last modified timestamp from the design tool */
+        lastModified: z.ZodOptional<z.ZodDate>;
+        /** Collaborators/editors of the design file */
+        collaborators: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        /** Comments or annotations on this mockup */
+        annotations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            id: z.ZodOptional<z.ZodString>;
+            text: z.ZodString;
+            author: z.ZodOptional<z.ZodString>;
+            position: z.ZodOptional<z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+            }, "strip", z.ZodTypeAny, {
+                x: number;
+                y: number;
+            }, {
+                x: number;
+                y: number;
+            }>>;
+            createdAt: z.ZodOptional<z.ZodDate>;
+        }, "strip", z.ZodTypeAny, {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }, {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }>, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        type: "design_mockup";
+        tags: string[];
+        designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        id?: string | undefined;
+        lastModified?: Date | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        fileId?: string | undefined;
+        nodeId?: string | undefined;
+        fileUrl?: string | undefined;
+        exportedImage?: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+        exportScale?: number | undefined;
+        frameName?: string | undefined;
+        pageName?: string | undefined;
+        designDimensions?: {
+            width: number;
+            height: number;
+            unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+        } | undefined;
+        designTokens?: {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        } | undefined;
+        components?: {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }[] | undefined;
+        fileVersion?: string | undefined;
+        collaborators?: string[] | undefined;
+        annotations?: {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }[] | undefined;
+    }, {
+        type: "design_mockup";
+        designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        lastModified?: Date | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        fileId?: string | undefined;
+        nodeId?: string | undefined;
+        fileUrl?: string | undefined;
+        exportedImage?: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+        exportScale?: number | undefined;
+        frameName?: string | undefined;
+        pageName?: string | undefined;
+        designDimensions?: {
+            width: number;
+            height: number;
+            unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+        } | undefined;
+        designTokens?: {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        } | undefined;
+        components?: {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }[] | undefined;
+        fileVersion?: string | undefined;
+        collaborators?: string[] | undefined;
+        annotations?: {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }[] | undefined;
+    }>]>, "many">;
+    /** Optional context describing the relationship between inputs */
+    context: z.ZodOptional<z.ZodString>;
+    /** Primary input index (0-based) if one input is the main focus */
+    primaryInputIndex: z.ZodOptional<z.ZodNumber>;
+    /** Processing order preference */
+    processingOrder: z.ZodDefault<z.ZodOptional<z.ZodEnum<["sequential", "parallel", "priority"]>>>;
+    /** Timestamp when this collection was created */
+    createdAt: z.ZodOptional<z.ZodDate>;
+    /** Additional metadata for the collection */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    inputs: ({
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | {
+        type: "web_page";
+        url: string;
+        tags: string[];
+        jsExecuted: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        headers?: Record<string, string> | undefined;
+        viewport?: {
+            width: number;
+            height: number;
+        } | undefined;
+        screenshot?: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        title?: string | undefined;
+        id?: string | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        capturedAt?: Date | undefined;
+        capturedHtml?: string | undefined;
+        capturedText?: string | undefined;
+        capturedMarkdown?: string | undefined;
+        statusCode?: number | undefined;
+        links?: {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }[] | undefined;
+        loadMetrics?: {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        } | undefined;
+    } | {
+        type: "design_mockup";
+        tags: string[];
+        designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        id?: string | undefined;
+        lastModified?: Date | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        fileId?: string | undefined;
+        nodeId?: string | undefined;
+        fileUrl?: string | undefined;
+        exportedImage?: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+        exportScale?: number | undefined;
+        frameName?: string | undefined;
+        pageName?: string | undefined;
+        designDimensions?: {
+            width: number;
+            height: number;
+            unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+        } | undefined;
+        designTokens?: {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        } | undefined;
+        components?: {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }[] | undefined;
+        fileVersion?: string | undefined;
+        collaborators?: string[] | undefined;
+        annotations?: {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }[] | undefined;
+    })[];
+    processingOrder: "parallel" | "priority" | "sequential";
+    metadata?: Record<string, unknown> | undefined;
+    createdAt?: Date | undefined;
+    context?: string | undefined;
+    primaryInputIndex?: number | undefined;
+}, {
+    inputs: ({
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | {
+        type: "web_page";
+        url: string;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        headers?: Record<string, string> | undefined;
+        viewport?: {
+            width: number;
+            height: number;
+        } | undefined;
+        screenshot?: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        title?: string | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        capturedAt?: Date | undefined;
+        capturedHtml?: string | undefined;
+        capturedText?: string | undefined;
+        capturedMarkdown?: string | undefined;
+        statusCode?: number | undefined;
+        jsExecuted?: boolean | undefined;
+        links?: {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }[] | undefined;
+        loadMetrics?: {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        } | undefined;
+    } | {
+        type: "design_mockup";
+        designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        lastModified?: Date | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        fileId?: string | undefined;
+        nodeId?: string | undefined;
+        fileUrl?: string | undefined;
+        exportedImage?: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+        exportScale?: number | undefined;
+        frameName?: string | undefined;
+        pageName?: string | undefined;
+        designDimensions?: {
+            width: number;
+            height: number;
+            unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+        } | undefined;
+        designTokens?: {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        } | undefined;
+        components?: {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }[] | undefined;
+        fileVersion?: string | undefined;
+        collaborators?: string[] | undefined;
+        annotations?: {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }[] | undefined;
+    })[];
+    metadata?: Record<string, unknown> | undefined;
+    createdAt?: Date | undefined;
+    context?: string | undefined;
+    primaryInputIndex?: number | undefined;
+    processingOrder?: "parallel" | "priority" | "sequential" | undefined;
+}>;
+export type MultimodalInputCollection = z.infer<typeof MultimodalInputCollectionSchema>;
+/**
+ * Processing status for individual multimodal inputs
+ * Tracks the lifecycle of multimodal input processing
+ *
+ * @example
+ * ```typescript
+ * const status: MultimodalProcessingStatus = 'processing';
+ *
+ * // Status flow: pending -> processing -> completed/failed/skipped
+ * ```
+ */
+export declare const MultimodalProcessingStatusSchema: z.ZodEnum<["pending", "processing", "completed", "failed", "skipped"]>;
+export type MultimodalProcessingStatus = z.infer<typeof MultimodalProcessingStatusSchema>;
+/**
+ * Entity detected/extracted from multimodal input
+ * Represents structured information extracted during processing
+ *
+ * @example
+ * ```typescript
+ * const entity: ExtractedEntity = {
+ *   type: 'button',
+ *   value: 'Submit',
+ *   confidence: 0.95,
+ *   bounds: { x: 100, y: 200, width: 80, height: 40 }
+ * };
+ * ```
+ */
+export declare const ExtractedEntitySchema: z.ZodObject<{
+    /** Type of entity (e.g., 'button', 'text', 'image', 'input', 'link') */
+    type: z.ZodString;
+    /** Value or content of the entity */
+    value: z.ZodString;
+    /** Confidence score for the extraction (0.0 to 1.0) */
+    confidence: z.ZodOptional<z.ZodNumber>;
+    /** Bounding box coordinates if applicable (for visual entities) */
+    bounds: z.ZodOptional<z.ZodObject<{
+        x: z.ZodNumber;
+        y: z.ZodNumber;
+        width: z.ZodNumber;
+        height: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        width: number;
+        height: number;
+        x: number;
+        y: number;
+    }, {
+        width: number;
+        height: number;
+        x: number;
+        y: number;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    value: string;
+    type: string;
+    bounds?: {
+        width: number;
+        height: number;
+        x: number;
+        y: number;
+    } | undefined;
+    confidence?: number | undefined;
+}, {
+    value: string;
+    type: string;
+    bounds?: {
+        width: number;
+        height: number;
+        x: number;
+        y: number;
+    } | undefined;
+    confidence?: number | undefined;
+}>;
+export type ExtractedEntity = z.infer<typeof ExtractedEntitySchema>;
+/**
+ * Content extracted from a multimodal input during processing
+ * Contains text, structured data, and detected entities
+ *
+ * @example
+ * ```typescript
+ * const content: ExtractedContent = {
+ *   text: 'Welcome to our application',
+ *   structuredData: { pageTitle: 'Home', hasLogin: true },
+ *   entities: [
+ *     { type: 'heading', value: 'Welcome', confidence: 0.99 },
+ *     { type: 'button', value: 'Sign In', confidence: 0.95 }
+ *   ]
+ * };
+ * ```
+ */
+export declare const ExtractedContentSchema: z.ZodObject<{
+    /** Text content extracted from the input */
+    text: z.ZodOptional<z.ZodString>;
+    /** Structured data extracted from the input */
+    structuredData: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    /** Detected entities (UI components, text regions, etc.) */
+    entities: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Type of entity (e.g., 'button', 'text', 'image', 'input', 'link') */
+        type: z.ZodString;
+        /** Value or content of the entity */
+        value: z.ZodString;
+        /** Confidence score for the extraction (0.0 to 1.0) */
+        confidence: z.ZodOptional<z.ZodNumber>;
+        /** Bounding box coordinates if applicable (for visual entities) */
+        bounds: z.ZodOptional<z.ZodObject<{
+            x: z.ZodNumber;
+            y: z.ZodNumber;
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        }, {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        value: string;
+        type: string;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+        confidence?: number | undefined;
+    }, {
+        value: string;
+        type: string;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+        confidence?: number | undefined;
+    }>, "many">>;
+}, "strip", z.ZodTypeAny, {
+    text?: string | undefined;
+    structuredData?: Record<string, unknown> | undefined;
+    entities?: {
+        value: string;
+        type: string;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+        confidence?: number | undefined;
+    }[] | undefined;
+}, {
+    text?: string | undefined;
+    structuredData?: Record<string, unknown> | undefined;
+    entities?: {
+        value: string;
+        type: string;
+        bounds?: {
+            width: number;
+            height: number;
+            x: number;
+            y: number;
+        } | undefined;
+        confidence?: number | undefined;
+    }[] | undefined;
+}>;
+export type ExtractedContent = z.infer<typeof ExtractedContentSchema>;
+/**
+ * A multimodal input that has been processed with status and results
+ * Wraps the original input with processing metadata and extracted content
+ *
+ * @example
+ * ```typescript
+ * const processed: ProcessedMultimodalInput = {
+ *   input: {
+ *     type: 'image',
+ *     mediaType: 'image/png',
+ *     data: 'base64...',
+ *   },
+ *   status: 'completed',
+ *   processedAt: new Date(),
+ *   processingDurationMs: 1500,
+ *   extractedContent: {
+ *     text: 'Login form with username and password fields',
+ *     entities: [
+ *       { type: 'input', value: 'username', confidence: 0.98 },
+ *       { type: 'input', value: 'password', confidence: 0.97 },
+ *       { type: 'button', value: 'Login', confidence: 0.99 }
+ *     ]
+ *   }
+ * };
+ * ```
+ */
+export declare const ProcessedMultimodalInputSchema: z.ZodObject<{
+    /** Original multimodal input */
+    input: z.ZodUnion<[z.ZodEffects<z.ZodEffects<z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        /** Discriminator for image type */
+        type: z.ZodLiteral<"image">;
+        /** MIME type of the image */
+        mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+        /**
+         * Base64-encoded image data
+         * Mutually exclusive with `url` - provide either data or url, not both
+         */
+        data: z.ZodOptional<z.ZodString>;
+        /**
+         * URL to the image resource
+         * Mutually exclusive with `data` - provide either url or data, not both
+         */
+        url: z.ZodOptional<z.ZodString>;
+        /** Encoding format for the data field (always 'base64' when data is provided) */
+        encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+        /** Image width in pixels (if known) */
+        width: z.ZodOptional<z.ZodNumber>;
+        /** Image height in pixels (if known) */
+        height: z.ZodOptional<z.ZodNumber>;
+        /** File size in bytes (if known) */
+        fileSize: z.ZodOptional<z.ZodNumber>;
+        /** Alt text for accessibility and context */
+        altText: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>, {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }, {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    }>, z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        /** Discriminator for web page type */
+        type: z.ZodLiteral<"web_page">;
+        /** URL of the web page */
+        url: z.ZodString;
+        /** Page title (if captured) */
+        title: z.ZodOptional<z.ZodString>;
+        /** Full HTML content of the page (if captured) */
+        capturedHtml: z.ZodOptional<z.ZodString>;
+        /** Plain text content extracted from the page (if captured) */
+        capturedText: z.ZodOptional<z.ZodString>;
+        /** Markdown representation of the page content (if converted) */
+        capturedMarkdown: z.ZodOptional<z.ZodString>;
+        /**
+         * Screenshot of the page
+         * Stored as a nested ImageInput without the refinements to avoid circular validation
+         */
+        screenshot: z.ZodOptional<z.ZodObject<{
+            /** Unique identifier for this input */
+            id: z.ZodOptional<z.ZodString>;
+            /** Human-readable name/label for the input */
+            name: z.ZodOptional<z.ZodString>;
+            /** Description of what this input contains or represents */
+            description: z.ZodOptional<z.ZodString>;
+            /** Source metadata for tracking input origin */
+            source: z.ZodOptional<z.ZodObject<{
+                /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                provider: z.ZodOptional<z.ZodString>;
+                /** Original URL where the content was sourced from */
+                originalUrl: z.ZodOptional<z.ZodString>;
+                /** Timestamp when the content was captured/retrieved */
+                capturedAt: z.ZodOptional<z.ZodDate>;
+                /** Identifier of the agent or process that captured the content */
+                capturedBy: z.ZodOptional<z.ZodString>;
+                /** Version identifier for the source content (if applicable) */
+                version: z.ZodOptional<z.ZodString>;
+                /** Additional provider-specific metadata */
+                additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, "strip", z.ZodTypeAny, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }>>;
+            /** Tags for categorization and filtering */
+            tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Timestamp when this input was created/added */
+            createdAt: z.ZodOptional<z.ZodDate>;
+            /** Additional custom metadata */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        } & {
+            type: z.ZodLiteral<"image">;
+            mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+            data: z.ZodOptional<z.ZodString>;
+            url: z.ZodOptional<z.ZodString>;
+            encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+            width: z.ZodOptional<z.ZodNumber>;
+            height: z.ZodOptional<z.ZodNumber>;
+            fileSize: z.ZodOptional<z.ZodNumber>;
+            altText: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }, {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }>>;
+        /** Viewport dimensions used when capturing the page */
+        viewport: z.ZodOptional<z.ZodObject<{
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+        }, "strip", z.ZodTypeAny, {
+            width: number;
+            height: number;
+        }, {
+            width: number;
+            height: number;
+        }>>;
+        /** HTTP status code when the page was fetched */
+        statusCode: z.ZodOptional<z.ZodNumber>;
+        /** Response headers (selected relevant headers) */
+        headers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        /** Timestamp when the page was captured */
+        capturedAt: z.ZodOptional<z.ZodDate>;
+        /** Whether JavaScript was executed during capture */
+        jsExecuted: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+        /** Links found on the page */
+        links: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            href: z.ZodString;
+            text: z.ZodOptional<z.ZodString>;
+            rel: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }, {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }>, "many">>;
+        /** Page load metrics */
+        loadMetrics: z.ZodOptional<z.ZodObject<{
+            /** Time to first byte in milliseconds */
+            ttfb: z.ZodOptional<z.ZodNumber>;
+            /** DOM content loaded time in milliseconds */
+            domContentLoaded: z.ZodOptional<z.ZodNumber>;
+            /** Full page load time in milliseconds */
+            loadComplete: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        }, {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        type: "web_page";
+        url: string;
+        tags: string[];
+        jsExecuted: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        headers?: Record<string, string> | undefined;
+        viewport?: {
+            width: number;
+            height: number;
+        } | undefined;
+        screenshot?: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        title?: string | undefined;
+        id?: string | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        capturedAt?: Date | undefined;
+        capturedHtml?: string | undefined;
+        capturedText?: string | undefined;
+        capturedMarkdown?: string | undefined;
+        statusCode?: number | undefined;
+        links?: {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }[] | undefined;
+        loadMetrics?: {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        } | undefined;
+    }, {
+        type: "web_page";
+        url: string;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        headers?: Record<string, string> | undefined;
+        viewport?: {
+            width: number;
+            height: number;
+        } | undefined;
+        screenshot?: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        title?: string | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        capturedAt?: Date | undefined;
+        capturedHtml?: string | undefined;
+        capturedText?: string | undefined;
+        capturedMarkdown?: string | undefined;
+        statusCode?: number | undefined;
+        jsExecuted?: boolean | undefined;
+        links?: {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }[] | undefined;
+        loadMetrics?: {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        } | undefined;
+    }>, z.ZodObject<{
+        /** Unique identifier for this input */
+        id: z.ZodOptional<z.ZodString>;
+        /** Human-readable name/label for the input */
+        name: z.ZodOptional<z.ZodString>;
+        /** Description of what this input contains or represents */
+        description: z.ZodOptional<z.ZodString>;
+        /** Source metadata for tracking input origin */
+        source: z.ZodOptional<z.ZodObject<{
+            /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+            provider: z.ZodOptional<z.ZodString>;
+            /** Original URL where the content was sourced from */
+            originalUrl: z.ZodOptional<z.ZodString>;
+            /** Timestamp when the content was captured/retrieved */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Identifier of the agent or process that captured the content */
+            capturedBy: z.ZodOptional<z.ZodString>;
+            /** Version identifier for the source content (if applicable) */
+            version: z.ZodOptional<z.ZodString>;
+            /** Additional provider-specific metadata */
+            additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, "strip", z.ZodTypeAny, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }, {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        }>>;
+        /** Tags for categorization and filtering */
+        tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+        /** Timestamp when this input was created/added */
+        createdAt: z.ZodOptional<z.ZodDate>;
+        /** Additional custom metadata */
+        metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    } & {
+        /** Discriminator for design mockup type */
+        type: z.ZodLiteral<"design_mockup">;
+        /** Design tool/platform used to create the mockup */
+        designTool: z.ZodEnum<["figma", "sketch", "adobe_xd", "invision", "zeplin", "framer", "canva", "photoshop", "illustrator", "other"]>;
+        /** Unique file identifier in the design tool */
+        fileId: z.ZodOptional<z.ZodString>;
+        /** Node/frame/artboard identifier within the file */
+        nodeId: z.ZodOptional<z.ZodString>;
+        /** Direct URL to the design file or frame */
+        fileUrl: z.ZodOptional<z.ZodString>;
+        /**
+         * Exported image of the mockup
+         * Stored as a nested structure to avoid circular refinement issues
+         */
+        exportedImage: z.ZodOptional<z.ZodObject<{
+            /** Unique identifier for this input */
+            id: z.ZodOptional<z.ZodString>;
+            /** Human-readable name/label for the input */
+            name: z.ZodOptional<z.ZodString>;
+            /** Description of what this input contains or represents */
+            description: z.ZodOptional<z.ZodString>;
+            /** Source metadata for tracking input origin */
+            source: z.ZodOptional<z.ZodObject<{
+                /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                provider: z.ZodOptional<z.ZodString>;
+                /** Original URL where the content was sourced from */
+                originalUrl: z.ZodOptional<z.ZodString>;
+                /** Timestamp when the content was captured/retrieved */
+                capturedAt: z.ZodOptional<z.ZodDate>;
+                /** Identifier of the agent or process that captured the content */
+                capturedBy: z.ZodOptional<z.ZodString>;
+                /** Version identifier for the source content (if applicable) */
+                version: z.ZodOptional<z.ZodString>;
+                /** Additional provider-specific metadata */
+                additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, "strip", z.ZodTypeAny, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }>>;
+            /** Tags for categorization and filtering */
+            tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Timestamp when this input was created/added */
+            createdAt: z.ZodOptional<z.ZodDate>;
+            /** Additional custom metadata */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        } & {
+            type: z.ZodLiteral<"image">;
+            mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+            data: z.ZodOptional<z.ZodString>;
+            url: z.ZodOptional<z.ZodString>;
+            encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+            width: z.ZodOptional<z.ZodNumber>;
+            height: z.ZodOptional<z.ZodNumber>;
+            fileSize: z.ZodOptional<z.ZodNumber>;
+            altText: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }, {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }>>;
+        /** Format used for export (png, svg, pdf, etc.) */
+        exportFormat: z.ZodOptional<z.ZodEnum<["png", "jpeg", "svg", "pdf", "webp"]>>;
+        /** Export scale factor (1x, 2x, 3x, etc.) */
+        exportScale: z.ZodOptional<z.ZodNumber>;
+        /** Frame/artboard name in the design tool */
+        frameName: z.ZodOptional<z.ZodString>;
+        /** Page name containing the frame */
+        pageName: z.ZodOptional<z.ZodString>;
+        /** Design dimensions (if different from exported image) */
+        designDimensions: z.ZodOptional<z.ZodObject<{
+            width: z.ZodNumber;
+            height: z.ZodNumber;
+            unit: z.ZodDefault<z.ZodOptional<z.ZodEnum<["px", "pt", "dp", "sp", "em", "rem", "%"]>>>;
+        }, "strip", z.ZodTypeAny, {
+            width: number;
+            height: number;
+            unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+        }, {
+            width: number;
+            height: number;
+            unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+        }>>;
+        /** Design tokens extracted from the mockup */
+        designTokens: z.ZodOptional<z.ZodObject<{
+            /** Color palette */
+            colors: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+            /** Typography definitions */
+            typography: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodObject<{
+                fontFamily: z.ZodOptional<z.ZodString>;
+                fontSize: z.ZodOptional<z.ZodNumber>;
+                fontWeight: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+                lineHeight: z.ZodOptional<z.ZodNumber>;
+                letterSpacing: z.ZodOptional<z.ZodNumber>;
+            }, "strip", z.ZodTypeAny, {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }, {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }>]>>>;
+            /** Spacing values */
+            spacing: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+            /** Border radius values */
+            borderRadius: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+            /** Shadow definitions */
+            shadows: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+        }, "strip", z.ZodTypeAny, {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        }, {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        }>>;
+        /** Components/symbols used in the mockup */
+        components: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            id: z.ZodOptional<z.ZodString>;
+            type: z.ZodOptional<z.ZodString>;
+            bounds: z.ZodOptional<z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+            }, "strip", z.ZodTypeAny, {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            }, {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            }>>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }, {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }>, "many">>;
+        /** Version/revision of the design file */
+        fileVersion: z.ZodOptional<z.ZodString>;
+        /** Last modified timestamp from the design tool */
+        lastModified: z.ZodOptional<z.ZodDate>;
+        /** Collaborators/editors of the design file */
+        collaborators: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        /** Comments or annotations on this mockup */
+        annotations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            id: z.ZodOptional<z.ZodString>;
+            text: z.ZodString;
+            author: z.ZodOptional<z.ZodString>;
+            position: z.ZodOptional<z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+            }, "strip", z.ZodTypeAny, {
+                x: number;
+                y: number;
+            }, {
+                x: number;
+                y: number;
+            }>>;
+            createdAt: z.ZodOptional<z.ZodDate>;
+        }, "strip", z.ZodTypeAny, {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }, {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }>, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        type: "design_mockup";
+        tags: string[];
+        designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        id?: string | undefined;
+        lastModified?: Date | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        fileId?: string | undefined;
+        nodeId?: string | undefined;
+        fileUrl?: string | undefined;
+        exportedImage?: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+        exportScale?: number | undefined;
+        frameName?: string | undefined;
+        pageName?: string | undefined;
+        designDimensions?: {
+            width: number;
+            height: number;
+            unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+        } | undefined;
+        designTokens?: {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        } | undefined;
+        components?: {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }[] | undefined;
+        fileVersion?: string | undefined;
+        collaborators?: string[] | undefined;
+        annotations?: {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }[] | undefined;
+    }, {
+        type: "design_mockup";
+        designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        lastModified?: Date | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        fileId?: string | undefined;
+        nodeId?: string | undefined;
+        fileUrl?: string | undefined;
+        exportedImage?: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+        exportScale?: number | undefined;
+        frameName?: string | undefined;
+        pageName?: string | undefined;
+        designDimensions?: {
+            width: number;
+            height: number;
+            unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+        } | undefined;
+        designTokens?: {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        } | undefined;
+        components?: {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }[] | undefined;
+        fileVersion?: string | undefined;
+        collaborators?: string[] | undefined;
+        annotations?: {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }[] | undefined;
+    }>]>;
+    /** Current processing status */
+    status: z.ZodEnum<["pending", "processing", "completed", "failed", "skipped"]>;
+    /** Timestamp when processing started/completed */
+    processedAt: z.ZodOptional<z.ZodDate>;
+    /** Processing duration in milliseconds */
+    processingDurationMs: z.ZodOptional<z.ZodNumber>;
+    /** Error message if processing failed */
+    error: z.ZodOptional<z.ZodString>;
+    /** Extracted/analyzed content from the input */
+    extractedContent: z.ZodOptional<z.ZodObject<{
+        /** Text content extracted from the input */
+        text: z.ZodOptional<z.ZodString>;
+        /** Structured data extracted from the input */
+        structuredData: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        /** Detected entities (UI components, text regions, etc.) */
+        entities: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            /** Type of entity (e.g., 'button', 'text', 'image', 'input', 'link') */
+            type: z.ZodString;
+            /** Value or content of the entity */
+            value: z.ZodString;
+            /** Confidence score for the extraction (0.0 to 1.0) */
+            confidence: z.ZodOptional<z.ZodNumber>;
+            /** Bounding box coordinates if applicable (for visual entities) */
+            bounds: z.ZodOptional<z.ZodObject<{
+                x: z.ZodNumber;
+                y: z.ZodNumber;
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+            }, "strip", z.ZodTypeAny, {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            }, {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            }>>;
+        }, "strip", z.ZodTypeAny, {
+            value: string;
+            type: string;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+            confidence?: number | undefined;
+        }, {
+            value: string;
+            type: string;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+            confidence?: number | undefined;
+        }>, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        text?: string | undefined;
+        structuredData?: Record<string, unknown> | undefined;
+        entities?: {
+            value: string;
+            type: string;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+            confidence?: number | undefined;
+        }[] | undefined;
+    }, {
+        text?: string | undefined;
+        structuredData?: Record<string, unknown> | undefined;
+        entities?: {
+            value: string;
+            type: string;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+            confidence?: number | undefined;
+        }[] | undefined;
+    }>>;
+}, "strip", z.ZodTypeAny, {
+    status: "completed" | "failed" | "pending" | "skipped" | "processing";
+    input: {
+        type: "image";
+        tags: string[];
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | {
+        type: "web_page";
+        url: string;
+        tags: string[];
+        jsExecuted: boolean;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        headers?: Record<string, string> | undefined;
+        viewport?: {
+            width: number;
+            height: number;
+        } | undefined;
+        screenshot?: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        title?: string | undefined;
+        id?: string | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        capturedAt?: Date | undefined;
+        capturedHtml?: string | undefined;
+        capturedText?: string | undefined;
+        capturedMarkdown?: string | undefined;
+        statusCode?: number | undefined;
+        links?: {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }[] | undefined;
+        loadMetrics?: {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        } | undefined;
+    } | {
+        type: "design_mockup";
+        tags: string[];
+        designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        id?: string | undefined;
+        lastModified?: Date | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        fileId?: string | undefined;
+        nodeId?: string | undefined;
+        fileUrl?: string | undefined;
+        exportedImage?: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+        exportScale?: number | undefined;
+        frameName?: string | undefined;
+        pageName?: string | undefined;
+        designDimensions?: {
+            width: number;
+            height: number;
+            unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+        } | undefined;
+        designTokens?: {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        } | undefined;
+        components?: {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }[] | undefined;
+        fileVersion?: string | undefined;
+        collaborators?: string[] | undefined;
+        annotations?: {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }[] | undefined;
+    };
+    error?: string | undefined;
+    processedAt?: Date | undefined;
+    processingDurationMs?: number | undefined;
+    extractedContent?: {
+        text?: string | undefined;
+        structuredData?: Record<string, unknown> | undefined;
+        entities?: {
+            value: string;
+            type: string;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+            confidence?: number | undefined;
+        }[] | undefined;
+    } | undefined;
+}, {
+    status: "completed" | "failed" | "pending" | "skipped" | "processing";
+    input: {
+        type: "image";
+        mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+        data?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        url?: string | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        fileSize?: number | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        encoding?: "base64" | undefined;
+        altText?: string | undefined;
+    } | {
+        type: "web_page";
+        url: string;
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        headers?: Record<string, string> | undefined;
+        viewport?: {
+            width: number;
+            height: number;
+        } | undefined;
+        screenshot?: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        title?: string | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        capturedAt?: Date | undefined;
+        capturedHtml?: string | undefined;
+        capturedText?: string | undefined;
+        capturedMarkdown?: string | undefined;
+        statusCode?: number | undefined;
+        jsExecuted?: boolean | undefined;
+        links?: {
+            href: string;
+            text?: string | undefined;
+            rel?: string | undefined;
+        }[] | undefined;
+        loadMetrics?: {
+            ttfb?: number | undefined;
+            domContentLoaded?: number | undefined;
+            loadComplete?: number | undefined;
+        } | undefined;
+    } | {
+        type: "design_mockup";
+        designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+        metadata?: Record<string, unknown> | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        createdAt?: Date | undefined;
+        tags?: string[] | undefined;
+        id?: string | undefined;
+        lastModified?: Date | undefined;
+        source?: {
+            version?: string | undefined;
+            provider?: string | undefined;
+            originalUrl?: string | undefined;
+            capturedAt?: Date | undefined;
+            capturedBy?: string | undefined;
+            additionalInfo?: Record<string, unknown> | undefined;
+        } | undefined;
+        fileId?: string | undefined;
+        nodeId?: string | undefined;
+        fileUrl?: string | undefined;
+        exportedImage?: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | undefined;
+        exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+        exportScale?: number | undefined;
+        frameName?: string | undefined;
+        pageName?: string | undefined;
+        designDimensions?: {
+            width: number;
+            height: number;
+            unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+        } | undefined;
+        designTokens?: {
+            colors?: Record<string, string> | undefined;
+            typography?: Record<string, string | {
+                fontFamily?: string | undefined;
+                fontSize?: number | undefined;
+                fontWeight?: string | number | undefined;
+                lineHeight?: number | undefined;
+                letterSpacing?: number | undefined;
+            }> | undefined;
+            spacing?: Record<string, number> | undefined;
+            borderRadius?: Record<string, number> | undefined;
+            shadows?: Record<string, string> | undefined;
+        } | undefined;
+        components?: {
+            name: string;
+            type?: string | undefined;
+            id?: string | undefined;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+        }[] | undefined;
+        fileVersion?: string | undefined;
+        collaborators?: string[] | undefined;
+        annotations?: {
+            text: string;
+            createdAt?: Date | undefined;
+            position?: {
+                x: number;
+                y: number;
+            } | undefined;
+            id?: string | undefined;
+            author?: string | undefined;
+        }[] | undefined;
+    };
+    error?: string | undefined;
+    processedAt?: Date | undefined;
+    processingDurationMs?: number | undefined;
+    extractedContent?: {
+        text?: string | undefined;
+        structuredData?: Record<string, unknown> | undefined;
+        entities?: {
+            value: string;
+            type: string;
+            bounds?: {
+                width: number;
+                height: number;
+                x: number;
+                y: number;
+            } | undefined;
+            confidence?: number | undefined;
+        }[] | undefined;
+    } | undefined;
+}>;
+export type ProcessedMultimodalInput = z.infer<typeof ProcessedMultimodalInputSchema>;
+/**
+ * Input counts by type for quick reference
+ * Provides a summary of multimodal input types in a context
+ *
+ * @example
+ * ```typescript
+ * const counts: MultimodalInputCounts = {
+ *   images: 3,
+ *   webPages: 1,
+ *   designMockups: 2
+ * };
+ * ```
+ */
+export declare const MultimodalInputCountsSchema: z.ZodObject<{
+    /** Number of image inputs */
+    images: z.ZodDefault<z.ZodNumber>;
+    /** Number of web page inputs */
+    webPages: z.ZodDefault<z.ZodNumber>;
+    /** Number of design mockup inputs */
+    designMockups: z.ZodDefault<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    images: number;
+    webPages: number;
+    designMockups: number;
+}, {
+    images?: number | undefined;
+    webPages?: number | undefined;
+    designMockups?: number | undefined;
+}>;
+export type MultimodalInputCounts = z.infer<typeof MultimodalInputCountsSchema>;
+/**
+ * Multimodal context for a task - contains processed multimodal inputs
+ * and aggregated context information for agent consumption
+ *
+ * This type represents the processed state of multimodal inputs attached
+ * to a task, including processing status, extracted content, and summary.
+ *
+ * @example
+ * ```typescript
+ * const context: MultimodalContext = {
+ *   inputs: [
+ *     {
+ *       input: { type: 'design_mockup', designTool: 'figma' },
+ *       status: 'completed',
+ *       processedAt: new Date(),
+ *       extractedContent: { text: 'Login screen mockup', entities: [] }
+ *     },
+ *     {
+ *       input: { type: 'web_page', url: 'https://example.com' },
+ *       status: 'completed',
+ *       processedAt: new Date(),
+ *       extractedContent: { text: 'Current implementation', structuredData: {} }
+ *     }
+ *   ],
+ *   status: 'completed',
+ *   contextSummary: 'Task includes a Figma login screen mockup and the current implementation webpage for reference.',
+ *   createdAt: new Date('2024-01-15T10:00:00Z'),
+ *   completedAt: new Date('2024-01-15T10:00:05Z'),
+ *   totalProcessingTimeMs: 5000,
+ *   inputCounts: { images: 0, webPages: 1, designMockups: 1 }
+ * };
+ * ```
+ */
+export declare const MultimodalContextSchema: z.ZodObject<{
+    /** Array of processed multimodal inputs */
+    inputs: z.ZodArray<z.ZodObject<{
+        /** Original multimodal input */
+        input: z.ZodUnion<[z.ZodEffects<z.ZodEffects<z.ZodObject<{
+            /** Unique identifier for this input */
+            id: z.ZodOptional<z.ZodString>;
+            /** Human-readable name/label for the input */
+            name: z.ZodOptional<z.ZodString>;
+            /** Description of what this input contains or represents */
+            description: z.ZodOptional<z.ZodString>;
+            /** Source metadata for tracking input origin */
+            source: z.ZodOptional<z.ZodObject<{
+                /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                provider: z.ZodOptional<z.ZodString>;
+                /** Original URL where the content was sourced from */
+                originalUrl: z.ZodOptional<z.ZodString>;
+                /** Timestamp when the content was captured/retrieved */
+                capturedAt: z.ZodOptional<z.ZodDate>;
+                /** Identifier of the agent or process that captured the content */
+                capturedBy: z.ZodOptional<z.ZodString>;
+                /** Version identifier for the source content (if applicable) */
+                version: z.ZodOptional<z.ZodString>;
+                /** Additional provider-specific metadata */
+                additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, "strip", z.ZodTypeAny, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }>>;
+            /** Tags for categorization and filtering */
+            tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Timestamp when this input was created/added */
+            createdAt: z.ZodOptional<z.ZodDate>;
+            /** Additional custom metadata */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        } & {
+            /** Discriminator for image type */
+            type: z.ZodLiteral<"image">;
+            /** MIME type of the image */
+            mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+            /**
+             * Base64-encoded image data
+             * Mutually exclusive with `url` - provide either data or url, not both
+             */
+            data: z.ZodOptional<z.ZodString>;
+            /**
+             * URL to the image resource
+             * Mutually exclusive with `data` - provide either url or data, not both
+             */
+            url: z.ZodOptional<z.ZodString>;
+            /** Encoding format for the data field (always 'base64' when data is provided) */
+            encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+            /** Image width in pixels (if known) */
+            width: z.ZodOptional<z.ZodNumber>;
+            /** Image height in pixels (if known) */
+            height: z.ZodOptional<z.ZodNumber>;
+            /** File size in bytes (if known) */
+            fileSize: z.ZodOptional<z.ZodNumber>;
+            /** Alt text for accessibility and context */
+            altText: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }, {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }>, {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }, {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }>, {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }, {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        }>, z.ZodObject<{
+            /** Unique identifier for this input */
+            id: z.ZodOptional<z.ZodString>;
+            /** Human-readable name/label for the input */
+            name: z.ZodOptional<z.ZodString>;
+            /** Description of what this input contains or represents */
+            description: z.ZodOptional<z.ZodString>;
+            /** Source metadata for tracking input origin */
+            source: z.ZodOptional<z.ZodObject<{
+                /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                provider: z.ZodOptional<z.ZodString>;
+                /** Original URL where the content was sourced from */
+                originalUrl: z.ZodOptional<z.ZodString>;
+                /** Timestamp when the content was captured/retrieved */
+                capturedAt: z.ZodOptional<z.ZodDate>;
+                /** Identifier of the agent or process that captured the content */
+                capturedBy: z.ZodOptional<z.ZodString>;
+                /** Version identifier for the source content (if applicable) */
+                version: z.ZodOptional<z.ZodString>;
+                /** Additional provider-specific metadata */
+                additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, "strip", z.ZodTypeAny, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }>>;
+            /** Tags for categorization and filtering */
+            tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Timestamp when this input was created/added */
+            createdAt: z.ZodOptional<z.ZodDate>;
+            /** Additional custom metadata */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        } & {
+            /** Discriminator for web page type */
+            type: z.ZodLiteral<"web_page">;
+            /** URL of the web page */
+            url: z.ZodString;
+            /** Page title (if captured) */
+            title: z.ZodOptional<z.ZodString>;
+            /** Full HTML content of the page (if captured) */
+            capturedHtml: z.ZodOptional<z.ZodString>;
+            /** Plain text content extracted from the page (if captured) */
+            capturedText: z.ZodOptional<z.ZodString>;
+            /** Markdown representation of the page content (if converted) */
+            capturedMarkdown: z.ZodOptional<z.ZodString>;
+            /**
+             * Screenshot of the page
+             * Stored as a nested ImageInput without the refinements to avoid circular validation
+             */
+            screenshot: z.ZodOptional<z.ZodObject<{
+                /** Unique identifier for this input */
+                id: z.ZodOptional<z.ZodString>;
+                /** Human-readable name/label for the input */
+                name: z.ZodOptional<z.ZodString>;
+                /** Description of what this input contains or represents */
+                description: z.ZodOptional<z.ZodString>;
+                /** Source metadata for tracking input origin */
+                source: z.ZodOptional<z.ZodObject<{
+                    /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                    provider: z.ZodOptional<z.ZodString>;
+                    /** Original URL where the content was sourced from */
+                    originalUrl: z.ZodOptional<z.ZodString>;
+                    /** Timestamp when the content was captured/retrieved */
+                    capturedAt: z.ZodOptional<z.ZodDate>;
+                    /** Identifier of the agent or process that captured the content */
+                    capturedBy: z.ZodOptional<z.ZodString>;
+                    /** Version identifier for the source content (if applicable) */
+                    version: z.ZodOptional<z.ZodString>;
+                    /** Additional provider-specific metadata */
+                    additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+                }, "strip", z.ZodTypeAny, {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                }, {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                }>>;
+                /** Tags for categorization and filtering */
+                tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+                /** Timestamp when this input was created/added */
+                createdAt: z.ZodOptional<z.ZodDate>;
+                /** Additional custom metadata */
+                metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            } & {
+                type: z.ZodLiteral<"image">;
+                mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+                data: z.ZodOptional<z.ZodString>;
+                url: z.ZodOptional<z.ZodString>;
+                encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+                width: z.ZodOptional<z.ZodNumber>;
+                height: z.ZodOptional<z.ZodNumber>;
+                fileSize: z.ZodOptional<z.ZodNumber>;
+                altText: z.ZodOptional<z.ZodString>;
+            }, "strip", z.ZodTypeAny, {
+                type: "image";
+                tags: string[];
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            }, {
+                type: "image";
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                tags?: string[] | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            }>>;
+            /** Viewport dimensions used when capturing the page */
+            viewport: z.ZodOptional<z.ZodObject<{
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+            }, "strip", z.ZodTypeAny, {
+                width: number;
+                height: number;
+            }, {
+                width: number;
+                height: number;
+            }>>;
+            /** HTTP status code when the page was fetched */
+            statusCode: z.ZodOptional<z.ZodNumber>;
+            /** Response headers (selected relevant headers) */
+            headers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+            /** Timestamp when the page was captured */
+            capturedAt: z.ZodOptional<z.ZodDate>;
+            /** Whether JavaScript was executed during capture */
+            jsExecuted: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+            /** Links found on the page */
+            links: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                href: z.ZodString;
+                text: z.ZodOptional<z.ZodString>;
+                rel: z.ZodOptional<z.ZodString>;
+            }, "strip", z.ZodTypeAny, {
+                href: string;
+                text?: string | undefined;
+                rel?: string | undefined;
+            }, {
+                href: string;
+                text?: string | undefined;
+                rel?: string | undefined;
+            }>, "many">>;
+            /** Page load metrics */
+            loadMetrics: z.ZodOptional<z.ZodObject<{
+                /** Time to first byte in milliseconds */
+                ttfb: z.ZodOptional<z.ZodNumber>;
+                /** DOM content loaded time in milliseconds */
+                domContentLoaded: z.ZodOptional<z.ZodNumber>;
+                /** Full page load time in milliseconds */
+                loadComplete: z.ZodOptional<z.ZodNumber>;
+            }, "strip", z.ZodTypeAny, {
+                ttfb?: number | undefined;
+                domContentLoaded?: number | undefined;
+                loadComplete?: number | undefined;
+            }, {
+                ttfb?: number | undefined;
+                domContentLoaded?: number | undefined;
+                loadComplete?: number | undefined;
+            }>>;
+        }, "strip", z.ZodTypeAny, {
+            type: "web_page";
+            url: string;
+            tags: string[];
+            jsExecuted: boolean;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            headers?: Record<string, string> | undefined;
+            viewport?: {
+                width: number;
+                height: number;
+            } | undefined;
+            screenshot?: {
+                type: "image";
+                tags: string[];
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            title?: string | undefined;
+            id?: string | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            capturedAt?: Date | undefined;
+            capturedHtml?: string | undefined;
+            capturedText?: string | undefined;
+            capturedMarkdown?: string | undefined;
+            statusCode?: number | undefined;
+            links?: {
+                href: string;
+                text?: string | undefined;
+                rel?: string | undefined;
+            }[] | undefined;
+            loadMetrics?: {
+                ttfb?: number | undefined;
+                domContentLoaded?: number | undefined;
+                loadComplete?: number | undefined;
+            } | undefined;
+        }, {
+            type: "web_page";
+            url: string;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            headers?: Record<string, string> | undefined;
+            viewport?: {
+                width: number;
+                height: number;
+            } | undefined;
+            screenshot?: {
+                type: "image";
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                tags?: string[] | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            title?: string | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            capturedAt?: Date | undefined;
+            capturedHtml?: string | undefined;
+            capturedText?: string | undefined;
+            capturedMarkdown?: string | undefined;
+            statusCode?: number | undefined;
+            jsExecuted?: boolean | undefined;
+            links?: {
+                href: string;
+                text?: string | undefined;
+                rel?: string | undefined;
+            }[] | undefined;
+            loadMetrics?: {
+                ttfb?: number | undefined;
+                domContentLoaded?: number | undefined;
+                loadComplete?: number | undefined;
+            } | undefined;
+        }>, z.ZodObject<{
+            /** Unique identifier for this input */
+            id: z.ZodOptional<z.ZodString>;
+            /** Human-readable name/label for the input */
+            name: z.ZodOptional<z.ZodString>;
+            /** Description of what this input contains or represents */
+            description: z.ZodOptional<z.ZodString>;
+            /** Source metadata for tracking input origin */
+            source: z.ZodOptional<z.ZodObject<{
+                /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                provider: z.ZodOptional<z.ZodString>;
+                /** Original URL where the content was sourced from */
+                originalUrl: z.ZodOptional<z.ZodString>;
+                /** Timestamp when the content was captured/retrieved */
+                capturedAt: z.ZodOptional<z.ZodDate>;
+                /** Identifier of the agent or process that captured the content */
+                capturedBy: z.ZodOptional<z.ZodString>;
+                /** Version identifier for the source content (if applicable) */
+                version: z.ZodOptional<z.ZodString>;
+                /** Additional provider-specific metadata */
+                additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, "strip", z.ZodTypeAny, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }, {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            }>>;
+            /** Tags for categorization and filtering */
+            tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+            /** Timestamp when this input was created/added */
+            createdAt: z.ZodOptional<z.ZodDate>;
+            /** Additional custom metadata */
+            metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        } & {
+            /** Discriminator for design mockup type */
+            type: z.ZodLiteral<"design_mockup">;
+            /** Design tool/platform used to create the mockup */
+            designTool: z.ZodEnum<["figma", "sketch", "adobe_xd", "invision", "zeplin", "framer", "canva", "photoshop", "illustrator", "other"]>;
+            /** Unique file identifier in the design tool */
+            fileId: z.ZodOptional<z.ZodString>;
+            /** Node/frame/artboard identifier within the file */
+            nodeId: z.ZodOptional<z.ZodString>;
+            /** Direct URL to the design file or frame */
+            fileUrl: z.ZodOptional<z.ZodString>;
+            /**
+             * Exported image of the mockup
+             * Stored as a nested structure to avoid circular refinement issues
+             */
+            exportedImage: z.ZodOptional<z.ZodObject<{
+                /** Unique identifier for this input */
+                id: z.ZodOptional<z.ZodString>;
+                /** Human-readable name/label for the input */
+                name: z.ZodOptional<z.ZodString>;
+                /** Description of what this input contains or represents */
+                description: z.ZodOptional<z.ZodString>;
+                /** Source metadata for tracking input origin */
+                source: z.ZodOptional<z.ZodObject<{
+                    /** Provider or platform the input originated from (e.g., 'figma', 'browser', 'upload') */
+                    provider: z.ZodOptional<z.ZodString>;
+                    /** Original URL where the content was sourced from */
+                    originalUrl: z.ZodOptional<z.ZodString>;
+                    /** Timestamp when the content was captured/retrieved */
+                    capturedAt: z.ZodOptional<z.ZodDate>;
+                    /** Identifier of the agent or process that captured the content */
+                    capturedBy: z.ZodOptional<z.ZodString>;
+                    /** Version identifier for the source content (if applicable) */
+                    version: z.ZodOptional<z.ZodString>;
+                    /** Additional provider-specific metadata */
+                    additionalInfo: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+                }, "strip", z.ZodTypeAny, {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                }, {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                }>>;
+                /** Tags for categorization and filtering */
+                tags: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
+                /** Timestamp when this input was created/added */
+                createdAt: z.ZodOptional<z.ZodDate>;
+                /** Additional custom metadata */
+                metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            } & {
+                type: z.ZodLiteral<"image">;
+                mediaType: z.ZodEnum<["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"]>;
+                data: z.ZodOptional<z.ZodString>;
+                url: z.ZodOptional<z.ZodString>;
+                encoding: z.ZodOptional<z.ZodLiteral<"base64">>;
+                width: z.ZodOptional<z.ZodNumber>;
+                height: z.ZodOptional<z.ZodNumber>;
+                fileSize: z.ZodOptional<z.ZodNumber>;
+                altText: z.ZodOptional<z.ZodString>;
+            }, "strip", z.ZodTypeAny, {
+                type: "image";
+                tags: string[];
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            }, {
+                type: "image";
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                tags?: string[] | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            }>>;
+            /** Format used for export (png, svg, pdf, etc.) */
+            exportFormat: z.ZodOptional<z.ZodEnum<["png", "jpeg", "svg", "pdf", "webp"]>>;
+            /** Export scale factor (1x, 2x, 3x, etc.) */
+            exportScale: z.ZodOptional<z.ZodNumber>;
+            /** Frame/artboard name in the design tool */
+            frameName: z.ZodOptional<z.ZodString>;
+            /** Page name containing the frame */
+            pageName: z.ZodOptional<z.ZodString>;
+            /** Design dimensions (if different from exported image) */
+            designDimensions: z.ZodOptional<z.ZodObject<{
+                width: z.ZodNumber;
+                height: z.ZodNumber;
+                unit: z.ZodDefault<z.ZodOptional<z.ZodEnum<["px", "pt", "dp", "sp", "em", "rem", "%"]>>>;
+            }, "strip", z.ZodTypeAny, {
+                width: number;
+                height: number;
+                unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+            }, {
+                width: number;
+                height: number;
+                unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+            }>>;
+            /** Design tokens extracted from the mockup */
+            designTokens: z.ZodOptional<z.ZodObject<{
+                /** Color palette */
+                colors: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+                /** Typography definitions */
+                typography: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodObject<{
+                    fontFamily: z.ZodOptional<z.ZodString>;
+                    fontSize: z.ZodOptional<z.ZodNumber>;
+                    fontWeight: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+                    lineHeight: z.ZodOptional<z.ZodNumber>;
+                    letterSpacing: z.ZodOptional<z.ZodNumber>;
+                }, "strip", z.ZodTypeAny, {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }, {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }>]>>>;
+                /** Spacing values */
+                spacing: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+                /** Border radius values */
+                borderRadius: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+                /** Shadow definitions */
+                shadows: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+            }, "strip", z.ZodTypeAny, {
+                colors?: Record<string, string> | undefined;
+                typography?: Record<string, string | {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }> | undefined;
+                spacing?: Record<string, number> | undefined;
+                borderRadius?: Record<string, number> | undefined;
+                shadows?: Record<string, string> | undefined;
+            }, {
+                colors?: Record<string, string> | undefined;
+                typography?: Record<string, string | {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }> | undefined;
+                spacing?: Record<string, number> | undefined;
+                borderRadius?: Record<string, number> | undefined;
+                shadows?: Record<string, string> | undefined;
+            }>>;
+            /** Components/symbols used in the mockup */
+            components: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                id: z.ZodOptional<z.ZodString>;
+                type: z.ZodOptional<z.ZodString>;
+                bounds: z.ZodOptional<z.ZodObject<{
+                    x: z.ZodNumber;
+                    y: z.ZodNumber;
+                    width: z.ZodNumber;
+                    height: z.ZodNumber;
+                }, "strip", z.ZodTypeAny, {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                }, {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                }>>;
+            }, "strip", z.ZodTypeAny, {
+                name: string;
+                type?: string | undefined;
+                id?: string | undefined;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+            }, {
+                name: string;
+                type?: string | undefined;
+                id?: string | undefined;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+            }>, "many">>;
+            /** Version/revision of the design file */
+            fileVersion: z.ZodOptional<z.ZodString>;
+            /** Last modified timestamp from the design tool */
+            lastModified: z.ZodOptional<z.ZodDate>;
+            /** Collaborators/editors of the design file */
+            collaborators: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+            /** Comments or annotations on this mockup */
+            annotations: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                id: z.ZodOptional<z.ZodString>;
+                text: z.ZodString;
+                author: z.ZodOptional<z.ZodString>;
+                position: z.ZodOptional<z.ZodObject<{
+                    x: z.ZodNumber;
+                    y: z.ZodNumber;
+                }, "strip", z.ZodTypeAny, {
+                    x: number;
+                    y: number;
+                }, {
+                    x: number;
+                    y: number;
+                }>>;
+                createdAt: z.ZodOptional<z.ZodDate>;
+            }, "strip", z.ZodTypeAny, {
+                text: string;
+                createdAt?: Date | undefined;
+                position?: {
+                    x: number;
+                    y: number;
+                } | undefined;
+                id?: string | undefined;
+                author?: string | undefined;
+            }, {
+                text: string;
+                createdAt?: Date | undefined;
+                position?: {
+                    x: number;
+                    y: number;
+                } | undefined;
+                id?: string | undefined;
+                author?: string | undefined;
+            }>, "many">>;
+        }, "strip", z.ZodTypeAny, {
+            type: "design_mockup";
+            tags: string[];
+            designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            id?: string | undefined;
+            lastModified?: Date | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            fileId?: string | undefined;
+            nodeId?: string | undefined;
+            fileUrl?: string | undefined;
+            exportedImage?: {
+                type: "image";
+                tags: string[];
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+            exportScale?: number | undefined;
+            frameName?: string | undefined;
+            pageName?: string | undefined;
+            designDimensions?: {
+                width: number;
+                height: number;
+                unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+            } | undefined;
+            designTokens?: {
+                colors?: Record<string, string> | undefined;
+                typography?: Record<string, string | {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }> | undefined;
+                spacing?: Record<string, number> | undefined;
+                borderRadius?: Record<string, number> | undefined;
+                shadows?: Record<string, string> | undefined;
+            } | undefined;
+            components?: {
+                name: string;
+                type?: string | undefined;
+                id?: string | undefined;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+            }[] | undefined;
+            fileVersion?: string | undefined;
+            collaborators?: string[] | undefined;
+            annotations?: {
+                text: string;
+                createdAt?: Date | undefined;
+                position?: {
+                    x: number;
+                    y: number;
+                } | undefined;
+                id?: string | undefined;
+                author?: string | undefined;
+            }[] | undefined;
+        }, {
+            type: "design_mockup";
+            designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            lastModified?: Date | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            fileId?: string | undefined;
+            nodeId?: string | undefined;
+            fileUrl?: string | undefined;
+            exportedImage?: {
+                type: "image";
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                tags?: string[] | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+            exportScale?: number | undefined;
+            frameName?: string | undefined;
+            pageName?: string | undefined;
+            designDimensions?: {
+                width: number;
+                height: number;
+                unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+            } | undefined;
+            designTokens?: {
+                colors?: Record<string, string> | undefined;
+                typography?: Record<string, string | {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }> | undefined;
+                spacing?: Record<string, number> | undefined;
+                borderRadius?: Record<string, number> | undefined;
+                shadows?: Record<string, string> | undefined;
+            } | undefined;
+            components?: {
+                name: string;
+                type?: string | undefined;
+                id?: string | undefined;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+            }[] | undefined;
+            fileVersion?: string | undefined;
+            collaborators?: string[] | undefined;
+            annotations?: {
+                text: string;
+                createdAt?: Date | undefined;
+                position?: {
+                    x: number;
+                    y: number;
+                } | undefined;
+                id?: string | undefined;
+                author?: string | undefined;
+            }[] | undefined;
+        }>]>;
+        /** Current processing status */
+        status: z.ZodEnum<["pending", "processing", "completed", "failed", "skipped"]>;
+        /** Timestamp when processing started/completed */
+        processedAt: z.ZodOptional<z.ZodDate>;
+        /** Processing duration in milliseconds */
+        processingDurationMs: z.ZodOptional<z.ZodNumber>;
+        /** Error message if processing failed */
+        error: z.ZodOptional<z.ZodString>;
+        /** Extracted/analyzed content from the input */
+        extractedContent: z.ZodOptional<z.ZodObject<{
+            /** Text content extracted from the input */
+            text: z.ZodOptional<z.ZodString>;
+            /** Structured data extracted from the input */
+            structuredData: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            /** Detected entities (UI components, text regions, etc.) */
+            entities: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                /** Type of entity (e.g., 'button', 'text', 'image', 'input', 'link') */
+                type: z.ZodString;
+                /** Value or content of the entity */
+                value: z.ZodString;
+                /** Confidence score for the extraction (0.0 to 1.0) */
+                confidence: z.ZodOptional<z.ZodNumber>;
+                /** Bounding box coordinates if applicable (for visual entities) */
+                bounds: z.ZodOptional<z.ZodObject<{
+                    x: z.ZodNumber;
+                    y: z.ZodNumber;
+                    width: z.ZodNumber;
+                    height: z.ZodNumber;
+                }, "strip", z.ZodTypeAny, {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                }, {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                }>>;
+            }, "strip", z.ZodTypeAny, {
+                value: string;
+                type: string;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+                confidence?: number | undefined;
+            }, {
+                value: string;
+                type: string;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+                confidence?: number | undefined;
+            }>, "many">>;
+        }, "strip", z.ZodTypeAny, {
+            text?: string | undefined;
+            structuredData?: Record<string, unknown> | undefined;
+            entities?: {
+                value: string;
+                type: string;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+                confidence?: number | undefined;
+            }[] | undefined;
+        }, {
+            text?: string | undefined;
+            structuredData?: Record<string, unknown> | undefined;
+            entities?: {
+                value: string;
+                type: string;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+                confidence?: number | undefined;
+            }[] | undefined;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        status: "completed" | "failed" | "pending" | "skipped" | "processing";
+        input: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | {
+            type: "web_page";
+            url: string;
+            tags: string[];
+            jsExecuted: boolean;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            headers?: Record<string, string> | undefined;
+            viewport?: {
+                width: number;
+                height: number;
+            } | undefined;
+            screenshot?: {
+                type: "image";
+                tags: string[];
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            title?: string | undefined;
+            id?: string | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            capturedAt?: Date | undefined;
+            capturedHtml?: string | undefined;
+            capturedText?: string | undefined;
+            capturedMarkdown?: string | undefined;
+            statusCode?: number | undefined;
+            links?: {
+                href: string;
+                text?: string | undefined;
+                rel?: string | undefined;
+            }[] | undefined;
+            loadMetrics?: {
+                ttfb?: number | undefined;
+                domContentLoaded?: number | undefined;
+                loadComplete?: number | undefined;
+            } | undefined;
+        } | {
+            type: "design_mockup";
+            tags: string[];
+            designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            id?: string | undefined;
+            lastModified?: Date | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            fileId?: string | undefined;
+            nodeId?: string | undefined;
+            fileUrl?: string | undefined;
+            exportedImage?: {
+                type: "image";
+                tags: string[];
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+            exportScale?: number | undefined;
+            frameName?: string | undefined;
+            pageName?: string | undefined;
+            designDimensions?: {
+                width: number;
+                height: number;
+                unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+            } | undefined;
+            designTokens?: {
+                colors?: Record<string, string> | undefined;
+                typography?: Record<string, string | {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }> | undefined;
+                spacing?: Record<string, number> | undefined;
+                borderRadius?: Record<string, number> | undefined;
+                shadows?: Record<string, string> | undefined;
+            } | undefined;
+            components?: {
+                name: string;
+                type?: string | undefined;
+                id?: string | undefined;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+            }[] | undefined;
+            fileVersion?: string | undefined;
+            collaborators?: string[] | undefined;
+            annotations?: {
+                text: string;
+                createdAt?: Date | undefined;
+                position?: {
+                    x: number;
+                    y: number;
+                } | undefined;
+                id?: string | undefined;
+                author?: string | undefined;
+            }[] | undefined;
+        };
+        error?: string | undefined;
+        processedAt?: Date | undefined;
+        processingDurationMs?: number | undefined;
+        extractedContent?: {
+            text?: string | undefined;
+            structuredData?: Record<string, unknown> | undefined;
+            entities?: {
+                value: string;
+                type: string;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+                confidence?: number | undefined;
+            }[] | undefined;
+        } | undefined;
+    }, {
+        status: "completed" | "failed" | "pending" | "skipped" | "processing";
+        input: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | {
+            type: "web_page";
+            url: string;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            headers?: Record<string, string> | undefined;
+            viewport?: {
+                width: number;
+                height: number;
+            } | undefined;
+            screenshot?: {
+                type: "image";
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                tags?: string[] | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            title?: string | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            capturedAt?: Date | undefined;
+            capturedHtml?: string | undefined;
+            capturedText?: string | undefined;
+            capturedMarkdown?: string | undefined;
+            statusCode?: number | undefined;
+            jsExecuted?: boolean | undefined;
+            links?: {
+                href: string;
+                text?: string | undefined;
+                rel?: string | undefined;
+            }[] | undefined;
+            loadMetrics?: {
+                ttfb?: number | undefined;
+                domContentLoaded?: number | undefined;
+                loadComplete?: number | undefined;
+            } | undefined;
+        } | {
+            type: "design_mockup";
+            designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            lastModified?: Date | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            fileId?: string | undefined;
+            nodeId?: string | undefined;
+            fileUrl?: string | undefined;
+            exportedImage?: {
+                type: "image";
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                tags?: string[] | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+            exportScale?: number | undefined;
+            frameName?: string | undefined;
+            pageName?: string | undefined;
+            designDimensions?: {
+                width: number;
+                height: number;
+                unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+            } | undefined;
+            designTokens?: {
+                colors?: Record<string, string> | undefined;
+                typography?: Record<string, string | {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }> | undefined;
+                spacing?: Record<string, number> | undefined;
+                borderRadius?: Record<string, number> | undefined;
+                shadows?: Record<string, string> | undefined;
+            } | undefined;
+            components?: {
+                name: string;
+                type?: string | undefined;
+                id?: string | undefined;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+            }[] | undefined;
+            fileVersion?: string | undefined;
+            collaborators?: string[] | undefined;
+            annotations?: {
+                text: string;
+                createdAt?: Date | undefined;
+                position?: {
+                    x: number;
+                    y: number;
+                } | undefined;
+                id?: string | undefined;
+                author?: string | undefined;
+            }[] | undefined;
+        };
+        error?: string | undefined;
+        processedAt?: Date | undefined;
+        processingDurationMs?: number | undefined;
+        extractedContent?: {
+            text?: string | undefined;
+            structuredData?: Record<string, unknown> | undefined;
+            entities?: {
+                value: string;
+                type: string;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+                confidence?: number | undefined;
+            }[] | undefined;
+        } | undefined;
+    }>, "many">;
+    /** Overall processing status */
+    status: z.ZodEnum<["pending", "processing", "completed", "failed", "skipped"]>;
+    /** Combined context summary for agent consumption */
+    contextSummary: z.ZodOptional<z.ZodString>;
+    /** Timestamp when context was created */
+    createdAt: z.ZodDate;
+    /** Timestamp when all processing completed */
+    completedAt: z.ZodOptional<z.ZodDate>;
+    /** Total processing time across all inputs in milliseconds */
+    totalProcessingTimeMs: z.ZodOptional<z.ZodNumber>;
+    /** Count of inputs by type for quick reference */
+    inputCounts: z.ZodObject<{
+        /** Number of image inputs */
+        images: z.ZodDefault<z.ZodNumber>;
+        /** Number of web page inputs */
+        webPages: z.ZodDefault<z.ZodNumber>;
+        /** Number of design mockup inputs */
+        designMockups: z.ZodDefault<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        images: number;
+        webPages: number;
+        designMockups: number;
+    }, {
+        images?: number | undefined;
+        webPages?: number | undefined;
+        designMockups?: number | undefined;
+    }>;
+    /** Additional metadata */
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    status: "completed" | "failed" | "pending" | "skipped" | "processing";
+    createdAt: Date;
+    inputs: {
+        status: "completed" | "failed" | "pending" | "skipped" | "processing";
+        input: {
+            type: "image";
+            tags: string[];
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | {
+            type: "web_page";
+            url: string;
+            tags: string[];
+            jsExecuted: boolean;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            headers?: Record<string, string> | undefined;
+            viewport?: {
+                width: number;
+                height: number;
+            } | undefined;
+            screenshot?: {
+                type: "image";
+                tags: string[];
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            title?: string | undefined;
+            id?: string | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            capturedAt?: Date | undefined;
+            capturedHtml?: string | undefined;
+            capturedText?: string | undefined;
+            capturedMarkdown?: string | undefined;
+            statusCode?: number | undefined;
+            links?: {
+                href: string;
+                text?: string | undefined;
+                rel?: string | undefined;
+            }[] | undefined;
+            loadMetrics?: {
+                ttfb?: number | undefined;
+                domContentLoaded?: number | undefined;
+                loadComplete?: number | undefined;
+            } | undefined;
+        } | {
+            type: "design_mockup";
+            tags: string[];
+            designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            id?: string | undefined;
+            lastModified?: Date | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            fileId?: string | undefined;
+            nodeId?: string | undefined;
+            fileUrl?: string | undefined;
+            exportedImage?: {
+                type: "image";
+                tags: string[];
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+            exportScale?: number | undefined;
+            frameName?: string | undefined;
+            pageName?: string | undefined;
+            designDimensions?: {
+                width: number;
+                height: number;
+                unit: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%";
+            } | undefined;
+            designTokens?: {
+                colors?: Record<string, string> | undefined;
+                typography?: Record<string, string | {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }> | undefined;
+                spacing?: Record<string, number> | undefined;
+                borderRadius?: Record<string, number> | undefined;
+                shadows?: Record<string, string> | undefined;
+            } | undefined;
+            components?: {
+                name: string;
+                type?: string | undefined;
+                id?: string | undefined;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+            }[] | undefined;
+            fileVersion?: string | undefined;
+            collaborators?: string[] | undefined;
+            annotations?: {
+                text: string;
+                createdAt?: Date | undefined;
+                position?: {
+                    x: number;
+                    y: number;
+                } | undefined;
+                id?: string | undefined;
+                author?: string | undefined;
+            }[] | undefined;
+        };
+        error?: string | undefined;
+        processedAt?: Date | undefined;
+        processingDurationMs?: number | undefined;
+        extractedContent?: {
+            text?: string | undefined;
+            structuredData?: Record<string, unknown> | undefined;
+            entities?: {
+                value: string;
+                type: string;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+                confidence?: number | undefined;
+            }[] | undefined;
+        } | undefined;
+    }[];
+    inputCounts: {
+        images: number;
+        webPages: number;
+        designMockups: number;
+    };
+    metadata?: Record<string, unknown> | undefined;
+    completedAt?: Date | undefined;
+    contextSummary?: string | undefined;
+    totalProcessingTimeMs?: number | undefined;
+}, {
+    status: "completed" | "failed" | "pending" | "skipped" | "processing";
+    createdAt: Date;
+    inputs: {
+        status: "completed" | "failed" | "pending" | "skipped" | "processing";
+        input: {
+            type: "image";
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+            data?: string | undefined;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            url?: string | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            fileSize?: number | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            encoding?: "base64" | undefined;
+            altText?: string | undefined;
+        } | {
+            type: "web_page";
+            url: string;
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            headers?: Record<string, string> | undefined;
+            viewport?: {
+                width: number;
+                height: number;
+            } | undefined;
+            screenshot?: {
+                type: "image";
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                tags?: string[] | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            title?: string | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            capturedAt?: Date | undefined;
+            capturedHtml?: string | undefined;
+            capturedText?: string | undefined;
+            capturedMarkdown?: string | undefined;
+            statusCode?: number | undefined;
+            jsExecuted?: boolean | undefined;
+            links?: {
+                href: string;
+                text?: string | undefined;
+                rel?: string | undefined;
+            }[] | undefined;
+            loadMetrics?: {
+                ttfb?: number | undefined;
+                domContentLoaded?: number | undefined;
+                loadComplete?: number | undefined;
+            } | undefined;
+        } | {
+            type: "design_mockup";
+            designTool: "other" | "figma" | "sketch" | "adobe_xd" | "invision" | "zeplin" | "framer" | "canva" | "photoshop" | "illustrator";
+            metadata?: Record<string, unknown> | undefined;
+            name?: string | undefined;
+            description?: string | undefined;
+            createdAt?: Date | undefined;
+            tags?: string[] | undefined;
+            id?: string | undefined;
+            lastModified?: Date | undefined;
+            source?: {
+                version?: string | undefined;
+                provider?: string | undefined;
+                originalUrl?: string | undefined;
+                capturedAt?: Date | undefined;
+                capturedBy?: string | undefined;
+                additionalInfo?: Record<string, unknown> | undefined;
+            } | undefined;
+            fileId?: string | undefined;
+            nodeId?: string | undefined;
+            fileUrl?: string | undefined;
+            exportedImage?: {
+                type: "image";
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/bmp" | "image/tiff";
+                data?: string | undefined;
+                metadata?: Record<string, unknown> | undefined;
+                name?: string | undefined;
+                description?: string | undefined;
+                createdAt?: Date | undefined;
+                url?: string | undefined;
+                width?: number | undefined;
+                height?: number | undefined;
+                tags?: string[] | undefined;
+                id?: string | undefined;
+                fileSize?: number | undefined;
+                source?: {
+                    version?: string | undefined;
+                    provider?: string | undefined;
+                    originalUrl?: string | undefined;
+                    capturedAt?: Date | undefined;
+                    capturedBy?: string | undefined;
+                    additionalInfo?: Record<string, unknown> | undefined;
+                } | undefined;
+                encoding?: "base64" | undefined;
+                altText?: string | undefined;
+            } | undefined;
+            exportFormat?: "png" | "jpeg" | "svg" | "pdf" | "webp" | undefined;
+            exportScale?: number | undefined;
+            frameName?: string | undefined;
+            pageName?: string | undefined;
+            designDimensions?: {
+                width: number;
+                height: number;
+                unit?: "px" | "pt" | "dp" | "sp" | "em" | "rem" | "%" | undefined;
+            } | undefined;
+            designTokens?: {
+                colors?: Record<string, string> | undefined;
+                typography?: Record<string, string | {
+                    fontFamily?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontWeight?: string | number | undefined;
+                    lineHeight?: number | undefined;
+                    letterSpacing?: number | undefined;
+                }> | undefined;
+                spacing?: Record<string, number> | undefined;
+                borderRadius?: Record<string, number> | undefined;
+                shadows?: Record<string, string> | undefined;
+            } | undefined;
+            components?: {
+                name: string;
+                type?: string | undefined;
+                id?: string | undefined;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+            }[] | undefined;
+            fileVersion?: string | undefined;
+            collaborators?: string[] | undefined;
+            annotations?: {
+                text: string;
+                createdAt?: Date | undefined;
+                position?: {
+                    x: number;
+                    y: number;
+                } | undefined;
+                id?: string | undefined;
+                author?: string | undefined;
+            }[] | undefined;
+        };
+        error?: string | undefined;
+        processedAt?: Date | undefined;
+        processingDurationMs?: number | undefined;
+        extractedContent?: {
+            text?: string | undefined;
+            structuredData?: Record<string, unknown> | undefined;
+            entities?: {
+                value: string;
+                type: string;
+                bounds?: {
+                    width: number;
+                    height: number;
+                    x: number;
+                    y: number;
+                } | undefined;
+                confidence?: number | undefined;
+            }[] | undefined;
+        } | undefined;
+    }[];
+    inputCounts: {
+        images?: number | undefined;
+        webPages?: number | undefined;
+        designMockups?: number | undefined;
+    };
+    metadata?: Record<string, unknown> | undefined;
+    completedAt?: Date | undefined;
+    contextSummary?: string | undefined;
+    totalProcessingTimeMs?: number | undefined;
+}>;
+export type MultimodalContext = z.infer<typeof MultimodalContextSchema>;
 //# sourceMappingURL=types.d.ts.map

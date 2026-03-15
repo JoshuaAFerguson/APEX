@@ -628,29 +628,4 @@ export const MockToolSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
-// ============================================================================
-// Type Exports
-// ============================================================================
-
-export type {
-  MockToolParameterType,
-  MockToolParameter,
-  MockToolParametersSchema,
-  MockToolResponseContentType,
-  MockToolTextContent,
-  MockToolImageContent,
-  MockToolResourceContent,
-  MockToolErrorContent,
-  MockToolContentBlock,
-  MockToolResponse,
-  ToolInvocation,
-  ToolInvocationContext,
-  MockToolExecutorFn,
-  MockToolExecutor,
-  MockToolValidationResult,
-  MockToolCategory,
-  MockTool,
-  MockToolBehaviorConfig,
-  MockToolRegistryEntry,
-  MockToolInvocationEvent,
-};
+// Types are already exported inline above - no need to re-export

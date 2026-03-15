@@ -357,7 +357,7 @@ export const performance = {
 /**
  * Console capturing utilities
  */
-export const console = {
+export const consoleUtils = {
   /**
    * Captures console output during test execution
    */
@@ -371,26 +371,26 @@ export const console = {
     const errors: string[] = [];
     const warns: string[] = [];
 
-    const originalLog = console.log;
-    const originalError = console.error;
-    const originalWarn = console.warn;
+    const originalLog = globalThis.console.log;
+    const originalError = globalThis.console.error;
+    const originalWarn = globalThis.console.warn;
 
-    console.log = (...args) => {
+    globalThis.console.log = (...args: unknown[]) => {
       logs.push(args.join(' '));
     };
 
-    console.error = (...args) => {
+    globalThis.console.error = (...args: unknown[]) => {
       errors.push(args.join(' '));
     };
 
-    console.warn = (...args) => {
+    globalThis.console.warn = (...args: unknown[]) => {
       warns.push(args.join(' '));
     };
 
     const stop = () => {
-      console.log = originalLog;
-      console.error = originalError;
-      console.warn = originalWarn;
+      globalThis.console.log = originalLog;
+      globalThis.console.error = originalError;
+      globalThis.console.warn = originalWarn;
     };
 
     return { logs, errors, warns, stop };
@@ -400,18 +400,18 @@ export const console = {
    * Suppresses console output during test execution
    */
   suppress(): () => void {
-    const originalLog = console.log;
-    const originalError = console.error;
-    const originalWarn = console.warn;
+    const originalLog = globalThis.console.log;
+    const originalError = globalThis.console.error;
+    const originalWarn = globalThis.console.warn;
 
-    console.log = () => {};
-    console.error = () => {};
-    console.warn = () => {};
+    globalThis.console.log = () => {};
+    globalThis.console.error = () => {};
+    globalThis.console.warn = () => {};
 
     return () => {
-      console.log = originalLog;
-      console.error = originalError;
-      console.warn = originalWarn;
+      globalThis.console.log = originalLog;
+      globalThis.console.error = originalError;
+      globalThis.console.warn = originalWarn;
     };
   }
 };
@@ -419,6 +419,11 @@ export const console = {
 /**
  * Collection of all test utilities
  */
+/**
+ * @deprecated Use `consoleUtils` instead. Kept for backward compatibility.
+ */
+export const console = consoleUtils;
+
 export const testUtils = {
   waitFor,
   sleep,
@@ -428,5 +433,5 @@ export const testUtils = {
   dataGenerator,
   assertions,
   performance,
-  console,
+  console: consoleUtils,
 };

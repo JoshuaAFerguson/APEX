@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { render, screen, RenderResult } from '../../../__tests__/test-utils';
+import { render, screen, RenderResult } from '../../__tests__/test-utils';
 import type { StdoutDimensions, Breakpoint } from '../../hooks/useStdoutDimensions';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { DiffViewer } from '../DiffViewer';

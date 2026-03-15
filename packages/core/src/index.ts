@@ -85,6 +85,21 @@ export * from './mcp';
 // Logging
 export * from './logger';
 
+// Project Context Analysis
+export * from './project-context-analyzer';
+
+// Doctor Health Check Utilities
+export * from './doctor-utils';
+
+// NPM Registry Version Checker Utilities
+export * from './npm-registry-utils';
+
+// Configuration Validation
+export * from './config-validation';
+
+// Symbol Resolution
+export * from './symbol-resolver';
+
 // Note: test-utils is not exported from the main package as it depends on vitest
 // Import directly from '@apexcli/core/test-utils' or '@apexcli/core/src/test-utils' for test files
 

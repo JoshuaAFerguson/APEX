@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import Database from 'better-sqlite3';
-import type { Task, TaskStatus, TaskUsage, AgentDefinition, WorkflowDefinition, WorkflowStage } from '@apexcli/core';
+import type { Task, TaskStatus, TaskUsage, AgentDefinition, WorkflowDefinition, WorkflowStage, PermissionLevel } from '@apexcli/core';
 import { TaskStore } from './store.js';
 
 /**
@@ -157,7 +157,9 @@ function createTaskStoreTables(db: Database.Database): void {
       session_data TEXT,
       last_checkpoint TEXT,
       trashed_at TEXT,
-      archived_at TEXT
+      archived_at TEXT,
+      -- v0.5.0 policy check support
+      policy_check_result TEXT
     );
 
     -- Task logs
@@ -562,7 +564,7 @@ export function createMockTask(overrides: Partial<Task> = {}): Task {
     id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     description: 'Test task',
     workflow: 'feature',
-    autonomy: 'full',
+    autonomy: 'full-auto',
     status: 'pending' as TaskStatus,
     priority: 'normal',
     effort: 'medium',
@@ -1250,18 +1252,30 @@ export async function createTestPermissionStore(initialPermissions: Permission[]
 export async function createPermissionScenarioStore(
   scenario: 'read-only' | 'full-access' | 'review-all' | 'mixed'
 ): Promise<TestPermissionStoreContext> {
-  const { createCommonPermissionScenarios } = await import('@apexcli/core/test-utils');
-  const scenarios = createCommonPermissionScenarios();
-
-  const scenarioMap = {
-    'read-only': scenarios.readOnly,
-    'full-access': scenarios.fullAccess,
-    'review-all': scenarios.reviewAll,
-    'mixed': scenarios.mixed,
+  const scenarioPermissions: Record<string, Permission[]> = {
+    'read-only': [
+      { tool: 'Read', level: 'allow-always' as PermissionLevel, scope: '*', createdAt: new Date() },
+      { tool: 'Write', level: 'deny' as PermissionLevel, scope: '*', createdAt: new Date() },
+      { tool: 'Bash', level: 'deny' as PermissionLevel, scope: '*', createdAt: new Date() },
+    ],
+    'full-access': [
+      { tool: 'Read', level: 'allow-always' as PermissionLevel, scope: '*', createdAt: new Date() },
+      { tool: 'Write', level: 'allow-always' as PermissionLevel, scope: '*', createdAt: new Date() },
+      { tool: 'Bash', level: 'allow-always' as PermissionLevel, scope: '*', createdAt: new Date() },
+    ],
+    'review-all': [
+      { tool: 'Read', level: 'allow-once' as PermissionLevel, scope: '*', createdAt: new Date() },
+      { tool: 'Write', level: 'allow-once' as PermissionLevel, scope: '*', createdAt: new Date() },
+      { tool: 'Bash', level: 'allow-once' as PermissionLevel, scope: '*', createdAt: new Date() },
+    ],
+    'mixed': [
+      { tool: 'Read', level: 'allow-always' as PermissionLevel, scope: '*', createdAt: new Date() },
+      { tool: 'Write', level: 'allow-once' as PermissionLevel, scope: '*', createdAt: new Date() },
+      { tool: 'Bash', level: 'deny' as PermissionLevel, scope: '*', createdAt: new Date() },
+    ],
   };
 
-  const permissions = Object.values(scenarioMap[scenario]);
-  return createTestPermissionStore(permissions);
+  return createTestPermissionStore(scenarioPermissions[scenario]);
 }
 
 /**
@@ -1290,10 +1304,8 @@ export async function populateTestPermissions(
   store: PermissionStore,
   toolPermissions: Record<string, 'allow-always' | 'allow-once' | 'deny'>
 ): Promise<void> {
-  const { createMockPermission } = await import('@apexcli/core/test-utils');
-
   for (const [tool, level] of Object.entries(toolPermissions)) {
-    const permission = createMockPermission({ tool, level });
+    const permission: Permission = { tool, level: level as PermissionLevel, scope: '*', createdAt: new Date() };
     await store.savePermission(permission);
   }
 }
@@ -1443,7 +1455,7 @@ export async function createPermissionTestEnvironment(options: {
     store: testContext.store,
     manager: testContext.manager,
     tempPath: testContext.tempPath,
-    cleanup: testContext.cleanup,
+    cleanup: async () => testContext.cleanup(),
 
     async assertPermissionLevel(tool: string, expectedLevel: 'allow-always' | 'allow-once' | 'deny' | null, scope?: string): Promise<void> {
       const actualLevel = await testContext.manager.checkPermission(tool, scope);
@@ -1453,24 +1465,22 @@ export async function createPermissionTestEnvironment(options: {
     },
 
     async assertToolAllowed(tool: string, scope?: string): Promise<void> {
-      const allowed = await testContext.manager.isAllowed(tool, scope);
-      if (!allowed) {
+      const level = await testContext.manager.checkPermission(tool, scope);
+      if (!level || level === 'deny') {
         throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should be allowed but is denied`);
       }
     },
 
     async assertToolDenied(tool: string, scope?: string): Promise<void> {
-      const allowed = await testContext.manager.isAllowed(tool, scope);
-      if (allowed) {
-        const level = await testContext.manager.checkPermission(tool, scope);
+      const level = await testContext.manager.checkPermission(tool, scope);
+      if (level && level !== 'deny') {
         throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should be denied but is allowed with level ${level}`);
       }
     },
 
     async assertToolRequiresConfirmation(tool: string, scope?: string): Promise<void> {
-      const requiresConfirm = await testContext.manager.requiresConfirmation(tool, scope);
-      if (!requiresConfirm) {
-        const level = await testContext.manager.checkPermission(tool, scope);
+      const level = await testContext.manager.checkPermission(tool, scope);
+      if (level !== 'allow-once') {
         throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should require confirmation but has level ${level}`);
       }
     },
@@ -1480,7 +1490,8 @@ export async function createPermissionTestEnvironment(options: {
     },
 
     async removePermission(tool: string, scope?: string): Promise<void> {
-      await testContext.store.deletePermission({ tool, scope });
+      // No direct delete; overwrite with deny to effectively remove
+      await testContext.store.savePermission({ tool, level: 'deny' as PermissionLevel, scope: scope || '*', createdAt: new Date() });
     },
 
     async getAllPermissions(): Promise<Permission[]> {
@@ -1562,7 +1573,7 @@ export async function createPermissionTestScenario(
     store: testContext.store,
     manager: testContext.manager,
     tempPath: testContext.tempPath,
-    cleanup: testContext.cleanup,
+    cleanup: async () => testContext.cleanup(),
 
     async assertPermissionLevel(tool: string, expectedLevel: 'allow-always' | 'allow-once' | 'deny' | null, scope?: string): Promise<void> {
       const actualLevel = await testContext.manager.checkPermission(tool, scope);
@@ -1572,24 +1583,22 @@ export async function createPermissionTestScenario(
     },
 
     async assertToolAllowed(tool: string, scope?: string): Promise<void> {
-      const allowed = await testContext.manager.isAllowed(tool, scope);
-      if (!allowed) {
+      const level = await testContext.manager.checkPermission(tool, scope);
+      if (!level || level === 'deny') {
         throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should be allowed but is denied`);
       }
     },
 
     async assertToolDenied(tool: string, scope?: string): Promise<void> {
-      const allowed = await testContext.manager.isAllowed(tool, scope);
-      if (allowed) {
-        const level = await testContext.manager.checkPermission(tool, scope);
+      const level = await testContext.manager.checkPermission(tool, scope);
+      if (level && level !== 'deny') {
         throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should be denied but is allowed with level ${level}`);
       }
     },
 
     async assertToolRequiresConfirmation(tool: string, scope?: string): Promise<void> {
-      const requiresConfirm = await testContext.manager.requiresConfirmation(tool, scope);
-      if (!requiresConfirm) {
-        const level = await testContext.manager.checkPermission(tool, scope);
+      const level = await testContext.manager.checkPermission(tool, scope);
+      if (level !== 'allow-once') {
         throw new Error(`Tool ${tool}${scope ? `:${scope}` : ''} should require confirmation but has level ${level}`);
       }
     },
@@ -1599,7 +1608,8 @@ export async function createPermissionTestScenario(
     },
 
     async removePermission(tool: string, scope?: string): Promise<void> {
-      await testContext.store.deletePermission({ tool, scope });
+      // No direct delete; overwrite with deny to effectively remove
+      await testContext.store.savePermission({ tool, level: 'deny' as PermissionLevel, scope: scope || '*', createdAt: new Date() });
     },
 
     async getAllPermissions(): Promise<Permission[]> {
@@ -1707,7 +1717,7 @@ export async function seedRunningTask(store: TaskStore, overrides: Partial<Task>
   });
 
   await store.createTask(task);
-  await store.updateTaskStatus(task.id, 'running', overrides.currentStage || 'development');
+  await store.updateTaskStatus(task.id, 'in-progress', overrides.currentStage || 'development');
   const result = await store.getTask(task.id);
   return result!;
 }
@@ -1736,7 +1746,7 @@ export async function seedCompletedTask(store: TaskStore, overrides: Partial<Tas
   });
 
   await store.createTask(task);
-  await store.updateTaskStatus(task.id, 'running', 'development');
+  await store.updateTaskStatus(task.id, 'in-progress', 'development');
   await store.updateTaskStatus(task.id, 'completed');
   const result = await store.getTask(task.id);
   return result!;
@@ -1758,7 +1768,7 @@ export async function seedFailedTask(store: TaskStore, overrides: Partial<Task> 
   });
 
   await store.createTask(task);
-  await store.updateTaskStatus(task.id, 'running', 'testing');
+  await store.updateTaskStatus(task.id, 'in-progress', 'testing');
   await store.updateTaskStatus(task.id, 'failed', undefined, 'Test execution failed: assertion error');
   const result = await store.getTask(task.id);
   return result!;
@@ -1780,7 +1790,7 @@ export async function seedPausedTask(store: TaskStore, overrides: Partial<Task> 
   });
 
   await store.createTask(task);
-  await store.updateTaskStatus(task.id, 'running', 'development');
+  await store.updateTaskStatus(task.id, 'in-progress', 'development');
   await store.updateTaskStatus(task.id, 'paused', undefined, 'Rate limit exceeded');
   const result = await store.getTask(task.id);
   return result!;
@@ -1884,7 +1894,7 @@ export async function seedTaskScenario(store: TaskStore, scenario: TaskScenario)
       });
 
       await store.createTask(task);
-      await store.updateTaskStatus(task.id, 'running', 'testing');
+      await store.updateTaskStatus(task.id, 'in-progress', 'testing');
       await store.updateTaskStatus(task.id, 'failed', undefined, 'Max retries exceeded');
       const result = await store.getTask(task.id);
       return [result!];

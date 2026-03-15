@@ -7,7 +7,7 @@
 
 import type {
   PermissionLevel,
-  ToolPermission,
+  Permission,
   ToolPermissionResult,
   AgentTool,
 } from '../../types.js';
@@ -45,7 +45,7 @@ export interface PermissionFactoryOptions {
  * @param overrides - Partial ToolPermission properties to override defaults
  * @returns A fully-typed ToolPermission object
  */
-export const createToolPermission: FixtureFactory<ToolPermission> = (overrides = {}) => ({
+export const createToolPermission: FixtureFactory<Permission> = (overrides = {}) => ({
   tool: 'Read',
   scope: undefined,
   level: 'allow-always',
@@ -71,7 +71,7 @@ export const createToolPermissionResult: FixtureFactory<ToolPermissionResult> = 
 /**
  * Creates an allow-always permission
  */
-export const createAlwaysAllowPermission: FixtureFactory<ToolPermission> = (overrides = {}) =>
+export const createAlwaysAllowPermission: FixtureFactory<Permission> = (overrides = {}) =>
   createToolPermission({
     level: 'allow-always',
     ...overrides,
@@ -80,7 +80,7 @@ export const createAlwaysAllowPermission: FixtureFactory<ToolPermission> = (over
 /**
  * Creates an allow-once permission
  */
-export const createAllowOncePermission: FixtureFactory<ToolPermission> = (overrides = {}) =>
+export const createAllowOncePermission: FixtureFactory<Permission> = (overrides = {}) =>
   createToolPermission({
     level: 'allow-once',
     expiry: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
@@ -90,7 +90,7 @@ export const createAllowOncePermission: FixtureFactory<ToolPermission> = (overri
 /**
  * Creates a deny permission
  */
-export const createDenyPermission: FixtureFactory<ToolPermission> = (overrides = {}) =>
+export const createDenyPermission: FixtureFactory<Permission> = (overrides = {}) =>
   createToolPermission({
     level: 'deny',
     ...overrides,
@@ -482,7 +482,7 @@ export const PermissionPresets = {
 /**
  * Creates a collection of permissions for all tools with a specific level
  */
-export function createUniformPermissions(level: PermissionLevel): ToolPermission[] {
+export function createUniformPermissions(level: PermissionLevel): Permission[] {
   const tools: AgentTool[] = [
     'Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit',
     'Bash', 'Grep', 'Glob', 'WebFetch', 'WebSearch',
@@ -500,9 +500,9 @@ export function createUniformPermissions(level: PermissionLevel): ToolPermission
  * Creates permission sets for A/B testing different permission strategies
  */
 export function createPermissionVariants(): {
-  restrictive: ToolPermission[];
-  moderate: ToolPermission[];
-  permissive: ToolPermission[];
+  restrictive: Permission[];
+  moderate: Permission[];
+  permissive: Permission[];
 } {
   return {
     restrictive: createUniformPermissions('deny'),
@@ -514,7 +514,7 @@ export function createPermissionVariants(): {
 /**
  * Validates that a permission has the expected structure
  */
-export function validateToolPermission(permission: ToolPermission): boolean {
+export function validateToolPermission(permission: Permission): boolean {
   return !!(
     permission.tool &&
     permission.level &&
@@ -527,10 +527,10 @@ export function validateToolPermission(permission: ToolPermission): boolean {
  * Creates time-based permission scenarios for testing expiry behavior
  */
 export function createTimeBasedPermissions(): {
-  expired: ToolPermission;
-  expiringSoon: ToolPermission;
-  longTerm: ToolPermission;
-  permanent: ToolPermission;
+  expired: Permission;
+  expiringSoon: Permission;
+  longTerm: Permission;
+  permanent: Permission;
 } {
   const now = new Date();
 

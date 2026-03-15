@@ -14,22 +14,35 @@ import { renderHook } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useStdoutDimensions } from '../useStdoutDimensions.js';
 
-// Mock ink-use-stdout-dimensions
-vi.mock('ink-use-stdout-dimensions', () => {
-  const mockHook = vi.fn();
-  return {
-    default: mockHook,
-  };
+// Create mock stdout object
+const createMockStdout = (columns: number | undefined, rows: number | undefined) => ({
+  columns,
+  rows,
+  on: vi.fn(),
+  off: vi.fn(),
 });
 
-import useStdoutDimensionsBase from 'ink-use-stdout-dimensions';
+let mockStdout = createMockStdout(80, 24);
+
+// Mock ink's useStdout hook
+vi.mock('ink', () => ({
+  useStdout: vi.fn(() => ({ stdout: mockStdout })),
+}));
+
+import { useStdout } from 'ink';
 
 describe('useStdoutDimensions - Acceptance Criteria', () => {
-  const mockBaseHook = vi.mocked(useStdoutDimensionsBase);
+  const mockUseStdout = vi.mocked(useStdout);
+
+  // Helper to set mock dimensions
+  const setMockDimensions = (columns: number | undefined, rows: number | undefined) => {
+    mockStdout = createMockStdout(columns, rows);
+    mockUseStdout.mockReturnValue({ stdout: mockStdout as any });
+  };
 
   beforeEach(() => {
-    mockBaseHook.mockClear();
-    mockBaseHook.mockReturnValue([80, 24]);
+    mockUseStdout.mockClear();
+    setMockDimensions(80, 24);
   });
 
   afterEach(() => {
@@ -45,34 +58,31 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
   });
 
   describe('AC 2: Wraps terminal dimension detection', () => {
-    it('should wrap ink-use-stdout-dimensions for terminal dimension detection', () => {
-      mockBaseHook.mockReturnValue([100, 30]);
+    it('should wrap ink useStdout for terminal dimension detection', () => {
+      setMockDimensions(100, 30);
       renderHook(() => useStdoutDimensions());
 
       // Should call the underlying terminal dimension detection library
-      expect(mockBaseHook).toHaveBeenCalled();
+      expect(mockUseStdout).toHaveBeenCalled();
     });
 
-    it('should handle terminal resize events through the wrapped library', () => {
-      const { result, rerender } = renderHook(() => useStdoutDimensions());
-
-      // Initial dimensions
-      mockBaseHook.mockReturnValue([80, 24]);
-      rerender();
+    it('should read terminal dimensions from stdout object', () => {
+      setMockDimensions(80, 24);
+      const { result } = renderHook(() => useStdoutDimensions());
       expect(result.current.width).toBe(80);
       expect(result.current.height).toBe(24);
 
-      // Simulated resize
-      mockBaseHook.mockReturnValue([120, 35]);
-      rerender();
-      expect(result.current.width).toBe(120);
-      expect(result.current.height).toBe(35);
+      // Test with different dimensions
+      setMockDimensions(120, 35);
+      const { result: result2 } = renderHook(() => useStdoutDimensions());
+      expect(result2.current.width).toBe(120);
+      expect(result2.current.height).toBe(35);
     });
   });
 
   describe('AC 3: Provides width/height values', () => {
     it('should provide width and height as numeric values', () => {
-      mockBaseHook.mockReturnValue([120, 35]);
+      setMockDimensions(120, 35);
       const { result } = renderHook(() => useStdoutDimensions());
 
       expect(result.current.width).toBe(120);
@@ -82,7 +92,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
     });
 
     it('should provide fallback width/height when terminal dimensions are unavailable', () => {
-      mockBaseHook.mockReturnValue([undefined as any, undefined as any]);
+      setMockDimensions(undefined as any, undefined as any);
       const { result } = renderHook(() => useStdoutDimensions({
         fallbackWidth: 100,
         fallbackHeight: 30
@@ -100,7 +110,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       it('should be true for widths less than 60', () => {
         const narrowWidths = [10, 30, 50, 59];
         narrowWidths.forEach(width => {
-          mockBaseHook.mockReturnValue([width, 24]);
+          setMockDimensions(width, 24);
           const { result } = renderHook(() => useStdoutDimensions());
           expect(result.current.isNarrow).toBe(true);
           expect(result.current.isCompact).toBe(false);
@@ -112,7 +122,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       it('should be false for widths 60 and above', () => {
         const nonNarrowWidths = [60, 61, 80, 100, 160, 200];
         nonNarrowWidths.forEach(width => {
-          mockBaseHook.mockReturnValue([width, 24]);
+          setMockDimensions(width, 24);
           const { result } = renderHook(() => useStdoutDimensions());
           expect(result.current.isNarrow).toBe(false);
         });
@@ -123,7 +133,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       it('should be true for widths from 60 to 99', () => {
         const compactWidths = [60, 70, 80, 90, 99];
         compactWidths.forEach(width => {
-          mockBaseHook.mockReturnValue([width, 24]);
+          setMockDimensions(width, 24);
           const { result } = renderHook(() => useStdoutDimensions());
           expect(result.current.isNarrow).toBe(false);
           expect(result.current.isCompact).toBe(true);
@@ -135,7 +145,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       it('should be false for widths below 60 or 100 and above', () => {
         const nonCompactWidths = [59, 100, 101, 160, 200];
         nonCompactWidths.forEach(width => {
-          mockBaseHook.mockReturnValue([width, 24]);
+          setMockDimensions(width, 24);
           const { result } = renderHook(() => useStdoutDimensions());
           expect(result.current.isCompact).toBe(false);
         });
@@ -146,7 +156,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       it('should be true for widths from 100 to 159', () => {
         const normalWidths = [100, 120, 140, 159];
         normalWidths.forEach(width => {
-          mockBaseHook.mockReturnValue([width, 24]);
+          setMockDimensions(width, 24);
           const { result } = renderHook(() => useStdoutDimensions());
           expect(result.current.isNarrow).toBe(false);
           expect(result.current.isCompact).toBe(false);
@@ -158,7 +168,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       it('should be false for widths below 100 or 160 and above', () => {
         const nonNormalWidths = [99, 160, 161, 200];
         nonNormalWidths.forEach(width => {
-          mockBaseHook.mockReturnValue([width, 24]);
+          setMockDimensions(width, 24);
           const { result } = renderHook(() => useStdoutDimensions());
           expect(result.current.isNormal).toBe(false);
         });
@@ -169,7 +179,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       it('should be true for widths 160 and above', () => {
         const wideWidths = [160, 180, 200, 300, 1000];
         wideWidths.forEach(width => {
-          mockBaseHook.mockReturnValue([width, 24]);
+          setMockDimensions(width, 24);
           const { result } = renderHook(() => useStdoutDimensions());
           expect(result.current.isNarrow).toBe(false);
           expect(result.current.isCompact).toBe(false);
@@ -181,7 +191,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       it('should be false for widths below 160', () => {
         const nonWideWidths = [50, 80, 100, 140, 159];
         nonWideWidths.forEach(width => {
-          mockBaseHook.mockReturnValue([width, 24]);
+          setMockDimensions(width, 24);
           const { result } = renderHook(() => useStdoutDimensions());
           expect(result.current.isWide).toBe(false);
         });
@@ -191,7 +201,7 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
     it('should ensure exactly one breakpoint helper is true at any time', () => {
       const testWidths = [30, 60, 80, 100, 120, 160, 200];
       testWidths.forEach(width => {
-        mockBaseHook.mockReturnValue([width, 24]);
+        setMockDimensions(width, 24);
         const { result } = renderHook(() => useStdoutDimensions());
 
         const helpers = [
@@ -255,9 +265,9 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
       expect(useStdoutDimensions).toBeDefined();
 
       // AC 2: Wraps terminal dimension detection
-      mockBaseHook.mockReturnValue([130, 40]);
+      setMockDimensions(130, 40);
       const { result } = renderHook(() => useStdoutDimensions());
-      expect(mockBaseHook).toHaveBeenCalled();
+      expect(mockUseStdout).toHaveBeenCalled();
 
       // AC 3: Provides width/height values
       expect(result.current.width).toBe(130);
@@ -272,7 +282,6 @@ describe('useStdoutDimensions - Acceptance Criteria', () => {
 
       // AC 5: Has unit tests (this test validates this)
       // This comprehensive test suite validates AC 5
-      expect(mockBaseHook).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -288,7 +288,7 @@ describe('TaskProgress - Compact Mode Tests', () => {
       // Normal mode should show detailed layout with workflow and stage
       expect(screen.getByText('feature-development')).toBeInTheDocument();
       expect(screen.getByText('implementation')).toBeInTheDocument();
-      expect(screen.getByText('task-abc123de')).toBeInTheDocument(); // 12 chars in normal
+      expect(screen.getByText('task-abc123d')).toBeInTheDocument(); // 12 chars in normal
       expect(screen.getByText(/tokens:/)).toBeInTheDocument(); // Labels shown
 
       // Switch to compact mode

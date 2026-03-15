@@ -4,8 +4,19 @@ import { render, screen } from '../../__tests__/test-utils';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 import type { StdoutDimensions } from '../../hooks/useStdoutDimensions';
 
-// Mock useStdoutDimensions hook
-const mockUseStdoutDimensions = vi.fn<[], StdoutDimensions>();
+// Use vi.hoisted to ensure mock function is available during module hoisting
+const { mockUseStdoutDimensions } = vi.hoisted(() => ({
+  mockUseStdoutDimensions: vi.fn(() => ({
+    width: 120,
+    height: 30,
+    breakpoint: 'normal' as const,
+    isAvailable: true,
+    isNarrow: false,
+    isCompact: false,
+    isNormal: true,
+    isWide: false,
+  })),
+}));
 
 vi.mock('../../hooks/useStdoutDimensions.js', () => ({
   useStdoutDimensions: mockUseStdoutDimensions,
@@ -129,7 +140,8 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
       // Verify narrow mode behavior
       expect(screen.getByText('●')).toBeInTheDocument();
       expect(screen.queryByText('testing')).not.toBeInTheDocument();
-      expect(screen.queryByText('Hook Integration')).not.toBeInTheDocument();
+      // Session name 'Hook Integration Test' (21 chars) truncates to 'Hook Integra...'
+      expect(screen.queryByText('Hook Integra...')).not.toBeInTheDocument();
 
       // Change to compact (60-100 cols)
       mockUseStdoutDimensions.mockReturnValue({
@@ -148,7 +160,7 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
       // Should now show medium priority
       expect(screen.getByText('testing')).toBeInTheDocument();
       expect(screen.getByText('[2/4]')).toBeInTheDocument();
-      expect(screen.queryByText('Hook Integration')).not.toBeInTheDocument(); // still hide low priority
+      expect(screen.queryByText('Hook Integra...')).not.toBeInTheDocument(); // still hide low priority
 
       // Change to normal (100-160 cols)
       mockUseStdoutDimensions.mockReturnValue({
@@ -166,7 +178,7 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
 
       // Should show medium but still hide low priority (URLs, session name)
       expect(screen.getByText('testing')).toBeInTheDocument();
-      expect(screen.queryByText('Hook Integration')).not.toBeInTheDocument(); // still low priority
+      expect(screen.queryByText('Hook Integra...')).not.toBeInTheDocument(); // still low priority
 
       // Change to wide (>160 cols)
       mockUseStdoutDimensions.mockReturnValue({
@@ -184,7 +196,8 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
 
       // Should now show all segments including low priority
       expect(screen.getByText('testing')).toBeInTheDocument();
-      expect(screen.getByText('Hook Integration')).toBeInTheDocument(); // low priority now visible
+      // Session name 'Hook Integration Test' (21 chars) truncates to 'Hook Integra...'
+      expect(screen.getByText('Hook Integra...')).toBeInTheDocument(); // low priority now visible
       expect(screen.getByText('api:')).toBeInTheDocument(); // URLs now visible
     });
   });
@@ -245,8 +258,8 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
 
       const { rerender } = render(<StatusBar {...defaultProps} />);
 
-      // Should hide low priority segments
-      expect(screen.queryByText('Hook Integration')).not.toBeInTheDocument();
+      // Should hide low priority segments (session name is truncated: 'Hook Integration Test' -> 'Hook Integra...')
+      expect(screen.queryByText('Hook Integra...')).not.toBeInTheDocument();
       expect(screen.queryByText('api:')).not.toBeInTheDocument();
 
       // 161 cols should be wide
@@ -263,8 +276,8 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
 
       rerender(<StatusBar {...defaultProps} />);
 
-      // Should now show low priority segments
-      expect(screen.getByText('Hook Integration')).toBeInTheDocument();
+      // Should now show low priority segments (session name truncated)
+      expect(screen.getByText('Hook Integra...')).toBeInTheDocument();
       expect(screen.getByText('api:')).toBeInTheDocument();
     });
 
@@ -301,8 +314,8 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
         const mediumVisible = screen.queryByText('testing') !== null;
         expect(mediumVisible).toBe(expected.medium);
 
-        // Test low priority visibility (session name)
-        const lowVisible = screen.queryByText('Hook Integration') !== null;
+        // Test low priority visibility (session name, truncated: 'Hook Integration Test' -> 'Hook Integra...')
+        const lowVisible = screen.queryByText('Hook Integra...') !== null;
         expect(lowVisible).toBe(expected.low);
 
         if (index < boundaries.length - 1) rerender(<></>);
@@ -329,8 +342,8 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
       expect(screen.getByText('$0.0543')).toBeInTheDocument();
       expect(screen.queryByText('cost:')).not.toBeInTheDocument();
 
-      // Model should use abbreviated label in narrow mode, but it's high priority so should show
-      expect(screen.queryByText('m:')).toBeInTheDocument();
+      // Model should use abbreviated label in narrow mode ('mod:' per LABEL_ABBREVIATIONS)
+      expect(screen.queryByText('mod:')).toBeInTheDocument();
       expect(screen.queryByText('model:')).not.toBeInTheDocument();
 
       // Git branch should compress if too long
@@ -436,9 +449,9 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
 
       rerender(<StatusBar {...defaultProps} />);
 
-      // Should now show all segments
+      // Should now show all segments (session name truncated: 'Hook Integration Test' -> 'Hook Integra...')
       expect(screen.getByText('testing')).toBeInTheDocument();
-      expect(screen.getByText('Hook Integration')).toBeInTheDocument();
+      expect(screen.getByText('Hook Integra...')).toBeInTheDocument();
       expect(screen.getByText('api:')).toBeInTheDocument();
     });
   });
@@ -490,11 +503,12 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
       }} />);
 
       // Should show all segments including verbose-specific ones
+      // Note: Session name 'Hook Integration Test' (21 chars) truncates to 'Hook Integra...'
       expect(screen.getByText('●')).toBeInTheDocument();
       expect(screen.getByText(/feature/)).toBeInTheDocument();
       expect(screen.getByText('tester')).toBeInTheDocument();
       expect(screen.getByText('testing')).toBeInTheDocument();
-      expect(screen.getByText('Hook Integration')).toBeInTheDocument();
+      expect(screen.getByText('Hook Integra...')).toBeInTheDocument();
       expect(screen.getByText('🔍 VERBOSE')).toBeInTheDocument();
 
       // Should show detailed timing
@@ -518,9 +532,10 @@ describe('StatusBar - useStdoutDimensions Hook Integration', () => {
       render(<StatusBar {...defaultProps} displayMode="normal" />);
 
       // Should respect breakpoint filtering in normal mode
+      // Session name 'Hook Integration Test' (21 chars) truncates to 'Hook Integra...'
       expect(screen.getByText('●')).toBeInTheDocument();
       expect(screen.getByText('testing')).toBeInTheDocument(); // medium priority visible in compact
-      expect(screen.queryByText('Hook Integration')).not.toBeInTheDocument(); // low priority hidden
+      expect(screen.queryByText('Hook Integra...')).not.toBeInTheDocument(); // low priority hidden
     });
   });
 });

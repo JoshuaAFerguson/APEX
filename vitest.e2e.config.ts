@@ -41,6 +41,9 @@ export default mergeConfig(
         'tests/e2e/**/*.test.ts',
         'tests/e2e/**/*.e2e.test.ts',
 
+        // Tool visualization E2E tests
+        'tests/e2e/tool-visualization/**/*.test.ts',
+
         // Additional E2E test patterns found in the codebase
         '**/*e2e*.test.ts',                    // Files like thoughts-e2e.test.ts, container-resource-limits-e2e.test.ts
         '**/e2e-*.test.ts',                    // Files like e2e-infrastructure-validation.test.ts
@@ -88,7 +91,7 @@ export default mergeConfig(
       globalTeardown: './tests/e2e/teardown.ts',
 
       // Run tests sequentially to avoid resource conflicts
-      // E2E tests often involve shared system resources (ports, git repos)
+      // E2E tests often involve shared system resources (ports, git repos, WebSocket servers)
       sequence: {
         shuffle: false,
       },
@@ -96,14 +99,10 @@ export default mergeConfig(
       // Use forked process pool for E2E test isolation
       // Each E2E test may create system resources that could conflict
       pool: 'forks',
-      poolOptions: {
-        forks: {
-          // Limit concurrency to prevent resource exhaustion
-          // Each test creates temp directories, git repos, databases
-          maxForks: 4,
-          minForks: 1,
-        },
-      },
+      // Limit concurrency to prevent resource exhaustion
+      // Each test creates temp directories, git repos, databases, WebSocket servers
+      maxForks: 2, // Reduced for WebSocket tests
+      minForks: 1,
 
       // Verbose reporter for debugging E2E failures
       reporters: ['verbose'],

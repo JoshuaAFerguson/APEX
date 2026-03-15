@@ -67,7 +67,6 @@ export interface LogRotationConfigOverrides {
   maxSize?: string;
   maxFiles?: number;
   compress?: boolean;
-  datePattern?: string;
 }
 
 /**
@@ -75,10 +74,9 @@ export interface LogRotationConfigOverrides {
  */
 export function createLogRotationConfig(overrides: LogRotationConfigOverrides = {}): LogRotationConfig {
   const defaults: LogRotationConfig = {
-    maxSize: '10MB',
+    maxSize: '10M',
     maxFiles: 5,
-    compress: true,
-    datePattern: 'YYYY-MM-DD',
+    compress: false,
   };
 
   return { ...defaults, ...overrides };
@@ -90,28 +88,15 @@ export function createLogRotationConfig(overrides: LogRotationConfigOverrides = 
 
 export interface LoggingConfigOverrides {
   level?: LogLevelType;
+  format?: 'json' | 'pretty' | 'auto';
+  packageLevels?: Record<string, LogLevelType>;
   file?: {
     enabled?: boolean;
     path?: string;
     rotation?: LogRotationConfig;
   };
-  console?: {
-    enabled?: boolean;
-    colorize?: boolean;
-    timestamp?: boolean;
-    format?: string;
-  };
-  structured?: {
-    enabled?: boolean;
-    format?: 'json' | 'logfmt';
-    fields?: Record<string, unknown>;
-  };
-  remote?: {
-    enabled?: boolean;
-    endpoint?: string;
-    apiKey?: string;
-    batchSize?: number;
-  };
+  timestamps?: boolean;
+  stackTraces?: boolean;
 }
 
 /**
@@ -120,31 +105,14 @@ export interface LoggingConfigOverrides {
 export function createLoggingConfig(overrides: LoggingConfigOverrides = {}): LoggingConfig {
   const defaults: LoggingConfig = {
     level: 'info',
+    format: 'auto',
     file: {
       enabled: true,
-      path: '.apex/logs/apex.log',
+      path: '.apex/apex.log',
       rotation: createLogRotationConfig(),
     },
-    console: {
-      enabled: true,
-      colorize: true,
-      timestamp: true,
-      format: '[{timestamp}] {level}: {message}',
-    },
-    structured: {
-      enabled: false,
-      format: 'json',
-      fields: {
-        service: 'apex',
-        version: '0.5.0',
-        environment: 'development',
-      },
-    },
-    remote: {
-      enabled: false,
-      endpoint: 'https://logs.example.com/v1/logs',
-      batchSize: 100,
-    },
+    timestamps: true,
+    stackTraces: true,
   };
 
   return { ...defaults, ...overrides };
@@ -398,11 +366,7 @@ export function createLoggingConfigs(): {
   return {
     development: createLoggingConfig({
       level: 'debug',
-      console: {
-        enabled: true,
-        colorize: true,
-        timestamp: true,
-      },
+      format: 'pretty',
       file: {
         enabled: true,
         path: '.apex/logs/dev.log',
@@ -411,10 +375,6 @@ export function createLoggingConfigs(): {
 
     testing: createLoggingConfig({
       level: 'warn',
-      console: {
-        enabled: false,
-        colorize: false,
-      },
       file: {
         enabled: false,
       },
@@ -422,54 +382,24 @@ export function createLoggingConfigs(): {
 
     production: createLoggingConfig({
       level: 'info',
-      console: {
-        enabled: true,
-        colorize: false,
-        timestamp: true,
-        format: 'json',
-      },
+      format: 'json',
       file: {
         enabled: true,
         path: '/var/log/apex/production.log',
         rotation: createLogRotationConfig({
-          maxSize: '100MB',
+          maxSize: '100M',
           maxFiles: 10,
           compress: true,
         }),
-      },
-      structured: {
-        enabled: true,
-        format: 'json',
-        fields: {
-          service: 'apex',
-          environment: 'production',
-        },
-      },
-      remote: {
-        enabled: true,
-        endpoint: 'https://logs.company.com/v1/ingest',
-        batchSize: 500,
       },
     }),
 
     debug: createLoggingConfig({
       level: 'debug',
-      console: {
-        enabled: true,
-        colorize: true,
-        timestamp: true,
-      },
+      format: 'pretty',
       file: {
         enabled: true,
         path: '.apex/logs/debug.log',
-      },
-      structured: {
-        enabled: true,
-        format: 'json',
-        fields: {
-          debug: true,
-          verbose: true,
-        },
       },
     }),
   };

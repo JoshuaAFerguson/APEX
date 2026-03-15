@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '../../../__tests__/test-utils';
+import { render, screen, act, waitFor } from '../../__tests__/test-utils';
 import { TaskProgress, MultiTaskProgress, StepProgress } from '../ProgressIndicators';
 import type { StdoutDimensions } from '../../hooks/useStdoutDimensions';
 
@@ -21,7 +21,7 @@ describe('ProgressIndicators - Container Integration Tests', () => {
   });
 
   describe('TaskProgress Container', () => {
-    it('adapts to narrow terminals by using responsive ProgressBar', () => {
+    it('adapts to narrow terminals by using responsive ProgressBar', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 50,
         height: 15,
@@ -45,8 +45,15 @@ describe('ProgressIndicators - Container Integration Tests', () => {
         />
       );
 
-      // Should display progress percentage
-      expect(screen.getByText('75%')).toBeInTheDocument();
+      // Wait for animation to complete (500ms + buffer)
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
+      // Should display progress percentage after animation
+      await waitFor(() => {
+        expect(screen.getByText('75%')).toBeInTheDocument();
+      });
 
       // Should display task information
       expect(screen.getByText('Database Migration')).toBeInTheDocument();
@@ -85,7 +92,7 @@ describe('ProgressIndicators - Container Integration Tests', () => {
       expect(screen.getByText(/Processing/)).toBeInTheDocument();
     });
 
-    it('provides appropriate reservedSpace to ProgressBar accounting for border and padding', () => {
+    it('provides appropriate reservedSpace to ProgressBar accounting for border and padding', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 80,
         height: 20,
@@ -105,11 +112,18 @@ describe('ProgressIndicators - Container Integration Tests', () => {
         />
       );
 
+      // Wait for animation to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
       // Should account for border, padding when calculating progress bar width
-      expect(screen.getByText('60%')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('60%')).toBeInTheDocument();
+      });
     });
 
-    it('adjusts display in wide terminals with optimal spacing', () => {
+    it('adjusts display in wide terminals with optimal spacing', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 180,
         height: 40,
@@ -136,11 +150,18 @@ describe('ProgressIndicators - Container Integration Tests', () => {
       // Should show full step description in wide mode
       expect(screen.getByText(/Analyzing performance metrics and generating comprehensive reports/)).toBeInTheDocument();
 
+      // Wait for animation to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
       // Progress bar should utilize more space efficiently
-      expect(screen.getByText('45%')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('45%')).toBeInTheDocument();
+      });
     });
 
-    it('handles status transitions with consistent responsive behavior', () => {
+    it('handles status transitions with consistent responsive behavior', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 70,
         height: 20,
@@ -160,7 +181,14 @@ describe('ProgressIndicators - Container Integration Tests', () => {
         />
       );
 
-      expect(screen.getByText('25%')).toBeInTheDocument();
+      // Wait for animation to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('25%')).toBeInTheDocument();
+      });
 
       // Transition to completed
       rerender(
@@ -186,7 +214,7 @@ describe('ProgressIndicators - Container Integration Tests', () => {
       { id: '5', name: 'Deploy to Production', status: 'pending' as const, progress: 0 },
     ];
 
-    it('adapts overall progress bar to narrow terminals', () => {
+    it('adapts overall progress bar to narrow terminals', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 45,
         height: 12,
@@ -200,8 +228,15 @@ describe('ProgressIndicators - Container Integration Tests', () => {
 
       render(<MultiTaskProgress tasks={sampleTasks} title="Project Setup" compact={false} />);
 
+      // Wait for animation to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
       // Should show overall progress (2 completed out of 5 = 40%)
-      expect(screen.getByText('40%')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('40%')).toBeInTheDocument();
+      });
 
       // Should show task count
       expect(screen.getByText('2/5 completed')).toBeInTheDocument();
@@ -236,7 +271,7 @@ describe('ProgressIndicators - Container Integration Tests', () => {
       expect(screen.queryByText('Creating authentication middleware')).not.toBeInTheDocument();
     });
 
-    it('provides optimal spacing for overall ProgressBar in wide terminals', () => {
+    it('provides optimal spacing for overall ProgressBar in wide terminals', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 150,
         height: 30,
@@ -250,8 +285,15 @@ describe('ProgressIndicators - Container Integration Tests', () => {
 
       render(<MultiTaskProgress tasks={sampleTasks} title="Comprehensive Project Setup" compact={false} />);
 
+      // Wait for animation to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
       // Should show overall progress with good spacing
-      expect(screen.getByText('40%')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('40%')).toBeInTheDocument();
+      });
 
       // Should display full title
       expect(screen.getByText('Comprehensive Project Setup')).toBeInTheDocument();
@@ -260,7 +302,7 @@ describe('ProgressIndicators - Container Integration Tests', () => {
       expect(screen.getByText('Creating authentication middleware')).toBeInTheDocument();
     });
 
-    it('handles dynamic task list updates with consistent responsive behavior', () => {
+    it('handles dynamic task list updates with consistent responsive behavior', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 80,
         height: 20,
@@ -274,7 +316,14 @@ describe('ProgressIndicators - Container Integration Tests', () => {
 
       const { rerender } = render(<MultiTaskProgress tasks={sampleTasks} />);
 
-      expect(screen.getByText('40%')).toBeInTheDocument(); // 2/5 = 40%
+      // Wait for initial animation to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('40%')).toBeInTheDocument(); // 2/5 = 40%
+      });
       expect(screen.getByText('2/5 completed')).toBeInTheDocument();
 
       // Update task progress
@@ -283,12 +332,19 @@ describe('ProgressIndicators - Container Integration Tests', () => {
 
       rerender(<MultiTaskProgress tasks={updatedTasks} />);
 
+      // Wait for animation after rerender
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
       // Should update overall progress (3/5 = 60%)
-      expect(screen.getByText('60%')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('60%')).toBeInTheDocument();
+      });
       expect(screen.getByText('3/5 completed')).toBeInTheDocument();
     });
 
-    it('accounts for border space when calculating progress bar width', () => {
+    it('accounts for border space when calculating progress bar width', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 60,
         height: 15,
@@ -302,8 +358,15 @@ describe('ProgressIndicators - Container Integration Tests', () => {
 
       render(<MultiTaskProgress tasks={sampleTasks} />);
 
+      // Wait for animation to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
       // Progress bar should account for border space (reservedSpace=4)
-      expect(screen.getByText('40%')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('40%')).toBeInTheDocument();
+      });
     });
   });
 
@@ -471,7 +534,7 @@ describe('ProgressIndicators - Container Integration Tests', () => {
   });
 
   describe('Cross-Container Integration', () => {
-    it('handles multiple responsive containers simultaneously', () => {
+    it('handles multiple responsive containers simultaneously', async () => {
       mockUseStdoutDimensions.mockReturnValue({
         width: 90,
         height: 25,
@@ -502,14 +565,23 @@ describe('ProgressIndicators - Container Integration Tests', () => {
         </div>
       );
 
+      // Wait for animations to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
       // All components should render with appropriate responsive behavior
-      expect(screen.getByText('75%')).toBeInTheDocument(); // TaskProgress
-      expect(screen.getByText('50%')).toBeInTheDocument(); // MultiTaskProgress (1/2 = 50%)
+      await waitFor(() => {
+        expect(screen.getByText('75%')).toBeInTheDocument(); // TaskProgress
+      });
+      await waitFor(() => {
+        expect(screen.getByText('50%')).toBeInTheDocument(); // MultiTaskProgress (1/2 = 50%)
+      });
       expect(screen.getByText('Init')).toBeInTheDocument(); // StepProgress
       expect(screen.getByText('Build')).toBeInTheDocument();
     });
 
-    it('maintains consistent responsive behavior across breakpoint changes', () => {
+    it('maintains consistent responsive behavior across breakpoint changes', async () => {
       const { rerender } = render(
         <div>
           <TaskProgress taskName="Task" progress={50} status="in-progress" />
@@ -534,7 +606,14 @@ describe('ProgressIndicators - Container Integration Tests', () => {
         </div>
       );
 
-      expect(screen.getByText('50%')).toBeInTheDocument();
+      // Wait for animation to complete
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('50%')).toBeInTheDocument();
+      });
 
       // Expand to wide
       mockUseStdoutDimensions.mockReturnValue({
@@ -554,8 +633,15 @@ describe('ProgressIndicators - Container Integration Tests', () => {
         </div>
       );
 
+      // Wait for animation after rerender
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
       // Should maintain functionality across breakpoints
-      expect(screen.getByText('50%')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('50%')).toBeInTheDocument();
+      });
     });
   });
 });

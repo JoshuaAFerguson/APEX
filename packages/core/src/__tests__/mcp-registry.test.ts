@@ -5,6 +5,8 @@ import {
   MCPRegistry,
   MCPCatalogLoadError,
   MCPCatalogValidationError,
+  MCPCatalogErrorCode,
+  DEFAULT_EMPTY_CATALOG,
   getMCPRegistry,
   listMCPServers,
   getMCPServer,
@@ -12,6 +14,7 @@ import {
   type MCPCatalog,
   type MCPFilterOptions,
   type MCPRegistryOptions,
+  type ValidationErrorDetail,
 } from '../mcp/mcp-registry.js';
 import type { MCPMarketplaceEntry, MCPServerConfig } from '../types.js';
 

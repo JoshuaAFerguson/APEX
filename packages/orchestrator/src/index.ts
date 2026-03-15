@@ -1,4 +1,4 @@
-import { query, type AgentDefinition as SDKAgentDefinition, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
+import { type AgentDefinition as SDKAgentDefinition, type McpServerConfig, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { RepairLoop, resolveRepairConfig, ErrorClassifier } from './repair-loop/index.js';
 import type { RepairLoopHost, RepairQueryOptions, RepairQueryResult, RepairContext, RepairLoopEvents, RepairConfig } from './repair-loop/index.js';
 import { EventEmitter } from 'eventemitter3';
@@ -100,24 +100,35 @@ import {
   TestVisualComparisonSchema,
   getMCPServers,
   sanitizeErrorMessage,
+  MultimodalInput,
+  MultimodalContext,
+  ProcessedMultimodalInput,
+  MultimodalProcessingStatus,
+  MultimodalInputCounts,
+  ProjectContextAnalyzer,
 } from '@apexcli/core';
+import type { ProjectContext } from '@apexcli/core';
 import { TaskStore, ToolActionStore } from './store';
 import { WorktreeManager } from './worktree-manager';
 import { AliasResolver } from './alias-resolver';
 import { PolicyEnforcer, createPolicyEnforcer, type ApprovalCheckContext, type ApprovalRequirement } from './policy';
 import type { PolicyEngine } from './policy-engine';
+import { MultimodalInputHandler } from './tools/multimodal-input-handler';
 import { AutonomyEnforcer, type AutonomyEnforcerConfig, type ActionMetadata } from './autonomy-enforcer';
 import { WorkspaceManager, type WorkspaceInfo, DependencyInstallEventData, DependencyInstallCompletedEventData, DependencyInstallRecoveryEventData } from './workspace-manager';
 import {
   buildOrchestratorPrompt,
   buildAgentDefinitions,
   buildStagePrompt,
+  buildStagePromptMultimodal,
   buildPlannerStagePrompt,
+  buildPlannerStagePromptMultimodal,
   buildResumePrompt,
   parseDecompositionRequest,
   isPlanningStage,
   isCodeGenerationStage,
   type DecompositionRequest,
+  type TextBlockParam,
 } from './prompts';
 import { createHooks, FILE_MODIFYING_TOOLS, type HookContext } from './hooks';
 import { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';
@@ -137,6 +148,9 @@ import { generateFileDiff, type DiffResult } from './utils/diff';
 import { buildCustomToolsServer, type CustomToolsServer } from './custom-tools';
 import { MCPServerManager } from './mcp/server-manager';
 import { MCPInstaller, type InstalledMCPResult } from './mcp-installer';
+import { MemoryManager } from './memory-manager.js';
+import { LearningExtractor } from './learning-extractor.js';
+import { SmartContextManager, type UnifiedContext } from './smart-context-manager.js';
 import { MCPMarketplaceService, type AutoConfigurationOptions } from './mcp/marketplace-service';
 import { MCPConnectionManager, type MCPConnectionManagerOptions } from './mcp';
 import { MCPToolRegistry, type MCPToolRegistryOptions, type MCPToolRegistryStats } from './mcp-tool-registry';
@@ -148,6 +162,10 @@ import { TDDExecutor, type TDDExecutorConfig, type TDDExecutionResult, type TDDI
 import { ImportAutoFixer } from './import-auto-fixer/import-auto-fixer';
 import type { ImportFixResult, MissingImportAnalysis } from './import-auto-fixer/types';
 import { TestReportGenerator, type TestReportGeneratorOptions, type TestStartInfo, type TestCompleteInfo } from './test-report-generator';
+import { ReplayBundleBuilder } from './replay-bundle-builder';
+export type { ReplayBundle } from './replay-bundle-builder';
+import { enrichTaskContext, formatEnrichedContext, type EnrichedContext } from './context-enrichment';
+import { CodebaseIntelligenceService } from './codebase-intelligence/codebase-intelligence-service';
 
 const execAsync = promisify(exec);
 
@@ -646,6 +664,7 @@ export interface ToolCallStartEvent {
   input: Record<string, unknown>;
   timestamp: Date;
   callId: string;
+  startTime: Date; // Explicit timing field for API serialization
 }
 
 /**
@@ -918,6 +937,27 @@ export interface MCPErrorEventData {
   timestamp: Date;
   /** Error code if available */
   code?: string;
+  /** Error category for UI display */
+  category: 'connection' | 'protocol' | 'transport' | 'timeout' | 'auth' | 'unknown';
+  /** Whether the error is recoverable through retry */
+  recoverable: boolean;
+  /** Error stack trace if available */
+  stack?: string;
+  /** Recovery information for user guidance */
+  recovery: {
+    /** Whether automatic retry is possible */
+    canRetry: boolean;
+    /** Recommended retry delay in milliseconds */
+    retryDelayMs?: number;
+    /** Current retry attempt number */
+    attempt?: number;
+    /** Maximum retry attempts allowed */
+    maxAttempts?: number;
+    /** Human-readable recovery suggestions */
+    suggestions: string[];
+  };
+  /** Additional error metadata */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -1326,12 +1366,25 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   private hookManager!: HookManager;
   private customToolsServer?: CustomToolsServer;
   private mcpServerManager?: MCPServerManager;
+  private multimodalInputHandler!: MultimodalInputHandler;
   private mcpInstaller?: MCPInstaller;
   private mcpMarketplaceService?: MCPMarketplaceService;
   private mcpConnectionManager?: MCPConnectionManager;
   private mcpToolRegistry?: MCPToolRegistry;
   private browserToolsServer?: BrowserToolsServer;
   private tddExecutor?: TDDExecutor;
+  private driver!: import('./drivers/index.js').AiDriver;
+  private projectContextAnalyzer?: ProjectContextAnalyzer;
+  private cachedProjectContext?: ProjectContext;
+  private codebaseIntelligence?: CodebaseIntelligenceService;
+  private cachedEnrichedContext?: EnrichedContext;
+  private memoryManager?: MemoryManager;
+  private learningExtractor?: LearningExtractor;
+  private cachedTaskHistoryContext?: string;
+  private cachedStageResults?: Map<string, import('@apexcli/core').StageResult>;
+  private smartContextManager?: SmartContextManager;
+  private cachedUnifiedContext?: UnifiedContext;
+  private replayBundleBuilder?: ReplayBundleBuilder;
   private projectPath: string;
   private apiUrl: string;
   private initialized = false;
@@ -1360,6 +1413,25 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }> = new Map();
   private fileChangesByTask: Map<string, { created: string[]; modified: string[] }> = new Map();
 
+  // Execution guards: prevent concurrent execution of the same task
+  private executingTaskIds: Set<string> = new Set();
+
+  // Decomposition guard: prevent duplicate decomposition of the same task
+  private decomposingTaskIds: Set<string> = new Set();
+
+  // Global concurrency semaphore: limits how many tasks can be actively
+  // running an AI query across the entire orchestrator (all nesting levels).
+  // Tasks that exceed this limit wait until a slot opens.
+  private globalActiveTaskCount = 0;
+  private globalConcurrencyWaiters: Array<() => void> = [];
+
+  // Per-task AbortControllers: lets us kill the claude subprocess when a task
+  // is paused, cancelled, or fails — preventing orphaned processes.
+  private taskAbortControllers: Map<string, AbortController> = new Map();
+
+  // Tool call tracking per task: counts mutating tool calls (Write, Edit, Bash)
+  private taskToolCallCounts: Map<string, { total: number; mutating: number }> = new Map();
+
   // Tool execution tracking with full timing information
   private activeToolExecutions: Map<string, ToolExecution> = new Map();
 
@@ -1382,9 +1454,32 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   constructor(private options: OrchestratorOptions) {
     super();
+    if (!options.projectPath || options.projectPath === 'undefined') {
+      throw new Error(
+        'ApexOrchestrator requires a valid projectPath. Received: ' +
+        JSON.stringify(options.projectPath)
+      );
+    }
     this.projectPath = options.projectPath;
     this.apiUrl = options.apiUrl || 'http://localhost:3000';
     this.policyEngine = options.policyEngine;  // Store the optional PolicyEngine
+  }
+
+  /** Get the memory manager for external access (CLI commands) */
+  get memory(): MemoryManager | undefined {
+    return this.memoryManager;
+  }
+
+  /**
+   * Get context visualization for the /context command.
+   * Returns a human-readable string showing token budget allocation
+   * across all context sources, or undefined if no context data is available.
+   */
+  getContextVisualization(): string | undefined {
+    if (!this.smartContextManager || !this.cachedUnifiedContext) {
+      return undefined;
+    }
+    return this.smartContextManager.getContextVisualization(this.cachedUnifiedContext.visualization);
   }
 
   /**
@@ -1427,6 +1522,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
     this.effectiveConfig = getEffectiveConfig(this.config);
 
+    // Initialize the AI platform driver (v0.6.0)
+    await this.initializeDriver();
+
     // Initialize alias resolver with config aliases
     this.aliasResolver = new AliasResolver(this.config.aliases || []);
 
@@ -1441,6 +1539,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Set up MCP event forwarding
     this.setupMCPEventForwarding();
+
+    // Initialize multimodal input handler (v0.6.0)
+    this.multimodalInputHandler = new MultimodalInputHandler();
 
     // Initialize MCP tool registry for tool discovery
     if (this.mcpConnectionManager) {
@@ -1472,6 +1573,19 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize task store
     this.store = new TaskStore(this.projectPath);
     await this.store.initialize();
+
+    // Initialize memory manager (v0.6.0)
+    try {
+      this.memoryManager = new MemoryManager(this.store.getDatabase());
+      this.memoryManager.initialize();
+    } catch (error) {
+      console.warn(`Memory system initialization failed: ${(error as Error).message}`);
+    }
+
+    // Initialize learning extractor (v0.6.0, depends on memory manager)
+    if (this.memoryManager) {
+      this.learningExtractor = new LearningExtractor(this.memoryManager);
+    }
 
     // Initialize MCP installer (requires store to be initialized)
     this.mcpInstaller = new MCPInstaller(this.projectPath, this.store);
@@ -1623,7 +1737,49 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const repairConfig = resolveRepairConfig(this.config.repair);
     this.repairLoop = new RepairLoop(this.createRepairLoopHost(), repairConfig);
 
+    // Initialize project context analyzer (v0.6.0, non-blocking)
+    try {
+      this.projectContextAnalyzer = new ProjectContextAnalyzer(this.projectPath);
+      this.projectContextAnalyzer.analyze().then((ctx) => {
+        this.cachedProjectContext = ctx;
+      }).catch(() => {
+        // Non-fatal: project context is optional enrichment
+      });
+    } catch {
+      // Constructor failure — skip
+    }
+
+    // Initialize codebase intelligence (v0.6.0 - opt-in, non-blocking)
+    // Indexing can take a long time on large codebases — run in background
+    // so it doesn't block daemon startup or CLI responsiveness
+    if ((this.effectiveConfig as any).codebaseIntelligence?.enabled !== false) {
+      const ciService = new CodebaseIntelligenceService({
+        enableCaching: true,
+        enableIncrementalIndexing: true,
+      });
+      ciService.initialize(this.projectPath).then(() => {
+        this.codebaseIntelligence = ciService;
+      }).catch(() => {
+        // Non-fatal: codebase intelligence is optional
+      });
+    }
+
+    // Initialize smart context manager (v0.6.0)
+    this.smartContextManager = new SmartContextManager({
+      maxTokensPerTask: this.effectiveConfig.limits.maxTokensPerTask || 100000,
+    });
+
     this.initialized = true;
+  }
+
+  /**
+   * Initialize the AI platform driver based on configuration
+   */
+  private async initializeDriver(): Promise<void> {
+    const { DriverFactory } = await import('./drivers/index.js');
+    const primaryProvider = this.config.providers?.primary || 'anthropic';
+    this.driver = DriverFactory.getDriver(primaryProvider);
+    await this.driver.initialize();
   }
 
   // --------------------------------------------------------------------------
@@ -1675,39 +1831,36 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     return {
       async queryAgent(prompt: string, model: string, options?: RepairQueryOptions): Promise<RepairQueryResult> {
         let text = '';
-        let tokensUsed = 0;
+        let inputTokens = 0;
+        let outputTokens = 0;
 
-        for await (const message of query({
+        // Resolve the model alias through the driver
+        const resolvedModel = orchestrator.driver.resolveModel(model);
+
+        // Use the platform-agnostic driver instead of the Claude SDK directly
+        for await (const event of orchestrator.driver.stream({
           prompt,
-          options: {
-            model,
-            permissionMode: 'acceptEdits',
-            maxTurns: options?.maxTurns || 20,
-            cwd: options?.cwd || orchestrator.projectPath,
-            tools: options?.tools || ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
-          },
+          model: resolvedModel,
+          maxTurns: options?.maxTurns || 20,
+          cwd: options?.cwd || orchestrator.projectPath,
         })) {
-          // Collect text from response
-          const msg = message as Record<string, unknown>;
-          if (msg.type === 'result' && typeof msg.result === 'string') {
-            text += msg.result;
-          } else if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
-            const assistantMsg = msg.message as { content?: Array<{ type: string; text?: string }> };
-            if (Array.isArray(assistantMsg.content)) {
-              for (const block of assistantMsg.content) {
-                if (block.type === 'text' && block.text) {
-                  text += block.text;
-                }
-              }
-            }
-            // Track tokens from usage info
-            const usage = (msg.message as Record<string, unknown>).usage as { input_tokens?: number; output_tokens?: number } | undefined;
-            if (usage) {
-              tokensUsed += (usage.input_tokens || 0) + (usage.output_tokens || 0);
-            }
+          switch (event.type) {
+            case 'text':
+              text += event.content;
+              break;
+            case 'usage':
+              inputTokens += event.inputTokens;
+              outputTokens += event.outputTokens;
+              break;
+            case 'error':
+              // Log error but don't throw - the repair loop handles failures
+              text += `\n[Driver Error: ${event.message}]`;
+              break;
+            // status and complete events are informational, no action needed
           }
         }
 
+        const tokensUsed = inputTokens + outputTokens;
         // Estimate cost based on tokens (rough approximation)
         const costUsd = tokensUsed * 0.000015; // ~$15/MTok average
 
@@ -1963,6 +2116,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     parentTaskId?: string;
     subtaskStrategy?: SubtaskStrategy;
     dryRun?: boolean;
+    multimodalInputs?: MultimodalInput[];
   }): Promise<Task> {
     await this.ensureInitialized();
 
@@ -1972,6 +2126,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     const priority = options.priority || 'normal';
     const effort = options.effort || 'medium';
     const maxRetries = options.maxRetries ?? this.effectiveConfig.limits.maxRetries;
+
+    // Process multimodal inputs if provided
+    let multimodalContext: MultimodalContext | undefined;
+    if (options.multimodalInputs && options.multimodalInputs.length > 0) {
+      try {
+        multimodalContext = await this.multimodalInputHandler.processInputs(options.multimodalInputs);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Multimodal input processing failed: ${errorMessage}`);
+      }
+    }
 
     // Subtasks share the parent's branch, parent tasks get a new branch
     let branchName: string | undefined;
@@ -2018,6 +2183,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       },
       logs: [],
       artifacts: [],
+      multimodalContext,
     };
 
     await this.store.createTask(task);
@@ -2108,12 +2274,47 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   async executeTask(taskId: string, options?: { autoRetry?: boolean; cliFlags?: { diffPreview?: boolean } }): Promise<void> {
     await this.ensureInitialized();
 
+    // Concurrent execution guard: prevent the same task from being executed twice
+    if (this.executingTaskIds.has(taskId)) {
+      await this.store.addLog(taskId, {
+        level: 'warn',
+        message: `Skipping concurrent execution — task ${taskId} is already being executed`,
+      });
+      return;
+    }
+    this.executingTaskIds.add(taskId);
+
+    // Initialize tool call tracking for this task
+    this.taskToolCallCounts.set(taskId, { total: 0, mutating: 0 });
+
+    try {
+      await this._executeTaskInner(taskId, options);
+    } finally {
+      this.executingTaskIds.delete(taskId);
+      // Clean up abort controller if still present (normal completion)
+      this.taskAbortControllers.delete(taskId);
+    }
+  }
+
+  /**
+   * Inner task execution logic, wrapped by executeTask's guard
+   */
+  private async _executeTaskInner(taskId: string, options?: { autoRetry?: boolean; cliFlags?: { diffPreview?: boolean } }): Promise<void> {
     // Store CLI flags for current task
     this.currentTaskCliFlags = options?.cliFlags;
 
     const task = await this.store.getTask(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Mark task as in-progress EARLY so that capacity checks (getAvailableCapacity)
+    // see accurate DB state. Without this, there's a TOCTOU race: multiple parents
+    // check capacity, all see slots available, and all launch batches that exceed
+    // the limit — causing the resource exhaustion that kills the machine.
+    // If the task later fails (e.g. policy check), it will be set to 'failed'.
+    if (task.status === 'pending') {
+      await this.updateTaskStatus(taskId, 'in-progress');
     }
 
     // Handle dry-run mode - skip actual execution but simulate the process
@@ -2225,12 +2426,67 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw new Error(`Task blocked by policy violations: ${policyCheckResult.failedCount} error(s) found`);
     }
 
-    // Update status
-    await this.updateTaskStatus(taskId, 'in-progress');
+    // Emit task:started (status already set to in-progress at top of _executeTaskInner)
     this.emit('task:started', task);
 
     // Set current task for event tracking
     this.currentTaskId = taskId;
+
+    // Build enriched context from codebase intelligence (v0.6.0)
+    if (this.codebaseIntelligence) {
+      try {
+        this.cachedEnrichedContext = await enrichTaskContext(
+          task.description,
+          this.codebaseIntelligence,
+          { maxTokens: Math.floor((this.effectiveConfig.limits.maxTokensPerTask || 100000) * 0.10) }
+        );
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Codebase intelligence: found ${this.cachedEnrichedContext.relevantFiles.length} relevant files, ${this.cachedEnrichedContext.relevantSymbols.length} symbols`,
+        });
+      } catch (error) {
+        await this.store.addLog(taskId, {
+          level: 'warn',
+          message: `Codebase intelligence enrichment failed: ${(error as Error).message}`,
+        });
+      }
+    }
+
+    // Build task history context from previous learnings (v0.6.0)
+    if (this.learningExtractor) {
+      try {
+        this.cachedTaskHistoryContext = this.learningExtractor.buildTaskHistoryContext(task.description);
+      } catch {
+        // Non-fatal - learning context is optional
+      }
+    }
+
+    // Build unified context using SmartContextManager (v0.6.0)
+    if (this.smartContextManager) {
+      try {
+        this.cachedUnifiedContext = this.smartContextManager.buildContext({
+          taskDescription: task.description,
+          projectContext: this.cachedProjectContext,
+          enrichedContext: this.cachedEnrichedContext ? formatEnrichedContext(this.cachedEnrichedContext) : undefined,
+          memoryManager: this.memoryManager,
+          learningExtractor: this.learningExtractor,
+        });
+      } catch (error) {
+        // Non-fatal
+        console.warn(`Smart context build failed: ${(error as Error).message}`);
+      }
+    }
+
+    // Initialize replay bundle builder if configured (v0.6.0)
+    if ((this.effectiveConfig as any).replay?.enabled) {
+      this.replayBundleBuilder = new ReplayBundleBuilder({
+        taskId,
+        taskDescription: task.description,
+        workflow: task.workflow,
+        projectPath: this.projectPath,
+        branchName: task.branchName || undefined,
+      });
+    }
 
     // Discover MCP tools at task start and merge with built-in tools
     let discoveredMcpTools: string[] = [];
@@ -2321,9 +2577,79 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         const shouldComplete = await this.runWorkflow(task, workflow);
 
         if (shouldComplete) {
+          // Ghost completion detection: if a task completed with no mutating tool calls
+          // and minimal tokens, it likely didn't do any actual work
+          const toolCounts = this.taskToolCallCounts.get(taskId) || { total: 0, mutating: 0 };
+          const currentTask = await this.store.getTask(taskId);
+          const totalTokens = currentTask?.usage?.totalTokens || 0;
+          const isGhostCompletion = toolCounts.mutating === 0 && totalTokens < 5000;
+
+          if (isGhostCompletion && task.parentTaskId) {
+            // Subtask completed without doing any work — flag as no-op
+            await this.store.addLog(taskId, {
+              level: 'warn',
+              message: `Ghost completion detected: task completed with ${toolCounts.total} tool calls (${toolCounts.mutating} mutating) and ${totalTokens} tokens. ` +
+                `This task likely found no work to do. Marking as completed but flagging for review.`,
+              metadata: {
+                ghostCompletion: true,
+                ghostCompletionReason: 'no_mutating_tool_calls',
+                toolCallCounts: toolCounts,
+              },
+            });
+          }
+
+          // Clean up tool call tracking
+          this.taskToolCallCounts.delete(taskId);
+
           await this.updateTaskStatus(taskId, 'completed');
           const completedTask = await this.store.getTask(taskId);
           this.emit('task:completed', completedTask!);
+
+          // Finalize replay bundle if recording
+          if (this.replayBundleBuilder) {
+            try {
+              const replayPath = await this.replayBundleBuilder.finalize({
+                totalTokens: completedTask?.usage?.totalTokens || 0,
+                estimatedCost: completedTask?.usage?.estimatedCost || 0,
+                agentModels: {},
+              });
+              await this.store.addLog(taskId, {
+                level: 'info',
+                message: `Replay bundle saved: ${replayPath}`,
+              });
+            } catch (error) {
+              await this.store.addLog(taskId, {
+                level: 'warn',
+                message: `Failed to save replay bundle: ${(error as Error).message}`,
+              });
+            }
+            this.replayBundleBuilder = undefined;
+          }
+
+          // Extract learnings from completed task (v0.6.0)
+          if (this.learningExtractor && completedTask) {
+            try {
+              const stageResultsForLearning = this.cachedStageResults || new Map();
+              const learnings = this.learningExtractor.extractFromTask(
+                taskId,
+                completedTask.description,
+                stageResultsForLearning
+              );
+              if (learnings.length > 0) {
+                await this.store.addLog(taskId, {
+                  level: 'info',
+                  message: `Extracted ${learnings.length} learnings from task completion`,
+                });
+              }
+            } catch (error) {
+              await this.store.addLog(taskId, {
+                level: 'warn',
+                message: `Learning extraction failed: ${(error as Error).message}`,
+              });
+            }
+            // Clear cached stage results
+            this.cachedStageResults = undefined;
+          }
 
           // Clear current task tracking if this was the current task
           if (this.currentTaskId === taskId) {
@@ -2567,6 +2893,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   ): Promise<void> {
     await this.ensureInitialized();
 
+    // Abort the claude subprocess for this task to prevent orphaned processes
+    this.abortTaskProcess(taskId);
+
     const now = new Date();
     const resumeAfter = resumeAfterSeconds
       ? new Date(now.getTime() + resumeAfterSeconds * 1000)
@@ -2687,7 +3016,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
-   * Resume a paused task
+   * Resume a paused task with subtask readiness check and exponential backoff
    */
   async resumePausedTask(taskId: string): Promise<boolean> {
     await this.ensureInitialized();
@@ -2699,6 +3028,42 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     if (task.status !== 'paused') {
       return false; // Not paused
+    }
+
+    // Subtask readiness check: if this task was paused because a subtask was paused,
+    // verify the subtask is actually ready before resuming the parent
+    if (task.pauseReason?.startsWith('subtask_paused:')) {
+      const pausedSubtaskId = task.pauseReason.replace('subtask_paused:', '');
+      const pausedSubtask = await this.store.getTask(pausedSubtaskId);
+
+      if (pausedSubtask && pausedSubtask.status === 'paused') {
+        // The subtask is still paused — don't resume the parent yet.
+        // Apply exponential backoff: double the delay each time (capped at 30 minutes)
+        const baseDelay = 120_000; // 2 minutes
+        const backoffDelay = Math.min(
+          baseDelay * Math.pow(2, task.resumeAttempts),
+          1_800_000 // 30 minutes max
+        );
+
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Subtask ${pausedSubtaskId} is still paused (${pausedSubtask.pauseReason}). ` +
+            `Deferring resume with exponential backoff: ${Math.round(backoffDelay / 1000)}s ` +
+            `(attempt ${task.resumeAttempts + 1})`,
+        });
+
+        // Schedule the next auto-resume with backoff delay
+        this.scheduleAutoResume(taskId, backoffDelay);
+        return false;
+      }
+
+      // If the subtask is no longer paused (completed, in-progress, etc.), proceed with resume
+      if (pausedSubtask && (pausedSubtask.status === 'completed' || pausedSubtask.status === 'in-progress')) {
+        await this.store.addLog(taskId, {
+          level: 'info',
+          message: `Subtask ${pausedSubtaskId} is now ${pausedSubtask.status}. Proceeding with resume.`,
+        });
+      }
     }
 
     // Pre-check max resume attempts before clearing pause state
@@ -3467,17 +3832,52 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
       // Handle decomposition request from planner
       if (decompositionRequest && decompositionRequest.shouldDecompose) {
+        // Re-check: task might already have subtasks from a concurrent decomposition
+        const freshTask = await this.store.getTask(task.id);
+        if (freshTask?.subtaskIds && freshTask.subtaskIds.length > 0) {
+          await this.store.addLog(task.id, {
+            level: 'warn',
+            message: `Decomposition request ignored — task already has ${freshTask.subtaskIds.length} subtasks`,
+          });
+          // Skip to subtask execution with existing subtasks
+          const allSubtasksComplete = await this.executeSubtasks(task.id);
+          if (allSubtasksComplete) {
+            await this.store.addLog(task.id, {
+              level: 'info',
+              message: `All subtasks completed. Workflow finished via decomposition.`,
+            });
+            return true;
+          } else {
+            await this.store.addLog(task.id, {
+              level: 'info',
+              message: `Subtask execution paused or incomplete. Task will remain in-progress.`,
+            });
+            return false;
+          }
+        }
+
         await this.store.addLog(task.id, {
           level: 'info',
           message: `Task decomposition requested: creating ${decompositionRequest.subtasks.length} subtasks with ${decompositionRequest.strategy} strategy`,
         });
 
-        // Create subtasks
+        // Create subtasks (guarded against duplicates)
         const subtasks = await this.decomposeTask(
           task.id,
           decompositionRequest.subtasks,
           decompositionRequest.strategy
         );
+
+        if (subtasks.length === 0) {
+          // Decomposition was skipped (duplicate), check for existing subtasks
+          const taskWithSubtasks = await this.store.getTask(task.id);
+          if (taskWithSubtasks?.subtaskIds && taskWithSubtasks.subtaskIds.length > 0) {
+            const allSubtasksComplete = await this.executeSubtasks(task.id);
+            return allSubtasksComplete;
+          }
+          // No subtasks at all — continue with workflow stages
+          continue;
+        }
 
         await this.store.addLog(task.id, {
           level: 'info',
@@ -3518,6 +3918,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       message: `Workflow "${workflow.name}" completed successfully. Stages completed: ${Array.from(completedStages).join(', ')}`,
     });
 
+    // Cache stage results for post-completion learning extraction (v0.6.0)
+    this.cachedStageResults = stageResults;
+
     return true; // Workflow completed, task can be marked as completed
   }
 
@@ -3538,27 +3941,92 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Build focused prompt for this stage
     // Use special planner prompt if this is a planning stage
-    let stagePrompt = isPlanner
-      ? buildPlannerStagePrompt({
+    // Use unified context from SmartContextManager when available, with individual fallbacks
+    const stagePromptResult = isPlanner
+      ? buildPlannerStagePromptMultimodal({
           task,
           stage,
           agent,
           workflow,
           config: this.effectiveConfig,
           previousStageResults: previousResults,
+          projectContext: this.cachedProjectContext,
+          enrichedContext: this.cachedUnifiedContext?.enrichedContext || (this.cachedEnrichedContext ? formatEnrichedContext(this.cachedEnrichedContext) : undefined),
+          taskHistoryContext: this.cachedUnifiedContext?.taskHistoryContext || this.cachedTaskHistoryContext,
         })
-      : buildStagePrompt({
+      : buildStagePromptMultimodal({
           task,
           stage,
           agent,
           workflow,
           config: this.effectiveConfig,
           previousStageResults: previousResults,
+          projectContext: this.cachedProjectContext,
+          enrichedContext: this.cachedUnifiedContext?.enrichedContext || (this.cachedEnrichedContext ? formatEnrichedContext(this.cachedEnrichedContext) : undefined),
+          memoryContext: this.cachedUnifiedContext?.memoryContext || this.memoryManager?.buildMemoryContext(task.description) || undefined,
+          livingMemory: this.cachedUnifiedContext?.livingMemory || this.memoryManager?.getLivingMemoryContent() || undefined,
+          taskHistoryContext: this.cachedUnifiedContext?.taskHistoryContext || this.cachedTaskHistoryContext,
         });
 
     // Inject resume context if available (only for the first stage being resumed)
+    let stagePrompt: string | AsyncIterable<SDKUserMessage>;
     if (resumeContext) {
-      stagePrompt = `${resumeContext}\n\n${stagePrompt}`;
+      if (stagePromptResult.hasMultimodalContent) {
+        // For multimodal content, prepend resume context to the text block
+        const resumeTextBlock: TextBlockParam = {
+          type: 'text',
+          text: resumeContext,
+        };
+
+        // Update the first text block to include resume context
+        const updatedContentBlocks = [...stagePromptResult.contentBlocks];
+        const firstTextBlockIndex = updatedContentBlocks.findIndex(block => block.type === 'text');
+        if (firstTextBlockIndex >= 0) {
+          const firstTextBlock = updatedContentBlocks[firstTextBlockIndex] as TextBlockParam;
+          updatedContentBlocks[firstTextBlockIndex] = {
+            type: 'text',
+            text: `${resumeContext}\n\n${firstTextBlock.text}`,
+          };
+        } else {
+          // If no text block found, insert at the beginning
+          updatedContentBlocks.unshift(resumeTextBlock);
+        }
+
+        // Create the multimodal prompt
+        stagePrompt = (async function* () {
+          yield {
+            type: 'user' as const,
+            message: {
+              role: 'user' as const,
+              content: updatedContentBlocks,
+            },
+            parent_tool_use_id: null as string | null,
+            session_id: `stage-${stage.name}-${task.id}`,
+          };
+        })();
+      } else {
+        // For text-only content, use simple concatenation
+        stagePrompt = `${resumeContext}\n\n${stagePromptResult.textPrompt}`;
+      }
+    } else {
+      // No resume context
+      if (stagePromptResult.hasMultimodalContent) {
+        // Create the multimodal prompt
+        stagePrompt = (async function* () {
+          yield {
+            type: 'user' as const,
+            message: {
+              role: 'user' as const,
+              content: stagePromptResult.contentBlocks,
+            },
+            parent_tool_use_id: null as string | null,
+            session_id: `stage-${stage.name}-${task.id}`,
+          };
+        })();
+      } else {
+        // Use simple text prompt
+        stagePrompt = stagePromptResult.textPrompt;
+      }
     }
 
     // Create hooks context for this stage
@@ -3605,10 +4073,8 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Collect all messages to extract summary
     const messages: string[] = [];
 
-    // Convert agent model to SDK model format
-    const sdkModel = agent.model === 'opus' ? 'claude-opus-4-5-20251101' :
-                     agent.model === 'haiku' ? 'claude-3-5-haiku-20241022' :
-                     'claude-sonnet-4-20250514';
+    // Convert agent model to SDK model format (v0.6.0)
+    const sdkModel = this.driver.resolveModel(agent.model);
 
     // Check session limits before starting agent query
     const sessionLimitStatus = await this.detectSessionLimit(task.id);
@@ -3689,6 +4155,12 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
     // Execute stage via Claude Agent SDK
     // Wrap in try-catch to detect limit errors from collected messages
+    // Acquire a global concurrency slot ONLY for actual AI execution.
+    // This is intentionally placed here (not in executeTask) so that parent tasks
+    // doing subtask orchestration don't hold slots — only tasks running driver.stream()
+    // consume concurrency, preventing deadlocks in nested task trees.
+    await this.acquireGlobalSlot();
+    try { // Global slot try-finally: ensures releaseGlobalSlot on ALL exit paths
     try {
     // Log MCP tool availability for observability (debug level)
     const mcpServers = this.buildQueryMcpServers();
@@ -3707,293 +4179,170 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       }
     }
 
-    for await (const message of query({
-      prompt: stagePrompt,
-      options: {
-        model: sdkModel,
-        permissionMode: 'acceptEdits',
-        maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50), // Limit per-stage turns
-        settingSources: ['project'],
-        mcpServers: mcpServers,
-        tools: this.currentTaskTools, // Combined built-in and MCP tools
-        cwd: workingDirectory,
-        env: {
-          ...process.env,
-          APEX_API: this.apiUrl,
-          APEX_TASK_ID: task.id,
-          APEX_PROJECT: this.projectPath,
-          APEX_BRANCH: task.branchName || '',
-          APEX_STAGE: stage.name,
-          APEX_AGENT: agent.name,
-          // Container execution context environment variables
-          // Only set if containerId exists and is not empty
-          ...(containerId && containerId.trim() !== '' && { APEX_CONTAINER_ID: containerId }),
-          // Only set if workspaceInfo exists and has non-empty workspacePath
-          ...(workspaceInfo && workspaceInfo.workspacePath && workspaceInfo.workspacePath.trim() !== '' && { APEX_WORKSPACE_PATH: workspaceInfo.workspacePath }),
-        },
-        hooks,
-      },
+    // Create a per-task AbortController so we can kill the claude subprocess
+    // when the task is paused, cancelled, or fails
+    const taskAbortController = new AbortController();
+    this.taskAbortControllers.set(task.id, taskAbortController);
+
+    for await (const message of this.driver.stream({
+      prompt: typeof stagePrompt === 'string' ? stagePrompt : stagePromptResult.textPrompt,
+      systemPrompt: agent.prompt,
+      model: sdkModel,
+      maxTurns: Math.min(this.effectiveConfig.limits.maxTurns, 50),
+      cwd: workingDirectory,
+      mcpServers: mcpServers,
+      abortController: taskAbortController,
     })) {
-      // Emit message for streaming
-      this.emit('agent:message', task.id, message);
-
       // Collect text content for summary extraction and log AI responses
-      if (message && typeof message === 'object') {
-        // Extract text content and thinking from SDK message format
-        // SDK messages have type: 'assistant' with nested message.content array
-        // or type: 'result' with result string
-        let textContent = '';
-        let thinkingContent = '';
+      let textContent = '';
+      let thinkingContent = '';
 
-        const msg = message as Record<string, unknown>;
+      switch (message.type) {
+        case 'text':
+          textContent = message.content;
+          this.emit('agent:message', task.id, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: message.content }] } });
+          break;
+        case 'thinking':
+          thinkingContent = message.content;
+          this.emit('agent:message', task.id, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'thinking', thinking: message.content }] } });
+          break;
+        case 'tool_call': {
+          const callId = message.id;
+          const toolName = message.name;
+          const input = message.input || {};
+          const timestamp = new Date();
 
-        if (msg.type === 'assistant' && msg.message && typeof msg.message === 'object') {
-          // Assistant messages have content as array of blocks
-          const apiMessage = msg.message as {
-            content?: Array<{
-              type: string;
-              text?: string;
-              thinking?: string;
-              // Tool call fields
-              id?: string;
-              name?: string;
-              input?: Record<string, unknown>;
-              tool_use_id?: string;
-              content?: unknown;
-              is_error?: boolean;
-            }>;
-            thinking?: string;
+          // Create a new ToolExecution record
+          const toolExecution: ToolExecution = {
+            callId,
+            toolName,
+            input,
+            taskId: task.id,
+            agentName: stage.agent,
+            stageName: stage.name,
+            startTime: timestamp,
+            status: 'running',
           };
 
-          if (Array.isArray(apiMessage.content)) {
-            for (const block of apiMessage.content) {
-              if (block.type === 'text' && block.text) {
-                textContent += block.text + '\n';
-              } else if (block.type === 'thinking' && 'thinking' in block && typeof block.thinking === 'string') {
-                // Extract thinking content from content blocks
-                thinkingContent += block.thinking;
-              } else if (block.type === 'tool_use' && block.name && block.id) {
-                // Tool call started
-                const callId = block.id;
-                const toolName = block.name;
-                const input = block.input || {};
-                const timestamp = new Date();
+          // Store the active tool execution
+          this.activeToolExecutions.set(callId, toolExecution);
 
-                // Create a new ToolExecution record
-                const toolExecution: ToolExecution = {
-                  callId,
-                  toolName,
-                  input,
-                  taskId: task.id,
-                  agentName: stage.agent,
-                  stageName: stage.name,
-                  startTime: timestamp,
-                  status: 'running',
-                };
+          // Track tool call counts for ghost completion detection
+          const counts = this.taskToolCallCounts.get(task.id) || { total: 0, mutating: 0 };
+          counts.total++;
+          const mutatingTools = ['Write', 'Edit', 'Bash', 'NotebookEdit'];
+          if (mutatingTools.includes(toolName)) {
+            counts.mutating++;
+          }
+          this.taskToolCallCounts.set(task.id, counts);
 
-                // Store the active tool execution
-                this.activeToolExecutions.set(callId, toolExecution);
-
-                this.emit('tool:start', {
-                  taskId: task.id,
-                  toolName,
-                  input,
-                  timestamp,
-                  callId,
-                });
-              } else if (block.type === 'tool_result' && block.tool_use_id) {
-                // Tool call completed
-                const callId = block.tool_use_id;
-                const endTime = new Date();
-                const toolExecution = this.activeToolExecutions.get(callId);
-
-                if (toolExecution) {
-                  const duration = endTime.getTime() - toolExecution.startTime.getTime();
-                  let success = !block.is_error;
-                  let outputForEvents: unknown = block.content;
-                  let toolError = block.is_error ? String(block.content) : undefined;
-
-                  // Scan tool output for secrets if scanner is configured
-                  if (this.secretScanner && success && block.content) {
-                    try {
-                      // Convert output to string for scanning
-                      const outputContent = this.normalizeSecretScanContent(block.content);
-
-                      // Scan for secrets in the tool output
-                      const detections = this.secretScanner.scan(
-                        outputContent,
-                        `tool:${toolExecution.toolName}:${callId}`
-                      );
-                      const findings = this.mapSecretDetectionsToFindings(detections);
-
-                      // If secrets detected, emit secret:detected event
-                      if (findings.length > 0) {
-                        const behavior = this.resolveSecretDetectionBehavior();
-                        const processed = this.secretOutputProcessor.processOutput(
-                          outputForEvents as string | Record<string, unknown>,
-                          findings,
-                          behavior
-                        );
-
-                        outputForEvents = processed.output;
-                        if (processed.shouldBlock) {
-                          success = false;
-                          toolError = processed.blockError || 'Tool output blocked due to secret detection';
-                        }
-
-                        const severityCounts = {
-                          critical: findings.filter(f => f.severity === 'critical').length,
-                          high: findings.filter(f => f.severity === 'high').length,
-                          medium: findings.filter(f => f.severity === 'medium').length,
-                          low: findings.filter(f => f.severity === 'low').length,
-                        };
-
-                        this.emit('secret:detected', {
-                          taskId: task.id,
-                          toolName: toolExecution.toolName,
-                          callId,
-                          findings,
-                          count: findings.length,
-                          severityCounts,
-                          behavior,
-                          timestamp: new Date(),
-                        });
-
-                        // Log the detection
-                        await this.store.addLog(task.id, {
-                          level: processed.logLevel,
-                          message: `Secrets detected in tool output: ${toolExecution.toolName} (${findings.length} findings)`,
-                          metadata: {
-                            toolName: toolExecution.toolName,
-                            callId,
-                            secretCount: findings.length,
-                            severityCounts,
-                            behavior,
-                          },
-                        });
-                      }
-                    } catch (scanError) {
-                      // Log scanner errors but don't fail the tool execution
-                      await this.store.addLog(task.id, {
-                        level: 'error',
-                        message: `Secret scanner error for tool ${toolExecution.toolName}: ${String(scanError)}`,
-                        metadata: {
-                          toolName: toolExecution.toolName,
-                          callId,
-                          scanError: String(scanError),
-                        },
-                      });
-                    }
-                  }
-
-                  // Update the tool execution record
-                  const completedExecution: ToolExecution = {
-                    ...toolExecution,
-                    endTime,
-                    duration,
-                    status: success ? 'completed' : 'failed',
-                    result: {
-                      success,
-                      output: outputForEvents,
-                      error: success ? undefined : toolError,
-                    },
-                  };
-
-                  this.emit('tool:complete', {
-                    taskId: task.id,
-                    toolName: toolExecution.toolName,
-                    callId,
-                    result: {
-                      success,
-                      output: outputForEvents,
-                      error: success ? undefined : toolError,
-                    },
-                    timing: {
-                      startTime: toolExecution.startTime,
-                      endTime,
-                      duration,
-                    },
-                    timestamp: endTime,
-                  });
-
-                  // Record tool action for file-modifying tools
-                  try {
-                    await this.recordFileModifyingToolAction(task.id, completedExecution);
-                  } catch (error) {
-                    await this.store.addLog(task.id, {
-                      level: 'error',
-                      message: `Failed to record tool action for ${toolExecution.toolName}: ${String(error)}`,
-                      metadata: {
-                        toolName: toolExecution.toolName,
-                        callId,
-                        error: String(error),
-                      },
-                    });
-                  }
-
-                  // Clean up active execution tracking
-                  this.activeToolExecutions.delete(callId);
-                }
-              }
-            }
+          // Record to replay bundle
+          if (this.replayBundleBuilder) {
+            this.replayBundleBuilder.recordToolCallStart(callId, toolName, input);
           }
 
-          // Fallback: Extract thinking content if available as direct property (legacy support)
-          if (typeof apiMessage.thinking === 'string' && !thinkingContent) {
-            thinkingContent = apiMessage.thinking;
+          this.emit('tool:start', {
+            taskId: task.id,
+            toolName,
+            input,
+            timestamp,
+            callId,
+            startTime: timestamp, // Add explicit startTime field for timing
+          });
+          
+          this.emit('agent:message', task.id, { 
+            type: 'assistant', 
+            message: { 
+              role: 'assistant', 
+              content: [{ type: 'tool_use', id: callId, name: toolName, input }] 
+            } 
+          });
+          break;
+        }
+        case 'tool_result': {
+          const callId = message.id;
+          const result = message.content;
+          const isError = message.isError;
+          const timestamp = new Date();
+
+          const toolExecution = this.activeToolExecutions.get(callId);
+          if (toolExecution) {
+            toolExecution.status = isError ? 'failed' : 'completed';
+            toolExecution.endTime = timestamp;
+            toolExecution.duration = timestamp.getTime() - toolExecution.startTime.getTime();
+            toolExecution.result = {
+              success: !isError,
+              output: result,
+              error: isError ? String(result) : undefined,
+            };
+
+            this.emit('tool:complete', {
+              taskId: task.id,
+              toolName: toolExecution.toolName,
+              callId,
+              result: {
+                success: !isError,
+                output: result,
+                error: isError ? String(result) : undefined,
+              },
+              timing: {
+                startTime: toolExecution.startTime,
+                endTime: timestamp,
+                duration: toolExecution.duration,
+              },
+              timestamp,
+            });
           }
-        } else if (msg.type === 'result' && typeof msg.result === 'string') {
-          textContent = msg.result;
-        } else if ('content' in msg && typeof msg.content === 'string') {
-          // Fallback for simple content string
-          textContent = msg.content;
-        }
 
-        if (textContent.trim().length > 0) {
-          messages.push(textContent);
+          // Record tool result to replay bundle
+          if (this.replayBundleBuilder) {
+            this.replayBundleBuilder.recordToolCallComplete(callId, result, isError);
+          }
 
-          // Log AI text responses (truncate long messages)
-          const truncated = textContent.length > 500
-            ? textContent.substring(0, 500) + '...'
-            : textContent;
-          await this.store.addLog(task.id, {
-            level: 'info',
-            message: truncated,
-            stage: stage.name,
-            agent: agent.name,
+          this.emit('agent:message', task.id, {
+            type: 'assistant',
+            message: {
+              role: 'assistant', 
+              content: [{ type: 'tool_result', tool_use_id: callId, content: result, is_error: isError }] 
+            } 
           });
+          break;
         }
+        case 'usage':
+          this.emit('agent:message', task.id, { type: 'usage', input_tokens: message.inputTokens, output_tokens: message.outputTokens });
 
-        // Emit thinking content if available
-        if (thinkingContent.trim().length > 0) {
-          this.emit('agent:thinking', task.id, agent.name, thinkingContent);
+          stageUsage.inputTokens += message.inputTokens;
+          stageUsage.outputTokens += message.outputTokens;
+          stageUsage.totalTokens = stageUsage.inputTokens + stageUsage.outputTokens;
+          stageUsage.estimatedCost = calculateCost(stageUsage.inputTokens, stageUsage.outputTokens);
 
-          // Log thinking content for debugging (verbose only)
-          await this.store.addLog(task.id, {
-            level: 'debug',
-            message: `[THINKING] ${thinkingContent.length > 200 ? thinkingContent.substring(0, 200) + '...' : thinkingContent}`,
-            stage: stage.name,
-            agent: agent.name,
+          // Update task-level usage
+          await this.updateUsage(task.id, {
+            inputTokens: message.inputTokens,
+            outputTokens: message.outputTokens,
           });
-        }
+          break;
+        case 'error':
+          // SDK errors (error_during_execution, error_max_turns, etc.)
+          // Push into messages so limit detection and output parsing can see them
+          messages.push(message.message);
+          this.emit('agent:message', task.id, {
+            type: 'assistant',
+            message: { role: 'assistant', content: [{ type: 'text', text: `[ERROR] ${message.message}` }] }
+          });
+          break;
+        case 'complete':
+          // SDK completed successfully — the summary is informational
+          break;
       }
 
-      // Track usage
-      if (message && typeof message === 'object' && 'usage' in message) {
-        const usage = message.usage as { input_tokens?: number; output_tokens?: number };
-        const inputDelta = usage.input_tokens || 0;
-        const outputDelta = usage.output_tokens || 0;
+      if (textContent.trim().length > 0) {
+        messages.push(textContent);
 
-        stageUsage.inputTokens += inputDelta;
-        stageUsage.outputTokens += outputDelta;
-        stageUsage.totalTokens = stageUsage.inputTokens + stageUsage.outputTokens;
-        stageUsage.estimatedCost = calculateCost(stageUsage.inputTokens, stageUsage.outputTokens);
-
-        // Update task-level usage
-        await this.updateUsage(task.id, {
-          inputTokens: inputDelta,
-          outputTokens: outputDelta,
-        });
+        // Record message to replay bundle
+        if (this.replayBundleBuilder) {
+          this.replayBundleBuilder.recordMessage('assistant', textContent);
+        }
       }
 
       // Check budget
@@ -4027,8 +4376,54 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       throw error;
     }
 
+    // Check for usage limit messages in successful stream output.
+    // The SDK may complete normally even when Claude hits a limit — the limit
+    // message appears as regular text content, not as an exception.
+    const fullOutputForLimitCheck = messages.join('\n').toLowerCase();
+    const hitUsageLimit = fullOutputForLimitCheck.includes('limit reached') ||
+                          fullOutputForLimitCheck.includes('hit your limit') ||
+                          fullOutputForLimitCheck.includes("you've hit your limit") ||
+                          fullOutputForLimitCheck.includes('extra-usage') ||
+                          fullOutputForLimitCheck.includes('usage limit') ||
+                          (fullOutputForLimitCheck.includes('resets') && (fullOutputForLimitCheck.includes('limit') || fullOutputForLimitCheck.includes('upgrade')));
+
+    if (hitUsageLimit) {
+      const recentOutput = messages.slice(-3).join(' ').substring(0, 300);
+      throw new Error(`Usage limit reached during stage "${stage.name}". Recent output: ${recentOutput}`);
+    }
+
     // Extract stage summary and outputs from the final messages
     const { summary, outputs, artifacts } = this.parseStageOutput(messages, stage);
+
+    // Token tracking fix: if the stage produced messages but reported 0 tokens,
+    // estimate minimum token usage based on message content length.
+    // This catches cases where the SDK doesn't emit usage events (fast exits, resume sessions).
+    if (stageUsage.totalTokens === 0 && messages.length > 0) {
+      const totalChars = messages.reduce((sum, m) => sum + m.length, 0);
+      // Rough estimate: ~4 chars per token, plus input prompt overhead
+      const estimatedOutputTokens = Math.ceil(totalChars / 4);
+      const estimatedInputTokens = Math.ceil(estimatedOutputTokens * 2); // Input is typically 2x output
+
+      if (estimatedOutputTokens > 0) {
+        stageUsage.inputTokens = estimatedInputTokens;
+        stageUsage.outputTokens = estimatedOutputTokens;
+        stageUsage.totalTokens = estimatedInputTokens + estimatedOutputTokens;
+        stageUsage.estimatedCost = calculateCost(estimatedInputTokens, estimatedOutputTokens);
+
+        // Persist the estimated usage to the task
+        await this.updateUsage(task.id, {
+          inputTokens: estimatedInputTokens,
+          outputTokens: estimatedOutputTokens,
+        });
+
+        await this.store.addLog(task.id, {
+          level: 'debug',
+          message: `Token tracking gap detected: stage "${stage.name}" reported 0 tokens but produced ${messages.length} messages (${totalChars} chars). ` +
+            `Estimated ~${stageUsage.totalTokens} tokens.`,
+          stage: stage.name,
+        });
+      }
+    }
 
     // Check if the output indicates the task was blocked by permission restrictions
     // Skip these heuristic checks for planning stages - they don't run tests or write files,
@@ -4047,10 +4442,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         });
       }
 
-      return {
+      const plannerResult = {
         stageName: stage.name,
         agent: agent.name,
-        status: 'completed',
+        status: 'completed' as const,
         outputs,
         artifacts,
         summary,
@@ -4059,6 +4454,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         completedAt: new Date(),
         decompositionRequest: decompositionRequest2,
       };
+
+      // Record stage result to replay bundle
+      if (this.replayBundleBuilder) {
+        this.replayBundleBuilder.recordStageResult(stage.name, plannerResult);
+      }
+
+      return plannerResult;
     }
 
     const permissionBlockedPatterns = [
@@ -4194,10 +4596,10 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       });
     }
 
-    return {
+    const finalResult = {
       stageName: stage.name,
       agent: agent.name,
-      status: 'completed',
+      status: 'completed' as const,
       outputs,
       artifacts,
       summary,
@@ -4206,6 +4608,17 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       completedAt: new Date(),
       autoFixResults: autoFixResults || undefined,
     };
+
+    // Record stage result to replay bundle
+    if (this.replayBundleBuilder) {
+      this.replayBundleBuilder.recordStageResult(stage.name, finalResult);
+    }
+
+    return finalResult;
+    } finally {
+      // Always release the global concurrency slot when AI execution finishes
+      this.releaseGlobalSlot();
+    }
   }
 
   /**
@@ -4827,12 +5240,24 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       } : {}),
     });
 
-    // Propagate in-progress status up the ancestor chain
+    // Propagate status up the ancestor chain
     if (status === 'in-progress') {
       const task = await this.store.getTask(taskId);
       if (task?.parentTaskId) {
         try {
           await this.checkAndResumeParent(task.parentTaskId);
+        } catch (err) {
+          // Don't fail the status update if propagation fails
+        }
+      }
+    }
+
+    // When a subtask completes, check if parent should also complete
+    if (status === 'completed') {
+      const task = await this.store.getTask(taskId);
+      if (task?.parentTaskId) {
+        try {
+          await this.checkAndCompleteParentTask(task.parentTaskId);
         } catch (err) {
           // Don't fail the status update if propagation fails
         }
@@ -5216,6 +5641,61 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   /**
+   * Retry a task by validating its status and resetting it to pending for re-execution.
+   * Only allows retry for failed, cancelled, in-progress, or planning tasks.
+   *
+   * @param taskId The ID of the task to retry
+   * @returns Promise that resolves when the task has been reset and re-execution started
+   * @throws {Error} When task is not found or not in a retryable status
+   */
+  async handleRetry(taskId: string): Promise<void> {
+    await this.ensureInitialized();
+
+    const task = await this.store.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    // Define retryable statuses - allow retry for failed, cancelled, or stuck tasks
+    const retryableStatuses: TaskStatus[] = ['failed', 'cancelled', 'in-progress', 'planning'];
+
+    if (!retryableStatuses.includes(task.status)) {
+      throw new Error(`Task is ${task.status}. Only failed, cancelled, or stuck tasks can be retried.`);
+    }
+
+    // Log retry initiation
+    await this.store.addLog(taskId, {
+      level: 'info',
+      message: `Retrying task (previous status: ${task.status})`,
+      metadata: {
+        previousStatus: task.status,
+        retryInitiatedAt: new Date().toISOString(),
+      },
+    });
+
+    // Reset task status to pending for re-execution
+    await this.updateTaskStatus(taskId, 'pending');
+
+    // Clear any previous error message
+    await this.store.updateTask(taskId, {
+      error: undefined,
+      updatedAt: new Date(),
+    });
+
+    // Re-execute the task asynchronously
+    this.executeTask(taskId).catch(async (error: Error) => {
+      await this.store.addLog(taskId, {
+        level: 'error',
+        message: `Task retry failed: ${error.message}`,
+        metadata: {
+          errorStack: error.stack,
+          retryFailedAt: new Date().toISOString(),
+        },
+      });
+    });
+  }
+
+  /**
    * Get the currently active task, if any.
    */
   async getCurrentTask(): Promise<Task | null> {
@@ -5314,7 +5794,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
    */
   async setPreset(preset: PermissionPreset): Promise<void> {
     await this.ensureInitialized();
-    await this.permissionPresetManager.applyPreset(preset);
+    await this._permissionPresetManager.applyPreset(preset);
   }
 
   /**
@@ -6837,14 +7317,28 @@ Parent: ${parentTask.description}`;
   }
 
   /**
-   * Process the task queue, starting new tasks up to the concurrency limit
+   * Process the task queue, starting new tasks up to the concurrency limit.
+   * Uses DB-level in-progress count (via getAvailableCapacity) so that
+   * subtasks spawned by parent tasks are properly counted against the limit.
    */
   private async processTaskQueue(): Promise<void> {
-    const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
-    const availableSlots = maxConcurrent - this.runningTasks.size;
+    // Use DB-level capacity check instead of this.runningTasks.size,
+    // because runningTasks only tracks top-level tasks — subtasks spawned
+    // by executeSubtasksParallel/executeSubtasksDependencyBased are invisible
+    // to that map but still consume system resources.
+    const availableSlots = this.getAvailableCapacity();
 
     if (availableSlots <= 0) {
       return; // At capacity
+    }
+
+    // Also check global semaphore saturation — if all Claude API slots
+    // are occupied plus waiters, there's no point starting more work.
+    const maxConcurrent = this.getMaxConcurrentTasks();
+    const activeSlots = this.globalActiveTaskCount;
+    const waiters = this.globalConcurrencyWaiters.length;
+    if (activeSlots + waiters >= maxConcurrent) {
+      return; // Semaphore saturated, new tasks would just queue up consuming memory
     }
 
     // Get pending tasks ordered by priority
@@ -6895,17 +7389,18 @@ Parent: ${parentTask.description}`;
       return false;
     }
 
-    // Only cancel if task is running or pending
-    if (task.status !== 'in-progress' && task.status !== 'pending') {
+    // Only cancel if task is cancellable (not completed, failed, or already cancelled)
+    const cancellableStatuses = ['pending', 'queued', 'planning', 'in-progress', 'awaiting-approval', 'paused'];
+    if (!cancellableStatuses.includes(task.status)) {
       return false;
     }
 
+    // Abort the claude subprocess for this task to prevent orphaned processes
+    this.abortTaskProcess(taskId);
+
     await this.updateTaskStatus(taskId, 'cancelled', 'Task was cancelled by user');
 
-    // If it's in our running map, we can't actually stop the SDK call,
-    // but we mark it cancelled so subsequent processing knows to stop
     if (this.runningTasks.has(taskId)) {
-      // The task will complete and see the cancelled status
       this.runningTasks.delete(taskId);
     }
 
@@ -7081,6 +7576,8 @@ Parent: ${parentTask.description}`;
   /**
    * Execute multiple tasks concurrently
    * Returns when all tasks are complete (or failed)
+   * Respects the global concurrency limit by checking available capacity
+   * before launching each batch, accounting for already-running tasks.
    */
   async executeTasksConcurrently(
     taskIds: string[],
@@ -7091,9 +7588,19 @@ Parent: ${parentTask.description}`;
     const maxConcurrent = options?.maxConcurrent ?? this.effectiveConfig.limits.maxConcurrentTasks;
     const results = new Map<string, { success: boolean; error?: string }>();
 
-    // Process in batches
-    for (let i = 0; i < taskIds.length; i += maxConcurrent) {
-      const batch = taskIds.slice(i, i + maxConcurrent);
+    // Process in capacity-aware batches
+    let i = 0;
+    while (i < taskIds.length) {
+      // Wait for capacity before launching next batch
+      let capacity = this.getAvailableCapacity();
+      while (capacity <= 0) {
+        await this.sleep(1000);
+        capacity = this.getAvailableCapacity();
+      }
+
+      const batchSize = Math.min(maxConcurrent, capacity, taskIds.length - i);
+      const batch = taskIds.slice(i, i + batchSize);
+      i += batchSize;
 
       const batchPromises = batch.map(async (taskId) => {
         try {
@@ -7118,6 +7625,87 @@ Parent: ${parentTask.description}`;
    */
   getMaxConcurrentTasks(): number {
     return this.effectiveConfig?.limits?.maxConcurrentTasks ?? 3;
+  }
+
+  /**
+   * Get the number of tasks currently holding a global concurrency slot
+   * (i.e., actively running a Claude API call via executeWorkflowStage).
+   */
+  getGlobalActiveTaskCount(): number {
+    return this.globalActiveTaskCount;
+  }
+
+  /**
+   * Get the number of tasks waiting to acquire a global concurrency slot.
+   */
+  getGlobalWaiterCount(): number {
+    return this.globalConcurrencyWaiters.length;
+  }
+
+  /**
+   * Check whether the system has capacity to start another task.
+   * Uses the DB-level in-progress count as the source of truth,
+   * so subtask trees are properly accounted for.
+   * Note: countInProgressTasks(true) excludes parent tasks that are merely
+   * orchestrating subtasks — this is critical to avoid deadlock where parents
+   * hold all capacity slots while their children wait for capacity.
+   * Returns the number of available slots (0 = at capacity).
+   */
+  getAvailableCapacity(): number {
+    const max = this.getMaxConcurrentTasks();
+    const inProgress = this.store.countInProgressTasks(/* excludeParentsWithRunningChildren */ true);
+    return Math.max(0, max - inProgress);
+  }
+
+  /**
+   * Acquire a global concurrency slot. If all slots are taken, waits until
+   * one becomes available. Called in executeWorkflowStage() (not executeTask())
+   * so that only tasks actively running driver.stream() hold slots. Parent tasks
+   * orchestrating subtasks via continuePendingSubtasks() do NOT hold slots,
+   * preventing deadlocks where parents hold all slots while children wait.
+   */
+  private async acquireGlobalSlot(): Promise<void> {
+    const maxConcurrent = this.getMaxConcurrentTasks();
+    if (this.globalActiveTaskCount < maxConcurrent) {
+      this.globalActiveTaskCount++;
+      return;
+    }
+    // Wait for a slot to open
+    return new Promise<void>((resolve) => {
+      this.globalConcurrencyWaiters.push(() => {
+        this.globalActiveTaskCount++;
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Release a global concurrency slot, waking the next waiter if any.
+   */
+  private releaseGlobalSlot(): void {
+    this.globalActiveTaskCount--;
+    const next = this.globalConcurrencyWaiters.shift();
+    if (next) {
+      next();
+    }
+  }
+
+  /**
+   * Abort the claude subprocess for a specific task. Called when a task is
+   * paused, cancelled, or fails. This triggers the AbortController that was
+   * passed to the SDK's query(), which kills the spawned claude subprocess
+   * and its entire process tree (shell snapshots, npm test, vitest, etc.).
+   */
+  abortTaskProcess(taskId: string): void {
+    const controller = this.taskAbortControllers.get(taskId);
+    if (controller) {
+      try {
+        controller.abort();
+      } catch {
+        // Ignore abort errors
+      }
+      this.taskAbortControllers.delete(taskId);
+    }
   }
 
   /**
@@ -7213,15 +7801,23 @@ Parent: ${parentTask.description}`;
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    // Increment resume attempts counter
-    const newResumeAttempts = task.resumeAttempts + 1;
+    // Only count resume attempts for non-external pause reasons.
+    // External pauses (usage_limit, rate_limit, subtask pauses) are not indicative
+    // of a broken task — they're environment constraints that resolve on their own.
+    const externalPauseReasons = ['usage_limit', 'rate_limit', 'budget', 'session_limit'];
+    const isExternalPause = task.pauseReason && (
+      externalPauseReasons.includes(task.pauseReason) ||
+      task.pauseReason.startsWith('subtask_paused')
+    );
+
+    const newResumeAttempts = isExternalPause ? task.resumeAttempts : task.resumeAttempts + 1;
     await this.store.updateTask(taskId, {
       resumeAttempts: newResumeAttempts,
       updatedAt: new Date(),
     });
 
-    // Check if max resume attempts exceeded
-    const maxResumeAttempts = this.effectiveConfig.daemon?.sessionRecovery?.maxResumeAttempts ?? 3;
+    // Check if max resume attempts exceeded (default raised from 3 to 10)
+    const maxResumeAttempts = this.effectiveConfig.daemon?.sessionRecovery?.maxResumeAttempts ?? 10;
     if (newResumeAttempts > maxResumeAttempts) {
       await this.failTaskWithMaxResumeError(taskId, newResumeAttempts, maxResumeAttempts);
       return false;
@@ -7418,11 +8014,50 @@ Parent: ${parentTask.description}`;
   ): Promise<Task[]> {
     await this.ensureInitialized();
 
+    // Decomposition guard: prevent duplicate decomposition of the same task
+    if (this.decomposingTaskIds.has(parentTaskId)) {
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Skipping duplicate decomposition — task ${parentTaskId} is already being decomposed`,
+      });
+      return [];
+    }
+
+    // Atomically add to decomposing set to prevent race conditions
+    this.decomposingTaskIds.add(parentTaskId);
+
+    // Now check if task exists and has no subtasks
     const parentTask = await this.store.getTask(parentTaskId);
     if (!parentTask) {
+      this.decomposingTaskIds.delete(parentTaskId);
       throw new Error(`Parent task not found: ${parentTaskId}`);
     }
 
+    // If subtasks already exist, skip decomposition entirely
+    if (parentTask.subtaskIds && parentTask.subtaskIds.length > 0) {
+      this.decomposingTaskIds.delete(parentTaskId);
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Skipping decomposition — task already has ${parentTask.subtaskIds.length} subtasks (race condition prevented)`,
+      });
+      return [];
+    }
+    try {
+      return await this._decomposeTaskInner(parentTaskId, parentTask, subtaskDefinitions, strategy);
+    } finally {
+      this.decomposingTaskIds.delete(parentTaskId);
+    }
+  }
+
+  /**
+   * Inner decomposition logic, protected by the decomposition guard
+   */
+  private async _decomposeTaskInner(
+    parentTaskId: string,
+    parentTask: Task,
+    subtaskDefinitions: SubtaskDefinition[],
+    strategy: SubtaskStrategy
+  ): Promise<Task[]> {
     // Update parent task strategy
     await this.store.updateTask(parentTaskId, {
       subtaskStrategy: strategy,
@@ -7573,15 +8208,32 @@ Parent: ${parentTask.description}`;
     const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
     const subtaskIds = parentTask.subtaskIds || [];
 
-    // Execute in batches up to max concurrent
-    for (let i = 0; i < subtaskIds.length; i += maxConcurrent) {
+    // Execute in batches. Batch size is dynamically limited to available
+    // capacity (checked via DB in-progress count) to prevent memory exhaustion
+    // from too many in-flight task trees.
+    let i = 0;
+    while (i < subtaskIds.length) {
       // Check if parent was cancelled
       const currentParent = await this.store.getTask(parentTask.id);
       if (currentParent?.status === 'cancelled') {
         return;
       }
 
-      const batch = subtaskIds.slice(i, i + maxConcurrent);
+      // Wait for capacity before launching next batch.
+      // This prevents the "stampede" where multiple parents each launch
+      // full batches before the in-progress count catches up.
+      let capacity = this.getAvailableCapacity();
+      while (capacity <= 0) {
+        await this.sleep(1000);
+        // Re-check cancellation while waiting
+        const parentCheck = await this.store.getTask(parentTask.id);
+        if (parentCheck?.status === 'cancelled') return;
+        capacity = this.getAvailableCapacity();
+      }
+
+      const batchSize = Math.min(maxConcurrent, capacity);
+      const batch = subtaskIds.slice(i, i + batchSize);
+      i += batchSize;
       const completedSubtasks: Task[] = [];
 
       const results = await Promise.allSettled(
@@ -7695,9 +8347,19 @@ Parent: ${parentTask.description}`;
         continue;
       }
 
-      // Execute ready subtasks in parallel (up to max concurrent)
+      // Execute ready subtasks in parallel (up to available capacity)
       const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
-      const batch = readySubtasks.slice(0, maxConcurrent);
+
+      // Wait for capacity before launching batch
+      let capacity = this.getAvailableCapacity();
+      while (capacity <= 0) {
+        await this.sleep(1000);
+        const parentCheck = await this.store.getTask(parentTask.id);
+        if (parentCheck?.status === 'cancelled') return;
+        capacity = this.getAvailableCapacity();
+      }
+
+      const batch = readySubtasks.slice(0, Math.min(maxConcurrent, capacity));
 
       for (const subtaskId of batch) {
         inProgressSubtasks.add(subtaskId);
@@ -7835,6 +8497,7 @@ Parent: ${parentTask.description}`;
     const subtaskSummaries: string[] = [];
     let pendingCount = 0;
     let failedCount = 0;
+    let ghostCount = 0;
 
     for (const subtaskId of parentTask.subtaskIds || []) {
       const subtask = await this.store.getTask(subtaskId);
@@ -7850,7 +8513,16 @@ Parent: ${parentTask.description}`;
         }
       }
 
-      subtaskSummaries.push(`- ${subtask.description}: ${subtask.status}`);
+      // Detect ghost completions: completed subtasks with 0 tokens and 0 usage
+      const isGhost = subtask.status === 'completed' &&
+        subtask.usage.totalTokens === 0 &&
+        subtask.usage.estimatedCost === 0;
+      if (isGhost) {
+        ghostCount++;
+        subtaskSummaries.push(`- ${subtask.description}: ${subtask.status} (ghost - no work done)`);
+      } else {
+        subtaskSummaries.push(`- ${subtask.description}: ${subtask.status}`);
+      }
 
       // Track incomplete subtasks (including in-progress!)
       if (subtask.status === 'pending' || subtask.status === 'queued' || subtask.status === 'paused' || subtask.status === 'in-progress') {
@@ -7874,12 +8546,22 @@ Parent: ${parentTask.description}`;
       updatedAt: new Date(),
     });
 
-    if (pendingCount > 0) {
+    if (pendingCount > 0 || failedCount > 0) {
       await this.store.addLog(parentTaskId, {
         level: 'warn',
         message: `Subtask execution incomplete: ${pendingCount} pending, ${failedCount} failed\n${subtaskSummaries.join('\n')}`,
       });
       return false;
+    }
+
+    // Warn about ghost completions
+    if (ghostCount > 0) {
+      const totalSubtasks = parentTask.subtaskIds?.length || 0;
+      await this.store.addLog(parentTaskId, {
+        level: 'warn',
+        message: `Ghost completion warning: ${ghostCount}/${totalSubtasks} subtasks completed without doing any work. ` +
+          `These subtasks may need to be re-executed or investigated.`,
+      });
     }
 
     await this.store.addLog(parentTaskId, {
@@ -8076,15 +8758,29 @@ Parent: ${parentTask.description}`;
           if (!shouldContinue) return;
         }
       } else {
-        // For parallel/dependency-based, execute in batches but respect order within batches
+        // For parallel/dependency-based, execute in batches but respect order within batches.
+        // Batch size is dynamically limited to available DB-level capacity to prevent
+        // memory exhaustion from too many in-flight task trees.
         const maxConcurrent = this.effectiveConfig.limits.maxConcurrentTasks;
-        for (let i = 0; i < subtasksToProcess.length; i += maxConcurrent) {
+        let i = 0;
+        while (i < subtasksToProcess.length) {
           const currentParent = await this.store.getTask(parentTaskId);
           if (currentParent?.status === 'cancelled' || currentParent?.status === 'paused') {
             return;
           }
 
-          const batch = subtasksToProcess.slice(i, i + maxConcurrent);
+          // Wait for capacity before launching batch
+          let capacity = this.getAvailableCapacity();
+          while (capacity <= 0) {
+            await this.sleep(1000);
+            const parentCheck = await this.store.getTask(parentTaskId);
+            if (parentCheck?.status === 'cancelled' || parentCheck?.status === 'paused') return;
+            capacity = this.getAvailableCapacity();
+          }
+
+          const batchSize = Math.min(maxConcurrent, capacity);
+          const batch = subtasksToProcess.slice(i, i + batchSize);
+          i += batchSize;
 
           // Clear pause state for paused subtasks in this batch
           for (const { id: subtaskId, status } of batch) {
@@ -10078,6 +10774,122 @@ Parent: ${parentTask.description}`;
   }
 
   /**
+   * Categorize MCP error and determine recovery information
+   * @param error The error to categorize
+   * @param attempt Current retry attempt number
+   * @param maxAttempts Maximum retry attempts
+   * @returns Error categorization and recovery info
+   */
+  private categorizeMCPError(
+    error: Error,
+    attempt?: number,
+    maxAttempts?: number
+  ): Pick<MCPErrorEventData, 'category' | 'recoverable' | 'recovery'> {
+    const errorMessage = error.message.toLowerCase();
+    const errorCode = (error as any).code;
+
+    // Determine category based on error type and message
+    let category: MCPErrorEventData['category'] = 'unknown';
+    let recoverable = false;
+    let retryDelayMs: number | undefined;
+    let suggestions: string[] = [];
+
+    // Connection-related errors
+    if (
+      errorCode === 'CONNECTION_FAILED' ||
+      errorCode === 'DISCONNECTED' ||
+      errorCode === 'NOT_CONNECTED' ||
+      errorMessage.includes('connection') ||
+      errorMessage.includes('econnrefused') ||
+      errorMessage.includes('network')
+    ) {
+      category = 'connection';
+      recoverable = true;
+      retryDelayMs = Math.min(1000 * Math.pow(2, attempt || 0), 30000); // Exponential backoff, max 30s
+      suggestions = [
+        'Check network connectivity',
+        'Verify server is running',
+        'Check firewall settings',
+        'Confirm server address and port'
+      ];
+    }
+    // Transport-related errors
+    else if (
+      errorCode === 'PROCESS_CRASHED' ||
+      errorCode === 'SPAWN_FAILED' ||
+      errorCode === 'SEND_FAILED' ||
+      errorCode === 'PARSE_ERROR' ||
+      errorMessage.includes('spawn') ||
+      errorMessage.includes('process')
+    ) {
+      category = 'transport';
+      recoverable = errorCode !== 'SPAWN_FAILED'; // SPAWN_FAILED typically needs user intervention
+      retryDelayMs = 2000; // Short delay for transport issues
+      suggestions = errorCode === 'SPAWN_FAILED'
+        ? ['Check MCP server executable exists', 'Verify server path and permissions', 'Check server configuration']
+        : ['Restart MCP server', 'Check server logs', 'Verify server stability'];
+    }
+    // Timeout-related errors
+    else if (
+      errorCode === 'TIMEOUT' ||
+      errorMessage.includes('timeout') ||
+      errorMessage.includes('timed out')
+    ) {
+      category = 'timeout';
+      recoverable = true;
+      retryDelayMs = 5000; // Longer delay for timeouts
+      suggestions = [
+        'Check server response time',
+        'Increase timeout settings',
+        'Verify server performance',
+        'Check system resource usage'
+      ];
+    }
+    // Authentication/authorization errors
+    else if (
+      errorMessage.includes('auth') ||
+      errorMessage.includes('unauthorized') ||
+      errorMessage.includes('forbidden') ||
+      errorMessage.includes('credential')
+    ) {
+      category = 'auth';
+      recoverable = false; // Auth errors typically require user intervention
+      suggestions = [
+        'Check authentication credentials',
+        'Verify API keys or tokens',
+        'Check user permissions',
+        'Update authentication configuration'
+      ];
+    }
+    // Protocol-related errors
+    else if (
+      errorMessage.includes('protocol') ||
+      errorMessage.includes('jsonrpc') ||
+      errorMessage.includes('invalid') ||
+      errorCode === 'ALREADY_CONNECTED'
+    ) {
+      category = 'protocol';
+      recoverable = errorCode !== 'ALREADY_CONNECTED';
+      retryDelayMs = 1000; // Short delay for protocol issues
+      suggestions = errorCode === 'ALREADY_CONNECTED'
+        ? ['Connection already exists', 'Use existing connection or disconnect first']
+        : ['Check protocol compatibility', 'Verify message format', 'Update server version'];
+    }
+
+    return {
+      category,
+      recoverable,
+      recovery: {
+        canRetry: recoverable && (!maxAttempts || (attempt || 0) < maxAttempts),
+        retryDelayMs,
+        attempt,
+        maxAttempts,
+        suggestions,
+      },
+    };
+  }
+
+  /**
    * Setup MCP connection event forwarding
    * Forwards MCP connection events from MCPConnectionManager to the orchestrator's event system
    * with proper metadata and timestamps.
@@ -10116,12 +10928,25 @@ Parent: ${parentTask.description}`;
     // Forward error events
     connManager.on('error', (serverId, error) => {
       const connection = connManager.getConnection(serverId);
+      const { category, recoverable, recovery } = this.categorizeMCPError(error);
+
       const eventData: MCPErrorEventData = {
         serverId,
         serverName: connection?.serverName || serverId,
         error: error.message,
         timestamp: new Date(),
         code: error.name || 'UNKNOWN_ERROR',
+        category,
+        recoverable,
+        stack: error.stack,
+        recovery,
+        metadata: {
+          errorType: error.constructor.name,
+          cause: error.cause ? {
+            message: error.cause instanceof Error ? error.cause.message : String(error.cause),
+            name: error.cause instanceof Error ? error.cause.constructor.name : 'Unknown'
+          } : undefined
+        }
       };
       this.emit('mcp:error', eventData);
     });
@@ -10607,14 +11432,6 @@ Parent: ${parentTask.description}`;
    */
   get presetManager(): PermissionPresetManager {
     return this._permissionPresetManager;
-  }
-
-  /**
-   * Get the custom tools server instance
-   * Provides access to custom tools server capabilities
-   */
-  get customToolsServer(): CustomToolsServer | undefined {
-    return this.customToolsServer;
   }
 
   /**
@@ -11888,6 +12705,15 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
    * Disconnects all MCP servers and cleans up resources
    */
   async shutdown(): Promise<void> {
+    // Abort all active SDK queries — kills spawned claude subprocesses
+    if (this.driver) {
+      try {
+        await this.driver.dispose();
+      } catch {
+        // Best-effort cleanup
+      }
+    }
+
     // Disconnect all MCP servers with timeout
     if (this.mcpConnectionManager) {
       try {
@@ -11913,6 +12739,8 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
     this.initialized = false;
   }
 }
+
+// Note: All methods are properly defined within the ApexOrchestrator class above.
 
 export { TaskStore, ToolActionStore } from './store';
 export { PermissionStore } from './permission-store';
@@ -11993,7 +12821,44 @@ export {
   type CleanupOptions,
   type BrowserManagerEvents,
 } from './browser-manager';
-export { BrowserTool, type BrowserToolOptions, type BrowserToolConfig } from './tools/browser-tool';
+export {
+  MultimodalInputHandler,
+  MultimodalInputError,
+  multimodalInputHandler,
+  processImageFile,
+  processWebPage,
+  processGitHubIssueImages,
+  processDesignMockup,
+  isFigmaUrl,
+  parseFigmaUrl,
+  type ImageBlockParam,
+  type MultimodalInputHandlerConfig,
+  type ImageProcessResult,
+  type WebPageOptions,
+  type WebPageContent,
+  type GitHubIssueImageResult,
+} from './tools/multimodal-input-handler';
+
+// Design mockup types for MultimodalInputHandler
+export {
+  DesignMockupError,
+  type DesignTool,
+  type DesignExportFormat,
+  type DesignDimensionUnit,
+  type DesignDimensions,
+  type TypographyValue,
+  type DesignTokens,
+  type ComponentBounds,
+  type DesignComponent,
+  type DesignAnnotation,
+  type FigmaUrlInfo,
+  type DesignMockupOptions,
+  type DesignFileMetadata,
+  type DesignMockupProcessResult,
+  type FigmaUrlParseResult,
+  type DesignMockupHandlerConfig,
+  type DesignMockupErrorCode,
+} from './tools/design-mockup-types';
 
 // Test utilities for state cleanup and test isolation
 export {
@@ -12047,10 +12912,13 @@ export {
   ServiceManager,
   SystemdGenerator,
   LaunchdGenerator,
+  WindowsServiceGenerator,
   ServiceError,
   detectPlatform,
   isSystemdAvailable,
   isLaunchdAvailable,
+  isWindowsServiceAvailable,
+  isNSSMAvailable,
   type ServiceManagerOptions,
   type ServiceStatus,
   type ServiceFileResult,
@@ -12061,6 +12929,24 @@ export {
   type ServiceErrorCode,
   type Platform,
 } from './service-manager';
+export {
+  WindowsServiceManager,
+  WindowsServiceError,
+  type WindowsServiceConfig,
+  type ServiceRecoveryOptions,
+  type WindowsServiceStatus,
+  type WindowsServiceErrorCode,
+} from './windows-service-manager';
+export {
+  WindowsEventLogger,
+  createApexEventLogger,
+  createCustomEventLogger,
+  WindowsEventLogType,
+  APEX_EVENT_IDS,
+  type WindowsEventLogEntry,
+  type EventLogConfig,
+  type ApexEventId,
+} from './windows-event-log';
 export {
   DaemonScheduler,
   UsageManagerProvider,
@@ -12456,3 +13342,77 @@ export {
   type ApprovalScenario,
   type ApprovalTestEvents,
 } from './approval-test-utils.js';
+
+// ============================================================================
+// Codebase Analysis (v0.6.0)
+// ============================================================================
+
+export {
+  createCodebaseAnalyzer,
+  CodebaseAnalysisOrchestratorImpl,
+} from './codebase-analyzer/index.js';
+
+export type {
+  CodebaseAnalysisOrchestrator,
+  AnalysisOptions,
+  AnalysisProgress,
+  AnalysisError,
+  AnalysisContext,
+  FileInfo,
+  DomainAnalysisResult,
+  CodebaseAnalyzerBase,
+  AnalysisOutputWriter,
+  OutputFormat,
+  AnalysisPhase,
+} from './codebase-analyzer/types.js';
+
+// Codebase analyzer - only export modules that exist
+export {
+  ConventionAnalyzer,
+} from './codebase-analyzer/analyzers/convention-analyzer.js';
+
+// =============================================================================
+// Auth & Credentials
+// =============================================================================
+
+export {
+  CredentialManager,
+  type Credentials,
+} from './auth/credential-manager.js';
+
+// =============================================================================
+// Codebase Intelligence
+// =============================================================================
+
+export * from './codebase-intelligence/index.js';
+
+// =============================================================================
+// CodebaseMapper Service
+// =============================================================================
+
+export {
+  CodebaseMapper,
+  createCodebaseMapper,
+  type CodebaseMapperConfig,
+  type AnalysisAgent,
+  type CodebaseMapperProgress,
+  type CodebaseMapperEvents,
+} from './codebase-mapper.js';
+
+// =============================================================================
+// Memory Persistence System
+// =============================================================================
+
+export {
+  MemoryManager,
+  type RememberOptions,
+  type RecallOptions,
+} from './memory-manager.js';
+
+export {
+  MemoryStore,
+  type Memory,
+  type MemoryType,
+  type MemorySearchCriteria,
+  type LivingMemoryFile,
+} from './memory-store.js';

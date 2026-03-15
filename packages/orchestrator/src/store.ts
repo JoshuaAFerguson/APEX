@@ -93,6 +93,13 @@ export class TaskStore {
    * @param projectPath - The path to the project directory
    */
   constructor(projectPath: string) {
+    if (!projectPath || projectPath === 'undefined') {
+      throw new Error(
+        'TaskStore requires a valid projectPath. Received: ' +
+        JSON.stringify(projectPath) +
+        '. Ensure the orchestrator/runner is initialized with a valid project directory.'
+      );
+    }
     this.projectPath = projectPath;
 
     // Check for APEX_HOME environment variable
@@ -473,7 +480,9 @@ export class TaskStore {
         last_checkpoint TEXT,
         -- Task lifecycle (trash/archive) support
         trashed_at TEXT,
-        archived_at TEXT
+        archived_at TEXT,
+        -- v0.5.0 policy check support
+        policy_check_result TEXT
       );
 
       CREATE TABLE IF NOT EXISTS task_logs (
@@ -1192,6 +1201,38 @@ export class TaskStore {
     }
 
     return { sql, params };
+  }
+
+  /**
+   * Count in-progress tasks, optionally excluding parent orchestrators.
+   * This is a fast single-query count used by the daemon and orchestrator
+   * to enforce concurrency limits.
+   *
+   * @param excludeParents - If true, don't count parent tasks that have
+   *   subtasks. Parent tasks in subtask-execution mode are just coordinators —
+   *   they don't run Claude or spawn processes. Only leaf tasks consume real
+   *   resources (CPU, memory, Claude API slots). Default: true.
+   */
+  countInProgressTasks(excludeParents = true): number {
+    if (!excludeParents) {
+      const row = this.db.prepare(
+        `SELECT COUNT(*) as cnt FROM tasks WHERE status = 'in-progress' AND trashed_at IS NULL`
+      ).get() as { cnt: number };
+      return row.cnt;
+    }
+
+    // Count in-progress leaf tasks only — exclude any task that has subtasks.
+    // Parent tasks are just coordinators waiting for children to finish.
+    // Previously this only excluded parents with in-progress children,
+    // which caused a deadlock: parents with pending children still consumed
+    // capacity slots, so children could never start.
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as cnt FROM tasks t
+      WHERE t.status = 'in-progress'
+        AND t.trashed_at IS NULL
+        AND (t.subtask_ids IS NULL OR t.subtask_ids = '[]')
+    `).get() as { cnt: number };
+    return row.cnt;
   }
 
   /**
@@ -2283,6 +2324,30 @@ export class TaskStore {
            JOIN tasks dep ON dep.id = d.depends_on_task_id
            WHERE d.task_id = t.id
            AND dep.status NOT IN ('completed', 'cancelled')
+         )
+         -- Sequential subtask ordering: if this task is a child of a sequential parent,
+         -- only consider it ready if ALL preceding siblings are completed/cancelled.
+         -- This prevents out-of-order execution of subtasks.
+         AND (
+           t.parent_task_id IS NULL
+           OR (
+             SELECT COALESCE(p.subtask_strategy, 'sequential')
+             FROM tasks p WHERE p.id = t.parent_task_id
+           ) != 'sequential'
+           OR NOT EXISTS (
+             SELECT 1
+             FROM tasks p, json_each(p.subtask_ids) AS earlier_entry
+             JOIN tasks earlier_task ON earlier_task.id = earlier_entry.value
+             WHERE p.id = t.parent_task_id
+             AND earlier_entry.key < (
+               SELECT current_entry.key
+               FROM tasks p2, json_each(p2.subtask_ids) AS current_entry
+               WHERE p2.id = t.parent_task_id
+               AND current_entry.value = t.id
+               LIMIT 1
+             )
+             AND earlier_task.status NOT IN ('completed', 'cancelled')
+           )
          ))
         OR
         -- Case 2: In-progress parent tasks with pending subtasks that need continued execution
@@ -2291,11 +2356,11 @@ export class TaskStore {
         (t.status = 'in-progress'
          AND t.subtask_ids IS NOT NULL
          AND t.subtask_ids != '[]'
-         -- Has pending subtasks
+         -- Has pending or paused subtasks (paused subtasks also need to be continued)
          AND EXISTS (
            SELECT 1 FROM tasks sub, json_each(t.subtask_ids) je
            WHERE je.value = sub.id
-           AND sub.status = 'pending'
+           AND sub.status IN ('pending', 'paused')
          )
          -- But no in-progress subtasks (otherwise it's actively being worked on)
          AND NOT EXISTS (
@@ -4546,6 +4611,7 @@ export class TaskStore {
     stmt.run(id);
   }
 
+
   /**
    * Clear all tasks from the database
    * Useful for testing or cleanup scenarios
@@ -4632,6 +4698,40 @@ export class TaskStore {
     (store as any).dbPath = ':memory:';
 
     return store;
+  }
+
+  /**
+   * Get summaries of recently completed tasks for learning extraction
+   */
+  getCompletedTasksSummary(limit: number = 10): Array<{
+    id: string;
+    description: string;
+    workflow: string;
+    completedAt: string;
+    status: string;
+  }> {
+    this.ensureInitialized();
+    const rows = this.db.prepare(`
+      SELECT id, description, workflow, completed_at, status
+      FROM tasks
+      WHERE status = 'completed'
+      ORDER BY completed_at DESC
+      LIMIT ?
+    `).all(limit) as Array<{
+      id: string;
+      description: string;
+      workflow: string;
+      completed_at: string;
+      status: string;
+    }>;
+
+    return rows.map(row => ({
+      id: row.id,
+      description: row.description,
+      workflow: row.workflow,
+      completedAt: row.completed_at,
+      status: row.status,
+    }));
   }
 
   /**

@@ -216,8 +216,18 @@ describe('MCPRegistry Edge Cases and Error Handling', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(MCPCatalogValidationError);
         const validationError = error as MCPCatalogValidationError;
-        expect(validationError.details).toContain('Server at index 0 missing name');
-        expect(validationError.details).toContain('Server at index 1 missing name');
+
+        // Check if we have enhanced details (new format) or string array (legacy format)
+        if (validationError.enhancedDetails.length > 0) {
+          const nameErrors = validationError.enhancedDetails.filter(d =>
+            d.field === 'servers[0].name' || d.field === 'servers[1].name'
+          );
+          expect(nameErrors.length).toBe(2);
+        } else {
+          // Legacy format check
+          expect(validationError.details).toContain('Server at index 0 missing name');
+          expect(validationError.details).toContain('Server at index 1 missing name');
+        }
       }
     });
 

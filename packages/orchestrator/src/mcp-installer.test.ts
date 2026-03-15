@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { MCPInstaller, InstallationResult, MCPInstallationOptions } from './mcp-installer';
+import { MCPInstaller, InstalledMCPResult, MCPInstallationOptions } from './mcp-installer';
 import { TaskStore } from './store';
 import { MCPMarketplaceEntry, MCPServerConfig } from '@apexcli/core';
 

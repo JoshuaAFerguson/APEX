@@ -119,7 +119,7 @@ export class PermissionStore {
    * If a permission already exists for the same tool/scope combination, it will be updated
    */
   async saveExtendedPermission(permission: ExtendedPermission): Promise<void> {
-    const id = this.generatePermissionId(permission.tool, permission.scope);
+    const id = this.generatePermissionId(permission.tool, permission.scope || '');
 
     const stmt = this.db.prepare(`
       INSERT INTO permissions (
@@ -140,13 +140,15 @@ export class PermissionStore {
         tags = @tags
     `);
 
+    const createdAtDate = permission.createdAt || new Date();
+
     stmt.run({
       id,
       toolName: permission.tool,
       scope: permission.scope || null,
       level: permission.level || 'allow-once',
       expiresAt: permission.expiry ? permission.expiry.toISOString() : null,
-      createdAt: permission.createdAt.toISOString(),
+      createdAt: createdAtDate.toISOString(),
       config: permission.config ? JSON.stringify(permission.config) : null,
       grantReason: permission.grantReason || null,
       grantedBy: permission.grantedBy || null,

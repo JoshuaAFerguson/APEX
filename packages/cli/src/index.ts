@@ -40,11 +40,15 @@ import {
   handleWorkspaceCleanup,
   handleWorkspaceStats,
 } from './handlers/workspace-handlers.js';
+import { handleDoctor } from './handlers/doctor-handlers.js';
+import { handleMapCodebase } from './handlers/map-codebase-handlers.js';
+import { handleAuth } from './handlers/auth-handlers.js';
+import { checkAndNotifyUpdates } from './utils/update-checker.js';
 import { requestConfirmation, DangerousOperation, showOperationCancelled } from './utils/confirmation.js';
 import { showApprovalPrompt, promptForAdditionalInfo } from './utils/approval-prompt.js';
 import inquirer from 'inquirer';
 
-const VERSION = '0.1.0';
+const VERSION = '0.6.0';
 
 // ASCII Art Banner
 const banner = `
@@ -643,11 +647,14 @@ export const commands: Command[] = [
       }
 
       if (setKeyValue) {
-        const [key, value] = setKeyValue.split('=');
-        if (!key || value === undefined) {
+        const equalIndex = setKeyValue.indexOf('=');
+        if (equalIndex === -1 || equalIndex === 0) {
           console.log(chalk.red('Invalid format. Use: /config set key=value'));
           return;
         }
+
+        const key = setKeyValue.substring(0, equalIndex);
+        const value = setKeyValue.substring(equalIndex + 1);
 
         const keys = key.split('.');
         let current: Record<string, unknown> = ctx.config as unknown as Record<string, unknown>;
@@ -659,14 +666,20 @@ export const commands: Command[] = [
           current = current[keys[i]] as Record<string, unknown>;
         }
 
+        // Try to parse as JSON, otherwise use as string
         let parsedValue: unknown = value;
-        if (value === 'true') parsedValue = true;
-        else if (value === 'false') parsedValue = false;
-        else if (!isNaN(Number(value))) parsedValue = Number(value);
+        try {
+          parsedValue = JSON.parse(value);
+        } catch {
+          // If JSON parsing fails, keep as string
+          parsedValue = value;
+        }
 
         current[keys[keys.length - 1]] = parsedValue;
 
         await saveConfig(ctx.cwd, ctx.config);
+        // Reload config to ensure consistency
+        ctx.config = await loadConfig(ctx.cwd);
         console.log(chalk.green(`Set ${key} = ${value}`));
         return;
       }
@@ -822,30 +835,16 @@ export const commands: Command[] = [
         return;
       }
 
-      const originalTask = await ctx.orchestrator.getTask(taskId);
-      if (!originalTask) {
-        console.log(chalk.red(`Task not found: ${taskId}`));
-        return;
+      try {
+        console.log(chalk.cyan(`\nRetrying task ${taskId}...\n`));
+
+        // handleRetry validates status, resets the task, and starts execution
+        await ctx.orchestrator.handleRetry(taskId);
+
+        console.log(chalk.green(`Task ${taskId} retry initiated successfully`));
+      } catch (error) {
+        console.log(chalk.red(`Failed to retry task: ${error instanceof Error ? error.message : String(error)}`));
       }
-
-      if (originalTask.status !== 'failed' && originalTask.status !== 'cancelled') {
-        console.log(chalk.yellow(`Task is ${originalTask.status}. Only failed or cancelled tasks can be retried.`));
-        return;
-      }
-
-      console.log(chalk.cyan('\nRetrying task...\n'));
-
-      const newTask = await ctx.orchestrator.createTask({
-        description: originalTask.description,
-        acceptanceCriteria: originalTask.acceptanceCriteria,
-        workflow: originalTask.workflow,
-        autonomy: originalTask.autonomy,
-      });
-
-      console.log(chalk.green(`New task created: ${newTask.id}`));
-
-      // Execute in background
-      executeTaskWithOutput(ctx, newTask.id);
     },
   },
 
@@ -1135,6 +1134,13 @@ export const commands: Command[] = [
     },
   },
 
+  {
+    name: 'auth',
+    aliases: ['login'],
+    description: 'Manage AI provider authentication (OAuth/OpenAuth)',
+    usage: '/auth login [provider] | /auth logout <provider> | /auth status',
+    handler: handleAuth,
+  },
   {
     name: 'exit',
     aliases: ['quit', 'q'],
@@ -3436,6 +3442,193 @@ export const commands: Command[] = [
       await handleUndoCommand(ctx, args);
     },
   },
+  {
+    name: 'remember',
+    aliases: ['rem'],
+    description: 'Store information in long-term memory',
+    usage: '/remember <content> [--type fact|insight|preference|convention|pattern] [--tags tag1,tag2]',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const memory = (ctx.orchestrator as any).memory;
+      if (!memory) {
+        console.log(chalk.red('Memory system not available.'));
+        return;
+      }
+      // Parse args
+      let content = '';
+      let type: string = 'fact';
+      let tags: string[] = [];
+      const rawArgs = [...args];
+      for (let i = 0; i < rawArgs.length; i++) {
+        if (rawArgs[i] === '--type' && rawArgs[i + 1]) {
+          type = rawArgs[i + 1];
+          i++;
+        } else if (rawArgs[i] === '--tags' && rawArgs[i + 1]) {
+          tags = rawArgs[i + 1].split(',').map(t => t.trim());
+          i++;
+        } else {
+          content += (content ? ' ' : '') + rawArgs[i];
+        }
+      }
+      if (!content) {
+        console.log(chalk.yellow('Usage: /remember <content> [--type fact|insight|preference|convention|pattern] [--tags tag1,tag2]'));
+        return;
+      }
+      const stored = memory.remember(content, { type: type as any, tags, source: 'user' });
+      console.log(chalk.green(`Remembered (${stored.type}): "${stored.content.substring(0, 60)}${stored.content.length > 60 ? '...' : ''}"`));
+      if (tags.length > 0) console.log(chalk.gray(`  Tags: ${tags.join(', ')}`));
+    },
+  },
+  {
+    name: 'recall',
+    aliases: ['search-memory'],
+    description: 'Search long-term memory',
+    usage: '/recall <query>',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const memory = (ctx.orchestrator as any).memory;
+      if (!memory) {
+        console.log(chalk.red('Memory system not available.'));
+        return;
+      }
+      const query = args.join(' ');
+      if (!query) {
+        console.log(chalk.yellow('Usage: /recall <query>'));
+        return;
+      }
+      const results = memory.recall(query, { limit: 10 });
+      if (results.length === 0) {
+        console.log(chalk.gray('No matching memories found.'));
+        return;
+      }
+      console.log(chalk.bold(`\nFound ${results.length} memories:\n`));
+      for (const mem of results) {
+        const age = Math.floor((Date.now() - mem.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        console.log(chalk.cyan(`  [${mem.type}]`) + ` ${mem.content}`);
+        console.log(chalk.gray(`    Confidence: ${(mem.confidence * 100).toFixed(0)}% | Accessed: ${mem.accessCount}x | Age: ${age}d | Tags: ${mem.tags.join(', ') || 'none'}`));
+      }
+    },
+  },
+  {
+    name: 'memories',
+    aliases: ['mem-list'],
+    description: 'List all stored memories',
+    usage: '/memories [--limit N]',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const memory = (ctx.orchestrator as any).memory;
+      if (!memory) {
+        console.log(chalk.red('Memory system not available.'));
+        return;
+      }
+      let limit = 20;
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--limit' && args[i + 1]) {
+          limit = parseInt(args[i + 1], 10) || 20;
+        }
+      }
+      const count = memory.getMemoryCount();
+      const memories = memory.listMemories(limit);
+      console.log(chalk.bold(`\nMemory System (${count} total, showing ${memories.length}):\n`));
+      for (const mem of memories) {
+        const age = Math.floor((Date.now() - mem.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        console.log(chalk.cyan(`  [${mem.type}]`) + ` ${mem.content.substring(0, 80)}${mem.content.length > 80 ? '...' : ''}`);
+        console.log(chalk.gray(`    ID: ${mem.id.substring(0, 8)} | Age: ${age}d | Accessed: ${mem.accessCount}x`));
+      }
+    },
+  },
+  {
+    name: 'forget',
+    aliases: ['forget-memory'],
+    description: 'Delete memories by ID or criteria',
+    usage: '/forget <id> | /forget --type <type> | /forget --tags <tag1,tag2>',
+    handler: async (ctx, args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const memory = (ctx.orchestrator as any).memory;
+      if (!memory) {
+        console.log(chalk.red('Memory system not available.'));
+        return;
+      }
+      if (args.length === 0) {
+        console.log(chalk.yellow('Usage: /forget <id> | /forget --type <type> | /forget --tags <tag1,tag2>'));
+        return;
+      }
+      // Check for criteria-based deletion
+      let type: string | undefined;
+      let tags: string[] | undefined;
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--type' && args[i + 1]) {
+          type = args[i + 1];
+          i++;
+        } else if (args[i] === '--tags' && args[i + 1]) {
+          tags = args[i + 1].split(',').map(t => t.trim());
+          i++;
+        }
+      }
+      if (type || tags) {
+        const count = memory.forget({ type: type as any, tags });
+        console.log(chalk.green(`Forgot ${count} memories`));
+      } else {
+        // Delete by ID (support partial match)
+        const id = args[0];
+        const deleted = memory.deleteMemory(id);
+        if (deleted) {
+          console.log(chalk.green(`Memory deleted`));
+        } else {
+          console.log(chalk.red(`Memory not found: ${id}`));
+        }
+      }
+    },
+  },
+  {
+    name: 'doctor',
+    aliases: ['dr', 'health'],
+    description: 'Run comprehensive health checks for APEX environment',
+    usage: '/doctor [--quick] [--json] | /doctor --quick (skip slow checks) | /doctor --json (JSON output)',
+    handler: async (ctx, args) => {
+      await handleDoctor(ctx, args);
+    },
+  },
+  {
+    name: 'map-codebase',
+    aliases: ['map', 'analyze'],
+    description: 'Analyze existing codebase and generate comprehensive documentation',
+    usage: '/map-codebase [--output-dir <path>] [--parallel <n>] [--output-format <type>] [--include-debt] [--quick] [--verbose]',
+    handler: async (ctx, args) => {
+      await handleMapCodebase(ctx, args);
+    },
+  },
+  {
+    name: 'context',
+    aliases: ['ctx'],
+    description: 'Show context allocation visualization',
+    usage: '/context',
+    handler: async (ctx, _args) => {
+      if (!ctx.orchestrator) {
+        console.log(chalk.red('Orchestrator not initialized. Run a task first.'));
+        return;
+      }
+      const viz = ctx.orchestrator.getContextVisualization();
+      if (!viz) {
+        console.log(chalk.gray('No context data available. Run a task first to see context allocation.'));
+        return;
+      }
+      console.log(chalk.bold('\nSmart Context Allocation:\n'));
+      console.log(viz);
+    },
+  },
 ];
 
 // ============================================================================
@@ -4615,6 +4808,11 @@ async function startREPL(): Promise<void> {
   console.log(chalk.cyan(banner));
   console.log(chalk.gray(`  v${VERSION}\n`));
 
+  // Check for available updates (non-blocking)
+  checkAndNotifyUpdates().catch(() => {
+    // Silently fail - update checking is non-critical
+  });
+
   // Check initialization
   ctx.initialized = await isApexInitialized(ctx.cwd);
 
@@ -5358,6 +5556,14 @@ fi
 // ============================================================================
 
 async function executeNonInteractiveCommand(cmdName: string, args: string[]): Promise<void> {
+  // Check for available updates (non-blocking) - only for user-facing commands
+  const isUserCommand = !['daemon', 'service', 'doctor', 'usage'].includes(cmdName);
+  if (isUserCommand) {
+    checkAndNotifyUpdates().catch(() => {
+      // Silently fail - update checking is non-critical
+    });
+  }
+
   // Initialize context
   ctx.initialized = await isApexInitialized(ctx.cwd);
 

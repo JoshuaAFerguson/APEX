@@ -1,21 +1,23 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '../../../__tests__/test-utils';
+import { render, screen } from '../../__tests__/test-utils';
 import { StatusBar, StatusBarProps } from '../StatusBar';
 
-// Mock useStdoutDimensions hook
-const mockUseStdoutDimensions = vi.fn(() => ({
-  width: 120,
-  height: 30,
-  breakpoint: 'normal' as const,
-  isAvailable: true,
-  isNarrow: false,
-  isCompact: false,
-  isNormal: true,
-  isWide: false,
+// Use vi.hoisted to ensure mock function is available during module hoisting
+const { mockUseStdoutDimensions } = vi.hoisted(() => ({
+  mockUseStdoutDimensions: vi.fn(() => ({
+    width: 120,
+    height: 30,
+    breakpoint: 'normal' as const,
+    isAvailable: true,
+    isNarrow: false,
+    isCompact: false,
+    isNormal: true,
+    isWide: false,
+  })),
 }));
 
-vi.mock('../hooks/useStdoutDimensions.js', () => ({
+vi.mock('../../hooks/useStdoutDimensions.js', () => ({
   useStdoutDimensions: mockUseStdoutDimensions,
 }));
 
@@ -91,23 +93,32 @@ describe('StatusBar - buildSegments Function', () => {
     });
 
     it('handles auto mode abbreviation based on terminal width', () => {
+      // 4-tier breakpoint system:
+      // narrow (<60): critical+high only, abbreviated labels
+      // compact (60-100): critical+high+medium, full labels
+      // normal (100-160): critical+high+medium, full labels
+      // wide (>160): all priorities, full labels
+      //
+      // Tokens (MEDIUM) are only visible in compact+ modes
+      // Abbreviations only apply in narrow mode
       const testCases = [
-        { width: 60, expectAbbreviated: true },  // < 80
-        { width: 79, expectAbbreviated: true },  // < 80
-        { width: 80, expectAbbreviated: false }, // >= 80
-        { width: 120, expectAbbreviated: false }, // >= 80
+        // narrow: tokens (MEDIUM) filtered out, can't test abbreviation there
+        // compact: tokens visible, no abbreviation (compact uses full labels)
+        { width: 80, breakpoint: 'compact' as const, isNarrow: false, isCompact: true, isNormal: false, isWide: false, expectAbbreviated: false, expectTokens: true },
+        // normal: tokens visible, no abbreviation
+        { width: 120, breakpoint: 'normal' as const, isNarrow: false, isCompact: false, isNormal: true, isWide: false, expectAbbreviated: false, expectTokens: true },
       ];
 
-      testCases.forEach(({ width, expectAbbreviated }) => {
+      testCases.forEach(({ width, breakpoint, isNarrow, isCompact, isNormal, isWide, expectAbbreviated, expectTokens }) => {
         mockUseStdoutDimensions.mockReturnValue({
           width,
           height: 30,
-          breakpoint: width < 80 ? 'narrow' : (width < 100 ? 'compact' : 'normal') as any,
+          breakpoint,
           isAvailable: true,
-          isNarrow: width < 80,
-          isCompact: width >= 80 && width < 100,
-          isNormal: width >= 100,
-          isWide: false,
+          isNarrow,
+          isCompact,
+          isNormal,
+          isWide,
         });
 
         const { unmount } = render(
@@ -119,15 +130,22 @@ describe('StatusBar - buildSegments Function', () => {
           />
         );
 
+        if (expectTokens) {
+          if (expectAbbreviated) {
+            expect(screen.getByText('tok:')).toBeInTheDocument();
+            expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+          } else {
+            expect(screen.getByText('tokens:')).toBeInTheDocument();
+            expect(screen.queryByText('tok:')).not.toBeInTheDocument();
+          }
+        }
+
+        // Model (HIGH) should always be visible
         if (expectAbbreviated) {
-          expect(screen.getByText('tok:')).toBeInTheDocument();
           expect(screen.getByText('mod:')).toBeInTheDocument();
-          expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
           expect(screen.queryByText('model:')).not.toBeInTheDocument();
         } else {
-          expect(screen.getByText('tokens:')).toBeInTheDocument();
           expect(screen.getByText('model:')).toBeInTheDocument();
-          expect(screen.queryByText('tok:')).not.toBeInTheDocument();
           expect(screen.queryByText('mod:')).not.toBeInTheDocument();
         }
 
@@ -139,8 +157,11 @@ describe('StatusBar - buildSegments Function', () => {
   describe('segment generation with abbreviations', () => {
     it('creates segments with correct abbreviatedLabel properties', () => {
       // Test that all expected segments are generated with their abbreviations
+      // In narrow mode (<60): only critical+high priority shown
+      // Tokens (MEDIUM) and API/Web URLs (LOW) are filtered out in narrow mode
+      // Use narrow mode to test HIGH priority abbreviations (model, cost)
       mockUseStdoutDimensions.mockReturnValue({
-        width: 70, // Force abbreviated mode
+        width: 50, // narrow mode (<60)
         height: 24,
         breakpoint: 'narrow' as const,
         isAvailable: true,
@@ -159,24 +180,26 @@ describe('StatusBar - buildSegments Function', () => {
           model="opus"
           apiUrl="http://localhost:4000"
           webUrl="http://localhost:3000"
-          detailedTiming={{
-            totalActiveTime: 120000,
-            totalIdleTime: 30000,
-            currentStageElapsed: 60000,
-          }}
-          workflowStage="implementation"
         />
       );
 
-      // Check abbreviated labels are used
-      expect(screen.getByText('tok:')).toBeInTheDocument();
+      // In narrow mode:
+      // - HIGH priority segments are shown with abbreviated labels
+      // - Model (HIGH) should use 'mod:' abbreviation
       expect(screen.getByText('mod:')).toBeInTheDocument();
-      expect(screen.getByText('api:')).toBeInTheDocument();
-      expect(screen.getByText('web:')).toBeInTheDocument();
+      expect(screen.queryByText('model:')).not.toBeInTheDocument();
 
-      // Cost should show just value (no label when abbreviated)
+      // Cost (HIGH) should show just value (no label when abbreviated)
       expect(screen.getByText('$0.1234')).toBeInTheDocument();
       expect(screen.queryByText('cost:')).not.toBeInTheDocument();
+
+      // Tokens (MEDIUM) are filtered out in narrow mode
+      expect(screen.queryByText('tok:')).not.toBeInTheDocument();
+      expect(screen.queryByText('tokens:')).not.toBeInTheDocument();
+
+      // API/Web URLs (LOW) are filtered out in narrow mode
+      expect(screen.queryByText('api:')).not.toBeInTheDocument();
+      expect(screen.queryByText('web:')).not.toBeInTheDocument();
     });
 
     it('handles segments without abbreviatedLabel property', () => {
@@ -361,6 +384,8 @@ describe('StatusBar - buildSegments Function', () => {
     });
 
     it('does not filter segments in verbose mode regardless of width', () => {
+      // Verbose mode skips tier filtering, showing ALL segments regardless of breakpoint
+      // However, in narrow mode, abbreviated labels are used
       mockUseStdoutDimensions.mockReturnValue({
         width: 40, // Very narrow terminal
         height: 24,
@@ -388,17 +413,29 @@ describe('StatusBar - buildSegments Function', () => {
         />
       );
 
-      // All segments should be present in verbose mode
+      // All segments should be present in verbose mode (bypasses tier filtering)
       expect(screen.getByText('feature/verbose-mode')).toBeInTheDocument();
       expect(screen.getByText('planner')).toBeInTheDocument();
       expect(screen.getByText('implementation')).toBeInTheDocument();
-      expect(screen.getByText('tokens:')).toBeInTheDocument();
-      expect(screen.getByText('total:')).toBeInTheDocument();
-      expect(screen.getByText('cost:')).toBeInTheDocument();
-      expect(screen.getByText('session:')).toBeInTheDocument();
-      expect(screen.getByText('model:')).toBeInTheDocument();
-      expect(screen.getByText('api:')).toBeInTheDocument();
-      expect(screen.getByText('web:')).toBeInTheDocument();
+
+      // In verbose mode with narrow width, abbreviated labels are used
+      expect(screen.getByText('tk:')).toBeInTheDocument(); // abbreviated tokens
+      expect(screen.getByText('∑:')).toBeInTheDocument(); // abbreviated total
+
+      // Cost (HIGH) uses no label when abbreviated
+      expect(screen.getByText('$0.1234')).toBeInTheDocument();
+
+      // Session cost uses abbreviated label
+      expect(screen.getByText('sess:')).toBeInTheDocument();
+      expect(screen.getByText('$0.5678')).toBeInTheDocument();
+
+      // Model uses abbreviated label
+      expect(screen.getByText('mod:')).toBeInTheDocument();
+
+      // API/Web URLs use abbreviated labels
+      expect(screen.getByText('→')).toBeInTheDocument(); // abbreviated api
+      expect(screen.getByText('↗')).toBeInTheDocument(); // abbreviated web
+
       expect(screen.getByText('🔍 VERBOSE')).toBeInTheDocument();
     });
   });
@@ -446,6 +483,18 @@ describe('StatusBar - buildSegments Function', () => {
     });
 
     it('handles session name truncation on left side', () => {
+      // Session name (LOW priority) is only visible in wide mode
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 180,
+        height: 30,
+        breakpoint: 'wide' as const,
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+      });
+
       render(
         <StatusBar
           {...defaultProps}
@@ -474,6 +523,18 @@ describe('StatusBar - buildSegments Function', () => {
 
   describe('special indicators and modes', () => {
     it('includes preview mode indicator', () => {
+      // Preview indicator (LOW priority) is only visible in wide mode
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 180,
+        height: 30,
+        breakpoint: 'wide' as const,
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+      });
+
       render(
         <StatusBar
           {...defaultProps}
@@ -486,6 +547,18 @@ describe('StatusBar - buildSegments Function', () => {
     });
 
     it('includes show thoughts indicator', () => {
+      // Show thoughts indicator (LOW priority) is only visible in wide mode
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 180,
+        height: 30,
+        breakpoint: 'wide' as const,
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+      });
+
       render(
         <StatusBar
           {...defaultProps}
@@ -526,6 +599,18 @@ describe('StatusBar - buildSegments Function', () => {
 
   describe('URL formatting', () => {
     it('strips localhost from API and web URLs', () => {
+      // API/Web URLs (LOW priority) are only visible in wide mode
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 180,
+        height: 30,
+        breakpoint: 'wide' as const,
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+      });
+
       render(
         <StatusBar
           {...defaultProps}
@@ -546,6 +631,18 @@ describe('StatusBar - buildSegments Function', () => {
     });
 
     it('handles non-localhost URLs correctly', () => {
+      // API/Web URLs (LOW priority) are only visible in wide mode
+      mockUseStdoutDimensions.mockReturnValue({
+        width: 180,
+        height: 30,
+        breakpoint: 'wide' as const,
+        isAvailable: true,
+        isNarrow: false,
+        isCompact: false,
+        isNormal: false,
+        isWide: true,
+      });
+
       render(
         <StatusBar
           {...defaultProps}

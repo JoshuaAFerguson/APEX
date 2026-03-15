@@ -8,6 +8,9 @@ import {
   MCPInstallation,
   MCPInstallationStatus,
   MCPServer,
+  ApexErrorCode,
+  MCPInstallationError,
+  MCPInstallationErrorContext,
 } from '@apexcli/core';
 import { TaskStore } from './store';
 
@@ -23,6 +26,37 @@ interface RollbackState {
   configPath?: string;
   /** Installation ID if it was stored in the database */
   installationId?: string;
+}
+
+/**
+ * Result of rollback operations, tracking what was successfully cleaned up
+ */
+interface RollbackResult {
+  /** Steps that were successfully rolled back */
+  rolledBack: ('package' | 'config' | 'database')[];
+  /** Steps that failed to rollback */
+  failed: {
+    step: 'package' | 'config' | 'database';
+    error: Error;
+  }[];
+  /** Whether rollback was completely successful */
+  success: boolean;
+}
+
+/**
+ * Detailed verification result for installation integrity
+ */
+interface VerificationResult {
+  isValid: boolean;
+  checks: {
+    databaseRecord: boolean;
+    configFileExists: boolean;
+    configFileValid: boolean;
+    configContentValid: boolean;
+    packageInstalled?: boolean;  // Optional npm verification
+  };
+  issues: string[];
+  corruptionType?: 'missing_db_record' | 'missing_config' | 'invalid_config' | 'corrupted_package';
 }
 
 export interface MCPInstallationOptions {
@@ -111,7 +145,18 @@ export class MCPInstaller {
     // Check if already installed
     const existing = await this.getInstallation(server.name);
     if (existing && !options.force) {
-      throw new Error(`MCP server '${server.name}' is already installed. Use force option to reinstall.`);
+      throw new MCPInstallationError(
+        `MCP server '${server.name}' is already installed`,
+        ApexErrorCode.MCP_ALREADY_INSTALLED,
+        {
+          serverId: server.name,
+          recoverySteps: [
+            'Use the --force option to reinstall',
+            'First uninstall the existing server if needed',
+            'Check if you meant to install a different server'
+          ]
+        }
+      );
     }
 
     const installationId = this.generateInstallationId();
@@ -131,38 +176,56 @@ export class MCPInstaller {
 
     try {
       // Step 1: Execute npm install
-      await this.executeInstallation(server, options);
-      rollbackState.packageInstalled = true;
+      try {
+        await this.executeInstallation(server, options);
+        rollbackState.packageInstalled = true;
+      } catch (error) {
+        const rollbackResult = await this.rollbackInstallation(server, options, rollbackState);
+        throw this.buildInstallationError(server.name, 'npm_install', error as Error, rollbackResult);
+      }
 
       // Step 2: Create config file
-      const configPath = await this.createConfigFile(server, installationId);
-      rollbackState.configPath = configPath;
+      try {
+        const configPath = await this.createConfigFile(server, installationId);
+        rollbackState.configPath = configPath;
+      } catch (error) {
+        const rollbackResult = await this.rollbackInstallation(server, options, rollbackState);
+        throw this.buildInstallationError(server.name, 'config_creation', error as Error, rollbackResult);
+      }
 
       // Step 3: Store installation record
-      const installation: MCPInstallation & { installedFrom: string; configJson: string } = {
-        id: installationId,
-        serverId: server.name,
-        installedAt: new Date(),
-        status: 'installed' as MCPInstallationStatus,
-        configPath,
-        installedFrom,
-        configJson: JSON.stringify(serverConfig),
-      };
-      await this.store.createMcpInstallation(installation);
-      rollbackState.installationId = installationId;
+      try {
+        const installation: MCPInstallation & { installedFrom: string; configJson: string } = {
+          id: installationId,
+          serverId: server.name,
+          installedAt: new Date(),
+          status: 'installed' as MCPInstallationStatus,
+          configPath: rollbackState.configPath!,
+          installedFrom,
+          configJson: JSON.stringify(serverConfig),
+        };
+        await this.store.createMcpInstallation(installation);
+        rollbackState.installationId = installationId;
 
-      return {
-        name: server.name,
-        config: serverConfig,
-        installedFrom,
-        installedAt: installation.installedAt,
-      };
+        return {
+          name: server.name,
+          config: serverConfig,
+          installedFrom,
+          installedAt: installation.installedAt,
+        };
+      } catch (error) {
+        const rollbackResult = await this.rollbackInstallation(server, options, rollbackState);
+        throw this.buildInstallationError(server.name, 'database_record', error as Error, rollbackResult);
+      }
     } catch (error) {
-      // Rollback any partial state
-      await this.rollbackInstallation(server, options, rollbackState);
-      throw new Error(
-        `Failed to install MCP server '${server.name}': ${error instanceof Error ? error.message : String(error)}`
-      );
+      // If this is already an MCPInstallationError, re-throw it
+      if (error instanceof MCPInstallationError) {
+        throw error;
+      }
+
+      // For unexpected errors, rollback and create a generic error
+      const rollbackResult = await this.rollbackInstallation(server, options, rollbackState);
+      throw this.buildInstallationError(server.name, undefined, error as Error, rollbackResult);
     }
   }
 
@@ -190,7 +253,18 @@ export class MCPInstaller {
     // Check if already installed
     const existing = await this.getInstallation(serverName);
     if (existing && !options.force) {
-      throw new Error(`MCP server '${serverName}' is already installed. Use force option to reinstall.`);
+      throw new MCPInstallationError(
+        `MCP server '${serverName}' is already installed`,
+        ApexErrorCode.MCP_ALREADY_INSTALLED,
+        {
+          serverId: serverName,
+          recoverySteps: [
+            'Use the --force option to reinstall',
+            'First uninstall the existing server if needed',
+            'Check if you meant to install a different server'
+          ]
+        }
+      );
     }
 
     const installationId = this.generateInstallationId();
@@ -209,35 +283,57 @@ export class MCPInstaller {
     };
 
     try {
-      await this.executeInstallation(server, options);
-      rollbackState.packageInstalled = true;
+      // Step 1: Execute npm install
+      try {
+        await this.executeInstallation(server, options);
+        rollbackState.packageInstalled = true;
+      } catch (error) {
+        const rollbackResult = await this.rollbackInstallation(server, options, rollbackState);
+        throw this.buildInstallationError(serverName, 'npm_install', error as Error, rollbackResult);
+      }
 
-      const configPath = await this.createConfigFile(server, installationId);
-      rollbackState.configPath = configPath;
+      // Step 2: Create config file
+      try {
+        const configPath = await this.createConfigFile(server, installationId);
+        rollbackState.configPath = configPath;
+      } catch (error) {
+        const rollbackResult = await this.rollbackInstallation(server, options, rollbackState);
+        throw this.buildInstallationError(serverName, 'config_creation', error as Error, rollbackResult);
+      }
 
-      const installation: MCPInstallation & { installedFrom: string; configJson: string } = {
-        id: installationId,
-        serverId: serverName,
-        installedAt: new Date(),
-        status: 'installed' as MCPInstallationStatus,
-        configPath,
-        installedFrom,
-        configJson: JSON.stringify(serverConfig),
-      };
-      await this.store.createMcpInstallation(installation);
-      rollbackState.installationId = installationId;
+      // Step 3: Store installation record
+      try {
+        const installation: MCPInstallation & { installedFrom: string; configJson: string } = {
+          id: installationId,
+          serverId: serverName,
+          installedAt: new Date(),
+          status: 'installed' as MCPInstallationStatus,
+          configPath: rollbackState.configPath!,
+          installedFrom,
+          configJson: JSON.stringify(serverConfig),
+        };
+        await this.store.createMcpInstallation(installation);
+        rollbackState.installationId = installationId;
 
-      return {
-        name: serverName,
-        config: serverConfig,
-        installedFrom,
-        installedAt: installation.installedAt,
-      };
+        return {
+          name: serverName,
+          config: serverConfig,
+          installedFrom,
+          installedAt: installation.installedAt,
+        };
+      } catch (error) {
+        const rollbackResult = await this.rollbackInstallation(server, options, rollbackState);
+        throw this.buildInstallationError(serverName, 'database_record', error as Error, rollbackResult);
+      }
     } catch (error) {
-      await this.rollbackInstallation(server, options, rollbackState);
-      throw new Error(
-        `Failed to install MCP server '${serverName}': ${error instanceof Error ? error.message : String(error)}`
-      );
+      // If this is already an MCPInstallationError, re-throw it
+      if (error instanceof MCPInstallationError) {
+        throw error;
+      }
+
+      // For unexpected errors, rollback and create a generic error
+      const rollbackResult = await this.rollbackInstallation(server, options, rollbackState);
+      throw this.buildInstallationError(serverName, undefined, error as Error, rollbackResult);
     }
   }
 
@@ -342,7 +438,18 @@ export class MCPInstaller {
   async uninstall(serverId: string): Promise<void> {
     const installation = await this.getInstallation(serverId);
     if (!installation) {
-      throw new Error(`MCP server '${serverId}' is not installed`);
+      throw new MCPInstallationError(
+        `MCP server '${serverId}' is not installed`,
+        ApexErrorCode.MCP_SERVER_NOT_FOUND,
+        {
+          serverId,
+          recoverySteps: [
+            'Check the server name spelling',
+            'Use `apex mcp list` to see installed servers',
+            'Verify the server was installed in this workspace'
+          ]
+        }
+      );
     }
 
     try {
@@ -355,7 +462,19 @@ export class MCPInstaller {
       // Note: We don't automatically uninstall npm packages as they might be used by other projects
       // Users would need to run npm uninstall manually if desired
     } catch (error) {
-      throw new Error(`Failed to uninstall MCP server '${serverId}': ${error instanceof Error ? error.message : String(error)}`);
+      throw new MCPInstallationError(
+        `Failed to uninstall MCP server '${serverId}'`,
+        ApexErrorCode.MCP_UNINSTALL_FAILED,
+        {
+          serverId,
+          recoverySteps: [
+            'Check file permissions in .apex directory',
+            'Verify SQLite database is not locked',
+            'Try running with elevated privileges if needed'
+          ]
+        },
+        error as Error
+      );
     }
   }
 
@@ -396,23 +515,82 @@ export class MCPInstaller {
   }
 
   /**
-   * Verify that an installation is in a consistent state:
-   * - Installation record exists in database
-   * - Config file exists on disk
-   * - Config file contains valid JSON
+   * Verify that an installation is in a consistent state with backwards compatibility.
+   * Returns boolean for backwards compatibility, or detailed results if requested.
    */
-  async verifyInstallation(serverId: string): Promise<boolean> {
-    const installation = await this.getInstallation(serverId);
-    if (!installation) return false;
+  async verifyInstallation(serverId: string): Promise<boolean>;
+  async verifyInstallation(serverId: string, detailed: true): Promise<VerificationResult>;
+  async verifyInstallation(serverId: string, detailed?: boolean): Promise<boolean | VerificationResult> {
+    const result: VerificationResult = {
+      isValid: true,
+      checks: {
+        databaseRecord: false,
+        configFileExists: false,
+        configFileValid: false,
+        configContentValid: false,
+      },
+      issues: [],
+    };
 
+    // Check 1: Database record exists
+    const installation = await this.getInstallation(serverId);
+    if (!installation) {
+      result.isValid = false;
+      result.issues.push(`No installation record found for server '${serverId}'`);
+      result.corruptionType = 'missing_db_record';
+      return detailed ? result : false;
+    }
+    result.checks.databaseRecord = true;
+
+    // Check 2: Config file exists
     try {
       await fs.access(installation.configPath);
-      const content = await fs.readFile(installation.configPath, 'utf-8');
-      JSON.parse(content); // Verify valid JSON
-      return true;
+      result.checks.configFileExists = true;
     } catch {
-      return false;
+      result.isValid = false;
+      result.issues.push(`Config file missing at: ${installation.configPath}`);
+      result.corruptionType = 'missing_config';
+      return detailed ? result : false;
     }
+
+    // Check 3: Config file contains valid JSON
+    try {
+      const content = await fs.readFile(installation.configPath, 'utf-8');
+      const config = JSON.parse(content);
+      result.checks.configFileValid = true;
+
+      // Check 4: Config content has required fields
+      if (!config.name || !config.command) {
+        result.isValid = false;
+        result.issues.push('Config file missing required fields (name, command)');
+        result.corruptionType = 'invalid_config';
+        return detailed ? result : false;
+      }
+      result.checks.configContentValid = true;
+    } catch (e) {
+      result.isValid = false;
+      result.issues.push(`Config file contains invalid JSON: ${(e as Error).message}`);
+      result.corruptionType = 'invalid_config';
+      return detailed ? result : false;
+    }
+
+    // Check 5: Optional npm package verification (for npx/npm installations)
+    if (installation.installedFrom === 'npm' || installation.installedFrom === 'npx') {
+      try {
+        const packageInstalled = await this.verifyPackageInstalled(serverId);
+        result.checks.packageInstalled = packageInstalled;
+        if (!packageInstalled) {
+          result.isValid = false;
+          result.issues.push(`npm package appears to be missing or corrupted`);
+          result.corruptionType = 'corrupted_package';
+        }
+      } catch {
+        // Package verification is optional, don't fail entirely
+        result.checks.packageInstalled = undefined;
+      }
+    }
+
+    return detailed ? result : result.isValid;
   }
 
   /**
@@ -649,48 +827,62 @@ export class MCPInstaller {
 
   /**
    * Rollback a partial installation by cleaning up state in reverse order.
-   * This is best-effort: individual rollback steps may fail without
-   * preventing other rollback steps from executing.
+   * Returns detailed information about what was successfully cleaned up
+   * and any failures that occurred during rollback.
    */
   private async rollbackInstallation(
     server: MCPServer,
     options: MCPInstallationOptions,
     state: RollbackState
-  ): Promise<void> {
-    const errors: Error[] = [];
+  ): Promise<RollbackResult> {
+    const result: RollbackResult = {
+      rolledBack: [],
+      failed: [],
+      success: true,
+    };
 
-    // Step 3 rollback: Remove database record (reverse of step 4)
+    // Step 3 rollback: Remove database record (reverse order)
     if (state.installationId) {
       try {
+        // Update status to 'failed' before deleting
+        await this.store.updateMcpInstallationStatus(
+          state.installationId,
+          'failed'
+        );
         await this.store.removeMcpInstallation(state.installationId);
+        result.rolledBack.push('database');
       } catch (e) {
-        errors.push(e as Error);
+        result.failed.push({ step: 'database', error: e as Error });
+        result.success = false;
       }
     }
 
-    // Step 2 rollback: Remove config file (reverse of step 3)
+    // Step 2 rollback: Remove config file
     if (state.configPath) {
       try {
         await this.removeConfigFile(state.configPath);
+        result.rolledBack.push('config');
       } catch (e) {
-        errors.push(e as Error);
+        result.failed.push({ step: 'config', error: e as Error });
+        result.success = false;
       }
     }
 
-    // Step 1 rollback: Uninstall npm package (reverse of step 2)
+    // Step 1 rollback: Uninstall npm package
     if (state.packageInstalled) {
       try {
         await this.executeUninstallCommand(server, options);
+        result.rolledBack.push('package');
       } catch (e) {
-        errors.push(e as Error);
+        result.failed.push({ step: 'package', error: e as Error });
+        result.success = false;
       }
     }
 
-    // Rollback errors are logged but not thrown - this is best-effort cleanup
-    if (errors.length > 0) {
-      // Future: could emit a warning event
-      // For now, we silently swallow rollback errors to ensure original error propagates
-    }
+    // Log rollback outcome for debugging
+    this.logRollbackResult(server.name, result);
+
+    return result;
   }
 
   /**
@@ -726,6 +918,105 @@ export class MCPInstaller {
       if ((error as any)?.code !== 'ENOENT') {
         throw error;
       }
+    }
+  }
+
+  /**
+   * Log the result of a rollback operation for debugging
+   */
+  private logRollbackResult(serverName: string, result: RollbackResult): void {
+    if (result.success) {
+      // Successful rollback - log at debug level
+      console.debug(`Rollback successful for '${serverName}': ${result.rolledBack.join(', ')}`);
+    } else {
+      // Failed rollback - log at warn level with details
+      console.warn(`Rollback partially failed for '${serverName}':`);
+      console.warn(`  - Successfully rolled back: ${result.rolledBack.join(', ')}`);
+      console.warn(`  - Failed to rollback: ${result.failed.map(f => `${f.step} (${f.error.message})`).join(', ')}`);
+    }
+  }
+
+  /**
+   * Build a descriptive MCPInstallationError with recovery steps
+   */
+  private buildInstallationError(
+    serverId: string,
+    failedStep: MCPInstallationErrorContext['failedStep'],
+    originalError: Error,
+    rollbackResult?: RollbackResult
+  ): MCPInstallationError {
+    const recoverySteps: string[] = [];
+    let code: ApexErrorCode;
+    let message: string;
+
+    switch (failedStep) {
+      case 'npm_install':
+        code = ApexErrorCode.MCP_PACKAGE_INSTALL_FAILED;
+        message = `Failed to install npm package for MCP server '${serverId}'`;
+        recoverySteps.push(
+          'Check your network connection',
+          'Verify the package name is correct',
+          'Try running: npm cache clean --force',
+          'Check npm registry status at status.npmjs.org'
+        );
+        break;
+      case 'config_creation':
+        code = ApexErrorCode.MCP_CONFIG_CREATION_FAILED;
+        message = `Failed to create configuration file for MCP server '${serverId}'`;
+        recoverySteps.push(
+          'Check disk space availability',
+          'Verify write permissions in .apex directory',
+          'Try running with elevated privileges if needed'
+        );
+        break;
+      case 'database_record':
+        code = ApexErrorCode.MCP_DATABASE_RECORD_FAILED;
+        message = `Failed to save installation record for MCP server '${serverId}'`;
+        recoverySteps.push(
+          'Check SQLite database integrity',
+          'Verify .apex directory permissions',
+          'Try running: apex db repair'
+        );
+        break;
+      default:
+        code = ApexErrorCode.MCP_INSTALLATION_FAILED;
+        message = `Failed to install MCP server '${serverId}'`;
+    }
+
+    // Add rollback failure information
+    if (rollbackResult && !rollbackResult.success) {
+      message += '. Partial cleanup failed - manual intervention may be required.';
+      rollbackResult.failed.forEach(f => {
+        recoverySteps.push(`Manually remove ${f.step}: ${f.error.message}`);
+      });
+    }
+
+    return new MCPInstallationError(
+      message,
+      code,
+      {
+        serverId,
+        failedStep,
+        rollbackAttempts: rollbackResult?.failed.map(f => ({
+          step: f.step,
+          success: false,
+          error: f.error.message,
+        })),
+        recoverySteps,
+      },
+      originalError
+    );
+  }
+
+  /**
+   * Verify that a package is installed via npm
+   */
+  private async verifyPackageInstalled(packageName: string): Promise<boolean> {
+    try {
+      await execAsync(`npm list ${packageName}`, { cwd: this.projectPath });
+      return true;
+    } catch {
+      return false;
     }
   }
 }

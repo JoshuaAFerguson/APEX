@@ -941,8 +941,7 @@ export class BrowserTool {
         {
           sessionId: this.sessionId,
           operation: 'ensurePage',
-          state: this.state,
-          metadata: { resourceState: this.resourceState }
+          metadata: { state: this.state, resourceState: this.resourceState }
         }
       );
     }
@@ -954,8 +953,7 @@ export class BrowserTool {
         {
           sessionId: this.sessionId,
           operation: 'ensurePage',
-          state: this.state,
-          metadata: { resourceState: this.resourceState }
+          metadata: { state: this.state, resourceState: this.resourceState }
         }
       );
     }
@@ -2367,9 +2365,9 @@ export class BrowserTool {
         ApexErrorCode.BROWSER_RESOURCE_LEAK,
         {
           operation,
-          target,
           sessionId: this.sessionId,
           metadata: {
+            target,
             originalDenialReason: denialReason,
             resourceState: this.resourceState,
             cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)

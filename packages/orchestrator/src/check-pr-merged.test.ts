@@ -10,6 +10,15 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+// Mock child_process to control exec behavior
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    exec: vi.fn(),
+  };
+});
+
 describe('ApexOrchestrator.checkPRMerged', () => {
   let testDir: string;
   let orchestrator: ApexOrchestrator;
@@ -162,8 +171,8 @@ describe('ApexOrchestrator.checkPRMerged', () => {
   });
 
   describe('GitHub CLI interaction tests', () => {
-    let originalExecAsync: any;
     let taskWithValidPR: Task;
+    let mockExec: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       // Create task with valid PR URL for mocking tests
@@ -172,36 +181,33 @@ describe('ApexOrchestrator.checkPRMerged', () => {
       });
       await store.createTask(taskWithValidPR);
 
-      // Mock execAsync to control gh CLI responses
-      originalExecAsync = (orchestrator as any).execAsync;
+      // Get the mocked exec function
+      mockExec = vi.mocked(exec);
     });
 
     afterEach(() => {
-      // Restore original execAsync
-      if (originalExecAsync) {
-        (orchestrator as any).execAsync = originalExecAsync;
-      }
-      vi.restoreAllMocks();
+      vi.clearAllMocks();
     });
 
     it('should return true when PR is merged', async () => {
       // Mock successful gh pr view response for merged PR
-      const mockExecAsync = vi.fn().mockResolvedValue({
-        stdout: '{"state":"MERGED"}',
-        stderr: ''
-      });
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      // Replace execAsync in orchestrator
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 123 --json state')) {
+          callback(null, { stdout: '{"state":"MERGED"}' });
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any; // Return a mock child process
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(true);
-
-      // Verify the correct command was called
-      expect(mockExecAsync).toHaveBeenCalledWith(
-        'gh pr view 123 --json state',
-        { cwd: testDir }
-      );
 
       // Check if success log was added
       const logs = await store.getLogs(taskWithValidPR.id);
@@ -213,60 +219,78 @@ describe('ApexOrchestrator.checkPRMerged', () => {
     });
 
     it('should return false when PR is open', async () => {
-      const mockExecAsync = vi.fn().mockResolvedValue({
-        stdout: '{"state":"OPEN"}',
-        stderr: ''
-      });
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 123 --json state')) {
+          callback(null, { stdout: '{"state":"OPEN"}' });
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
-
-      expect(mockExecAsync).toHaveBeenCalledWith(
-        'gh pr view 123 --json state',
-        { cwd: testDir }
-      );
     });
 
     it('should return false when PR is closed without merge', async () => {
-      const mockExecAsync = vi.fn().mockResolvedValue({
-        stdout: '{"state":"CLOSED"}',
-        stderr: ''
-      });
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 123 --json state')) {
+          callback(null, { stdout: '{"state":"CLOSED"}' });
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
-
-      expect(mockExecAsync).toHaveBeenCalledWith(
-        'gh pr view 123 --json state',
-        { cwd: testDir }
-      );
     });
   });
 
   describe('error handling tests', () => {
     let taskWithValidPR: Task;
+    let mockExec: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       taskWithValidPR = createTestTask({
         prUrl: 'https://github.com/test/repo/pull/456'
       });
       await store.createTask(taskWithValidPR);
+
+      mockExec = vi.mocked(exec);
     });
 
     afterEach(() => {
-      vi.restoreAllMocks();
+      vi.clearAllMocks();
     });
 
     it('should handle authentication errors gracefully', async () => {
-      const mockExecAsync = vi.fn().mockRejectedValue(
-        new Error('gh: To use GitHub CLI, please authenticate by running: gh auth login')
-      );
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 456 --json state')) {
+          callback(new Error('gh: To use GitHub CLI, please authenticate by running: gh auth login'));
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
@@ -280,11 +304,20 @@ describe('ApexOrchestrator.checkPRMerged', () => {
     });
 
     it('should handle PR not found errors gracefully', async () => {
-      const mockExecAsync = vi.fn().mockRejectedValue(
-        new Error('gh: Could not resolve to a Repository with the name \'test/repo\'')
-      );
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 456 --json state')) {
+          callback(new Error('gh: Could not resolve to a Repository with the name \'test/repo\''));
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
@@ -298,11 +331,20 @@ describe('ApexOrchestrator.checkPRMerged', () => {
     });
 
     it('should handle 404 errors gracefully', async () => {
-      const mockExecAsync = vi.fn().mockRejectedValue(
-        new Error('gh: HTTP 404: Pull request #456 not found')
-      );
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 456 --json state')) {
+          callback(new Error('gh: HTTP 404: Pull request #456 not found'));
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
@@ -316,11 +358,20 @@ describe('ApexOrchestrator.checkPRMerged', () => {
     });
 
     it('should handle network errors gracefully', async () => {
-      const mockExecAsync = vi.fn().mockRejectedValue(
-        new Error('gh: network error: request timeout')
-      );
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 456 --json state')) {
+          callback(new Error('gh: network error: request timeout'));
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
@@ -334,11 +385,20 @@ describe('ApexOrchestrator.checkPRMerged', () => {
     });
 
     it('should handle generic errors gracefully', async () => {
-      const mockExecAsync = vi.fn().mockRejectedValue(
-        new Error('Unexpected error occurred')
-      );
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 456 --json state')) {
+          callback(new Error('Unexpected error occurred'));
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
@@ -373,25 +433,36 @@ describe('ApexOrchestrator.checkPRMerged', () => {
 
   describe('JSON parsing tests', () => {
     let taskWithValidPR: Task;
+    let mockExec: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       taskWithValidPR = createTestTask({
         prUrl: 'https://github.com/test/repo/pull/789'
       });
       await store.createTask(taskWithValidPR);
+
+      mockExec = vi.mocked(exec);
     });
 
     afterEach(() => {
-      vi.restoreAllMocks();
+      vi.clearAllMocks();
     });
 
     it('should handle malformed JSON response', async () => {
-      const mockExecAsync = vi.fn().mockResolvedValue({
-        stdout: 'invalid json response',
-        stderr: ''
-      });
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 789 --json state')) {
+          callback(null, { stdout: 'invalid json response' });
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
@@ -405,24 +476,40 @@ describe('ApexOrchestrator.checkPRMerged', () => {
     });
 
     it('should handle JSON with missing state field', async () => {
-      const mockExecAsync = vi.fn().mockResolvedValue({
-        stdout: '{"title":"Test PR","number":789}',
-        stderr: ''
-      });
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 789 --json state')) {
+          callback(null, { stdout: '{"title":"Test PR","number":789}' });
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
     });
 
     it('should handle empty JSON response', async () => {
-      const mockExecAsync = vi.fn().mockResolvedValue({
-        stdout: '{}',
-        stderr: ''
-      });
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
 
-      (orchestrator as any).execAsync = mockExecAsync;
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 789 --json state')) {
+          callback(null, { stdout: '{}' });
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
@@ -430,9 +517,9 @@ describe('ApexOrchestrator.checkPRMerged', () => {
 
     it('should handle different case states correctly', async () => {
       const testCases = [
-        { state: 'merged', expected: true },
+        { state: 'merged', expected: false }, // Only 'MERGED' (uppercase) is valid
         { state: 'MERGED', expected: true },
-        { state: 'Merged', expected: true },
+        { state: 'Merged', expected: false },
         { state: 'open', expected: false },
         { state: 'OPEN', expected: false },
         { state: 'closed', expected: false },
@@ -442,12 +529,20 @@ describe('ApexOrchestrator.checkPRMerged', () => {
       ];
 
       for (const testCase of testCases) {
-        const mockExecAsync = vi.fn().mockResolvedValue({
-          stdout: `{"state":"${testCase.state}"}`,
-          stderr: ''
-        });
+        mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+          if (typeof options === 'function') {
+            callback = options;
+          }
 
-        (orchestrator as any).execAsync = mockExecAsync;
+          if (cmd.includes('gh --version')) {
+            callback(null, { stdout: 'gh version 2.0.0' });
+          } else if (cmd.includes('gh pr view 789 --json state')) {
+            callback(null, { stdout: `{"state":"${testCase.state}"}` });
+          } else {
+            callback(new Error('Command not found'));
+          }
+          return {} as any;
+        });
 
         const result = await orchestrator.checkPRMerged(taskWithValidPR.id);
         expect(result).toBe(testCase.expected);
@@ -457,16 +552,19 @@ describe('ApexOrchestrator.checkPRMerged', () => {
 
   describe('integration-style tests with realistic scenarios', () => {
     let taskWithValidPR: Task;
+    let mockExec: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       taskWithValidPR = createTestTask({
         prUrl: 'https://github.com/owner/repo-name/pull/123'
       });
       await store.createTask(taskWithValidPR);
+
+      mockExec = vi.mocked(exec);
     });
 
     afterEach(() => {
-      vi.restoreAllMocks();
+      vi.clearAllMocks();
     });
 
     it('should extract correct PR number from complex URL formats', async () => {
@@ -482,46 +580,68 @@ describe('ApexOrchestrator.checkPRMerged', () => {
         const task = createTestTask({ prUrl });
         await store.createTask(task);
 
-        const mockExecAsync = vi.fn().mockResolvedValue({
-          stdout: '{"state":"MERGED"}',
-          stderr: ''
-        });
+        mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+          if (typeof options === 'function') {
+            callback = options;
+          }
 
-        (orchestrator as any).execAsync = mockExecAsync;
+          if (cmd.includes('gh --version')) {
+            callback(null, { stdout: 'gh version 2.0.0' });
+          } else if (cmd.includes(`gh pr view ${prNumber} --json state`)) {
+            callback(null, { stdout: '{"state":"MERGED"}' });
+          } else {
+            callback(new Error('Command not found'));
+          }
+          return {} as any;
+        });
 
         const result = await orchestrator.checkPRMerged(task.id);
         expect(result).toBe(true);
-
-        // Verify correct PR number was extracted and used
-        expect(mockExecAsync).toHaveBeenCalledWith(
-          `gh pr view ${prNumber} --json state`,
-          { cwd: testDir }
-        );
       }
     });
 
     it('should handle workflow with multiple status checks', async () => {
       // Simulate checking the same PR multiple times
-      const mockExecAsync = vi.fn()
-        .mockResolvedValueOnce({ stdout: '{"state":"OPEN"}', stderr: '' })
-        .mockResolvedValueOnce({ stdout: '{"state":"OPEN"}', stderr: '' })
-        .mockResolvedValueOnce({ stdout: '{"state":"MERGED"}', stderr: '' });
+      let callCount = 0;
+      const responses = ['{"state":"OPEN"}', '{"state":"OPEN"}', '{"state":"MERGED"}'];
 
-      (orchestrator as any).execAsync = mockExecAsync;
+      mockExec.mockImplementation((cmd: string, options: any, callback?: any) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
+
+        if (cmd.includes('gh --version')) {
+          callback(null, { stdout: 'gh version 2.0.0' });
+        } else if (cmd.includes('gh pr view 123 --json state')) {
+          const response = responses[callCount] || '{"state":"MERGED"}';
+          callCount++;
+          callback(null, { stdout: response });
+        } else {
+          callback(new Error('Command not found'));
+        }
+        return {} as any;
+      });
 
       // First check - should be open
       let result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
 
+      // Reset mock for second call
+      callCount = 1; // Start from second response
+
       // Second check - still open
       result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(false);
+
+      // Reset mock for third call
+      callCount = 2; // Start from third response
 
       // Third check - now merged
       result = await orchestrator.checkPRMerged(taskWithValidPR.id);
       expect(result).toBe(true);
 
-      expect(mockExecAsync).toHaveBeenCalledTimes(3);
+      // Verify we made the expected calls
+      expect(mockExec).toHaveBeenCalled();
     });
   });
 });

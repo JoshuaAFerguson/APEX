@@ -6,7 +6,7 @@
  * with the IdleProcessor to generate improvement tasks during idle periods.
  *
  * Key features:
- * - Configurable strategy weights (maintenance, refactoring, docs, tests)
+ * - Configurable strategy weights (maintenance, refactoring, docs, tests, conventions)
  * - Modular analyzer architecture for each strategy type
  * - Deduplication of generated tasks across generation cycles
  * - Fallback behavior when all weights are zero
@@ -25,6 +25,8 @@ import {
   RefactoringAnalyzer,
   DocsAnalyzer,
   TestsAnalyzer,
+  TechnicalDebtAnalyzer,
+  ConventionAnalyzer,
   type DocumentationReference,
   type SymbolInfo,
   type SymbolIndex,
@@ -33,19 +35,20 @@ import {
 
 /**
  * Default strategy weights when none are provided.
- * Each strategy gets equal weight (0.25 each, totaling 1.0).
+ * Each strategy gets equal weight (0.2 each, totaling 1.0).
  */
 const DEFAULT_WEIGHTS: StrategyWeights = {
-  maintenance: 0.25,
-  refactoring: 0.25,
-  docs: 0.25,
-  tests: 0.25,
+  maintenance: 0.2,
+  refactoring: 0.2,
+  docs: 0.2,
+  tests: 0.2,
+  'technical-debt': 0.2,
 };
 
 /**
  * All available idle task types in selection order.
  */
-const TASK_TYPES: IdleTaskType[] = ['maintenance', 'refactoring', 'docs', 'tests'];
+const TASK_TYPES: IdleTaskType[] = ['maintenance', 'refactoring', 'docs', 'tests', 'technical-debt', 'conventions'];
 
 /**
  * IdleTaskGenerator implements weighted random selection of task types
@@ -87,6 +90,8 @@ export class IdleTaskGenerator {
         ['refactoring', new RefactoringAnalyzer()],
         ['docs', new DocsAnalyzer()],
         ['tests', new TestsAnalyzer()],
+        ['technical-debt', new TechnicalDebtAnalyzer()],
+        ['conventions', new ConventionAnalyzer()],
       ]);
     }
   }

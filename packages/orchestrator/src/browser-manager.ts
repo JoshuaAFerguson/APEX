@@ -240,7 +240,6 @@ export class BrowserManager extends EventEmitter<BrowserManagerEvents> {
         executablePath: finalConfig.executablePath,
         timeout: finalConfig.timeout,
         slowMo: finalConfig.slowMo,
-        devtools: finalConfig.devtools,
         downloadsPath: finalConfig.downloadsPath,
       };
 

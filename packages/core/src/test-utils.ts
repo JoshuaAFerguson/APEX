@@ -1,5 +1,5 @@
 import * as os from 'os';
-import { vi, describe } from 'vitest';
+import { vi, describe, it } from 'vitest';
 
 /**
  * Platform detection utilities for testing
@@ -63,7 +63,7 @@ export function getPlatform(): string {
  */
 export function skipOnWindows(): void {
   if (isWindows()) {
-    vi.skip();
+    (vi as unknown as { skip: () => void }).skip();
   }
 }
 
@@ -81,7 +81,7 @@ export function skipOnWindows(): void {
  */
 export function skipOnUnix(): void {
   if (isUnix()) {
-    vi.skip();
+    (vi as unknown as { skip: () => void }).skip();
   }
 }
 
@@ -99,7 +99,7 @@ export function skipOnUnix(): void {
  */
 export function skipOnMacOS(): void {
   if (isMacOS()) {
-    vi.skip();
+    (vi as unknown as { skip: () => void }).skip();
   }
 }
 
@@ -117,7 +117,7 @@ export function skipOnMacOS(): void {
  */
 export function skipOnLinux(): void {
   if (isLinux()) {
-    vi.skip();
+    (vi as unknown as { skip: () => void }).skip();
   }
 }
 
@@ -135,7 +135,7 @@ export function skipOnLinux(): void {
  */
 export function skipUnlessWindows(): void {
   if (!isWindows()) {
-    vi.skip();
+    (vi as unknown as { skip: () => void }).skip();
   }
 }
 
@@ -153,7 +153,7 @@ export function skipUnlessWindows(): void {
  */
 export function skipUnlessUnix(): void {
   if (!isUnix()) {
-    vi.skip();
+    (vi as unknown as { skip: () => void }).skip();
   }
 }
 
@@ -723,8 +723,6 @@ export function createMockSearchToolConfig(overrides: Partial<SearchToolConfig> 
     ...baseConfig,
     directoryAccess: undefined,
     maxResults: 0,
-    caseSensitive: undefined,
-    includeHidden: undefined,
     ...overrides,
   };
 }
@@ -773,8 +771,6 @@ export function createMockDirectoryAccessResult(overrides: Partial<DirectoryAcce
   return {
     allowed: true,
     reason: 'Access granted by configuration',
-    resolvedPath: undefined,
-    appliedRule: undefined,
     ...overrides,
   };
 }
@@ -823,7 +819,7 @@ export function createMockPermissionPresetConfig(overrides: Partial<PermissionPr
     name: 'review-all' as PermissionPreset,
     description: 'Mock permission preset for testing',
     defaultBehavior: 'confirm' as ToolPermissionBehavior,
-    toolRules: {},
+    rules: [],
     ...overrides,
   };
 }
@@ -844,8 +840,8 @@ export function createMockPermissionPresetConfig(overrides: Partial<PermissionPr
  */
 export function createMockToolPermissionRule(overrides: Partial<ToolPermissionRule> = {}): ToolPermissionRule {
   return {
+    tool: 'Read',
     behavior: 'confirm' as ToolPermissionBehavior,
-    config: undefined,
     ...overrides,
   };
 }
@@ -867,12 +863,12 @@ export function createMockToolPermissionRule(overrides: Partial<ToolPermissionRu
  */
 export function createMockPermissionRequestEventData(overrides: Partial<PermissionRequestEventData> = {}): PermissionRequestEventData {
   return {
-    tool: 'Read',
-    scope: undefined,
-    reason: 'Mock permission request for testing',
-    agent: 'test-agent',
-    stage: 'test-stage',
     requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    tool: 'Read',
+    description: 'Mock permission request for testing',
+    isDangerous: false,
+    agent: 'test-agent',
+    timestamp: new Date(),
     ...overrides,
   };
 }
@@ -893,12 +889,12 @@ export function createMockPermissionRequestEventData(overrides: Partial<Permissi
  * ```
  */
 export function createMockPermissionGrantedEventData(overrides: Partial<PermissionGrantedEventData> = {}): PermissionGrantedEventData {
-  const requestData = createMockPermissionRequestEventData(overrides);
   return {
-    ...requestData,
+    requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    tool: 'Read',
     level: 'allow-always' as PermissionLevel,
     grantedBy: 'test-user',
-    grantedAt: new Date(),
+    timestamp: new Date(),
     ...overrides,
   };
 }
@@ -919,12 +915,12 @@ export function createMockPermissionGrantedEventData(overrides: Partial<Permissi
  * ```
  */
 export function createMockPermissionDeniedEventData(overrides: Partial<PermissionDeniedEventData> = {}): PermissionDeniedEventData {
-  const requestData = createMockPermissionRequestEventData(overrides);
   return {
-    ...requestData,
-    denialReason: 'Mock denial for testing',
+    requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    tool: 'Read',
     deniedBy: 'test-system',
-    deniedAt: new Date(),
+    timestamp: new Date(),
+    reason: 'Mock denial for testing',
     ...overrides,
   };
 }
@@ -1041,7 +1037,7 @@ export function mockToolPermissions(
       }
 
       // Default to deny if no matching permission found
-      return { allowed: false, level: 'deny' };
+      return { allowed: false, level: 'deny' as PermissionLevel };
     },
     isAllowed: (scope?: string) => {
       const result = context.checkAccess(scope);

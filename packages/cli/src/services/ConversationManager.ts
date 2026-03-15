@@ -51,6 +51,7 @@ export class ConversationManager {
   }
 
   getRecentMessages(count: number = 10): ConversationMessage[] {
+    if (count <= 0) return [];
     return this.context.messages.slice(-count);
   }
 

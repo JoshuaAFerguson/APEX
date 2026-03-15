@@ -205,7 +205,7 @@ function anotherVeryLongFunctionNameThatIsQuiteLong() {
   - Nested item with even more text that definitely exceeds narrow terminal limitations
     - Deeply nested item with extremely long text that tests the limits of narrow terminal rendering
 - Second first-level item
-- Third item with `inline code that is also very long`
+- Third item with \`inline code that is also very long\`
       `;
 
       render(
