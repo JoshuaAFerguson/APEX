@@ -189,12 +189,22 @@ function transformTasksToGraphElements(tasks: Task[]): TaskGraphElements {
     return { nodes: [], edges: [] }
   }
 
-  const positions = calculateTaskPositions(tasks)
+  // Filter out tasks that are completely invalid (null, undefined, or missing id entirely)
+  // Keep tasks with empty string IDs as tests expect them to be handled gracefully
+  const validTasks = tasks.filter(task =>
+    task && task.id !== null && task.id !== undefined && typeof task.id === 'string'
+  )
+
+  if (validTasks.length === 0) {
+    return { nodes: [], edges: [] }
+  }
+
+  const positions = calculateTaskPositions(validTasks)
   const nodes: DependencyNode[] = []
   const edges: DependencyEdge[] = []
 
   // Create nodes for each task
-  for (const task of tasks) {
+  for (const task of validTasks) {
     const position = positions[task.id] || { x: 0, y: 0 }
     // Safe access to task properties with fallbacks for malformed data
     const safeDescription = task.description || 'Untitled Task'
@@ -220,12 +230,12 @@ function transformTasksToGraphElements(tasks: Task[]): TaskGraphElements {
   }
 
   // Create edges for dependencies
-  for (const task of tasks) {
+  for (const task of validTasks) {
     // Create edges for dependsOn relationships
     if (task.dependsOn && Array.isArray(task.dependsOn)) {
       for (const dependencyId of task.dependsOn) {
         // Validate dependency ID and check if dependency task exists
-        if (dependencyId && typeof dependencyId === 'string' && tasks.find(t => t.id === dependencyId)) {
+        if (dependencyId && typeof dependencyId === 'string' && validTasks.find(t => t.id === dependencyId)) {
           const edgeData: TaskEdgeData = {
             relationshipType: 'dependency',
             sourceTaskId: dependencyId,
@@ -255,7 +265,7 @@ function transformTasksToGraphElements(tasks: Task[]): TaskGraphElements {
     // Create edges for parent-child relationships
     if (task.parentTaskId && typeof task.parentTaskId === 'string') {
       // Only create edge if the parent task exists in our current task set
-      if (tasks.find(t => t.id === task.parentTaskId)) {
+      if (validTasks.find(t => t.id === task.parentTaskId)) {
         const edgeData: TaskEdgeData = {
           relationshipType: 'subtask',
           sourceTaskId: task.parentTaskId,
@@ -311,10 +321,15 @@ export function TaskDependencyGraph({
     (node: DependencyNode) => {
       const taskId = (node.data as TaskNodeData).taskId
 
-      if (onTaskClick) {
-        onTaskClick(taskId)
-      } else {
-        router.push(`/tasks/${taskId}`)
+      try {
+        if (onTaskClick) {
+          onTaskClick(taskId)
+        } else {
+          router.push(`/tasks/${taskId}`)
+        }
+      } catch (error) {
+        // Silently handle navigation errors to prevent crashes
+        console.warn('Navigation error:', error)
       }
     },
     [onTaskClick, router]
