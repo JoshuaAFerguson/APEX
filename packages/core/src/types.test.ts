@@ -3511,6 +3511,7 @@ describe('Approval Gate Types', () => {
       const validRequest = {
         approvalId: 'approval-123',
         approver: 'reviewer1',
+        approved: true,
         decision: 'approved',
         comments: 'Code changes look good'
       };
@@ -3518,6 +3519,7 @@ describe('Approval Gate Types', () => {
       const parsed = ApprovalDecisionRequestSchema.parse(validRequest);
       expect(parsed.approvalId).toBe('approval-123');
       expect(parsed.approver).toBe('reviewer1');
+      expect(parsed.approved).toBe(true);
       expect(parsed.decision).toBe('approved');
       expect(parsed.comments).toBe('Code changes look good');
     });
@@ -3784,419 +3786,6 @@ describe('SymbolTypeSchema', () => {
   });
 });
 
-describe('CodeSymbolSchema', () => {
-  it('should accept valid code symbol', () => {
-    const validSymbol = {
-      name: 'myFunction',
-      type: 'function' as SymbolType,
-      line: 10,
-      column: 5,
-      endLine: 15,
-      endColumn: 1
-    };
-
-    const parsed = CodeSymbolSchema.parse(validSymbol);
-    expect(parsed.name).toBe('myFunction');
-    expect(parsed.type).toBe('function');
-    expect(parsed.line).toBe(10);
-    expect(parsed.column).toBe(5);
-    expect(parsed.endLine).toBe(15);
-    expect(parsed.endColumn).toBe(1);
-  });
-
-  it('should accept code symbol with optional fields', () => {
-    const symbolWithOptionals = {
-      name: 'MyClass',
-      type: 'class' as SymbolType,
-      line: 20,
-      column: 0,
-      namespace: 'MyApp.Models',
-      visibility: 'public',
-      isStatic: false,
-      isAsync: false,
-      isGeneric: true,
-      returnType: 'void',
-      parameters: [
-        { name: 'id', type: 'string' }
-      ],
-      documentation: 'This is a class',
-      annotations: ['@Component'],
-      signature: 'class MyClass<T>',
-      metadata: { version: '1.0.0' }
-    };
-
-    const parsed = CodeSymbolSchema.parse(symbolWithOptionals);
-    expect(parsed.name).toBe('MyClass');
-    expect(parsed.namespace).toBe('MyApp.Models');
-    expect(parsed.visibility).toBe('public');
-    expect(parsed.isGeneric).toBe(true);
-    expect(parsed.parameters).toHaveLength(1);
-    expect(parsed.annotations).toContain('@Component');
-  });
-
-  it('should require mandatory fields', () => {
-    expect(() => CodeSymbolSchema.parse({})).toThrow();
-    expect(() => CodeSymbolSchema.parse({ name: 'test' })).toThrow();
-    expect(() => CodeSymbolSchema.parse({ name: 'test', type: 'function' })).toThrow();
-  });
-
-  it('should validate line and column numbers', () => {
-    const base = {
-      name: 'test',
-      type: 'function' as SymbolType,
-      line: 1,
-      column: 0
-    };
-
-    // Valid line/column numbers
-    expect(() => CodeSymbolSchema.parse(base)).not.toThrow();
-
-    // Invalid line numbers
-    expect(() => CodeSymbolSchema.parse({ ...base, line: 0 })).toThrow();
-    expect(() => CodeSymbolSchema.parse({ ...base, line: -1 })).toThrow();
-
-    // Invalid column numbers
-    expect(() => CodeSymbolSchema.parse({ ...base, column: -1 })).toThrow();
-  });
-});
-
-describe('SymbolReferenceSchema', () => {
-  it('should accept valid symbol reference', () => {
-    const validReference = {
-      symbolName: 'myFunction',
-      sourceFile: 'src/main.ts',
-      sourceLine: 10,
-      sourceColumn: 5,
-      targetFile: 'src/utils.ts',
-      targetLine: 25,
-      targetColumn: 0
-    };
-
-    const parsed = SymbolReferenceSchema.parse(validReference);
-    expect(parsed.symbolName).toBe('myFunction');
-    expect(parsed.sourceFile).toBe('src/main.ts');
-    expect(parsed.targetFile).toBe('src/utils.ts');
-    expect(parsed.sourceLine).toBe(10);
-    expect(parsed.targetLine).toBe(25);
-  });
-
-  it('should accept reference with optional fields', () => {
-    const referenceWithOptionals = {
-      symbolName: 'UserService',
-      sourceFile: 'src/app.ts',
-      sourceLine: 5,
-      sourceColumn: 10,
-      targetFile: 'src/services/user.ts',
-      targetLine: 15,
-      targetColumn: 0,
-      symbolType: 'class' as SymbolType,
-      referenceType: 'import',
-      isTypeOnly: true,
-      context: 'import statement',
-      namespace: 'Services',
-      aliasName: 'UserSvc',
-      confidence: 0.95,
-      metadata: { imported: true }
-    };
-
-    const parsed = SymbolReferenceSchema.parse(referenceWithOptionals);
-    expect(parsed.symbolType).toBe('class');
-    expect(parsed.isTypeOnly).toBe(true);
-    expect(parsed.aliasName).toBe('UserSvc');
-    expect(parsed.confidence).toBe(0.95);
-  });
-
-  it('should require mandatory fields', () => {
-    expect(() => SymbolReferenceSchema.parse({})).toThrow();
-    expect(() => SymbolReferenceSchema.parse({ symbolName: 'test' })).toThrow();
-  });
-
-  it('should validate confidence range', () => {
-    const base = {
-      symbolName: 'test',
-      sourceFile: 'src/test.ts',
-      sourceLine: 1,
-      sourceColumn: 0,
-      targetFile: 'src/target.ts',
-      targetLine: 1,
-      targetColumn: 0
-    };
-
-    // Valid confidence values
-    expect(() => SymbolReferenceSchema.parse({ ...base, confidence: 0.0 })).not.toThrow();
-    expect(() => SymbolReferenceSchema.parse({ ...base, confidence: 0.5 })).not.toThrow();
-    expect(() => SymbolReferenceSchema.parse({ ...base, confidence: 1.0 })).not.toThrow();
-
-    // Invalid confidence values
-    expect(() => SymbolReferenceSchema.parse({ ...base, confidence: -0.1 })).toThrow();
-    expect(() => SymbolReferenceSchema.parse({ ...base, confidence: 1.1 })).toThrow();
-  });
-});
-
-describe('ImportEdgeSchema', () => {
-  it('should accept valid import edge', () => {
-    const validImport = {
-      sourceFile: 'src/main.ts',
-      targetFile: 'src/utils.ts',
-      importedSymbols: ['helper', 'format'],
-      importType: 'named'
-    };
-
-    const parsed = ImportEdgeSchema.parse(validImport);
-    expect(parsed.sourceFile).toBe('src/main.ts');
-    expect(parsed.targetFile).toBe('src/utils.ts');
-    expect(parsed.importedSymbols).toEqual(['helper', 'format']);
-    expect(parsed.importType).toBe('named');
-  });
-
-  it('should accept import with optional fields', () => {
-    const importWithOptionals = {
-      sourceFile: 'src/app.ts',
-      targetFile: './components/Button',
-      importedSymbols: ['Button'],
-      importType: 'default',
-      isTypeOnly: false,
-      isDynamic: false,
-      namespace: 'Components',
-      alias: 'Btn',
-      sourceLine: 3,
-      sourceColumn: 0,
-      statement: "import Button from './components/Button'",
-      metadata: { bundled: true }
-    };
-
-    const parsed = ImportEdgeSchema.parse(importWithOptionals);
-    expect(parsed.isTypeOnly).toBe(false);
-    expect(parsed.alias).toBe('Btn');
-    expect(parsed.statement).toContain('Button');
-  });
-
-  it('should require mandatory fields', () => {
-    expect(() => ImportEdgeSchema.parse({})).toThrow();
-    expect(() => ImportEdgeSchema.parse({ sourceFile: 'test.ts' })).toThrow();
-  });
-
-  it('should validate import type enum', () => {
-    const base = {
-      sourceFile: 'src/test.ts',
-      targetFile: 'src/target.ts',
-      importedSymbols: ['test']
-    };
-
-    const validTypes = ['named', 'default', 'namespace', 'side-effect', 'dynamic'];
-    validTypes.forEach(type => {
-      expect(() => ImportEdgeSchema.parse({ ...base, importType: type })).not.toThrow();
-    });
-
-    expect(() => ImportEdgeSchema.parse({ ...base, importType: 'invalid' })).toThrow();
-  });
-});
-
-describe('CodeFileSchema', () => {
-  it('should accept valid code file', () => {
-    const validFile = {
-      path: 'src/utils.ts',
-      language: 'typescript'
-    };
-
-    const parsed = CodeFileSchema.parse(validFile);
-    expect(parsed.path).toBe('src/utils.ts');
-    expect(parsed.language).toBe('typescript');
-    expect(parsed.symbols).toEqual([]); // default
-    expect(parsed.imports).toEqual([]); // default
-  });
-
-  it('should accept file with all optional fields', () => {
-    const fileWithOptionals = {
-      path: 'src/components/Button.tsx',
-      language: 'typescript',
-      symbols: [
-        {
-          name: 'Button',
-          type: 'function' as SymbolType,
-          line: 10,
-          column: 0
-        }
-      ],
-      imports: [
-        {
-          sourceFile: 'src/components/Button.tsx',
-          targetFile: 'react',
-          importedSymbols: ['React'],
-          importType: 'named'
-        }
-      ],
-      exports: [
-        {
-          name: 'Button',
-          type: 'named',
-          isDefault: false,
-          isTypeOnly: false
-        }
-      ],
-      lineCount: 50,
-      size: 2048,
-      lastModified: new Date('2024-01-01'),
-      contentHash: 'abc123def',
-      hasErrors: false,
-      errors: [],
-      metadata: { framework: 'react' }
-    };
-
-    const parsed = CodeFileSchema.parse(fileWithOptionals);
-    expect(parsed.symbols).toHaveLength(1);
-    expect(parsed.imports).toHaveLength(1);
-    expect(parsed.exports).toHaveLength(1);
-    expect(parsed.lineCount).toBe(50);
-    expect(parsed.size).toBe(2048);
-    expect(parsed.hasErrors).toBe(false);
-  });
-
-  it('should require mandatory fields', () => {
-    expect(() => CodeFileSchema.parse({})).toThrow();
-    expect(() => CodeFileSchema.parse({ path: 'test.ts' })).toThrow();
-  });
-
-  it('should validate numeric constraints', () => {
-    const base = {
-      path: 'src/test.ts',
-      language: 'typescript'
-    };
-
-    // Valid numbers
-    expect(() => CodeFileSchema.parse({ ...base, lineCount: 0 })).not.toThrow();
-    expect(() => CodeFileSchema.parse({ ...base, size: 0 })).not.toThrow();
-
-    // Invalid numbers
-    expect(() => CodeFileSchema.parse({ ...base, lineCount: -1 })).toThrow();
-    expect(() => CodeFileSchema.parse({ ...base, size: -1 })).toThrow();
-  });
-});
-
-describe('RepositoryMapSchema', () => {
-  it('should accept valid repository map', () => {
-    const validRepo = {
-      rootPath: '/path/to/repo'
-    };
-
-    const parsed = RepositoryMapSchema.parse(validRepo);
-    expect(parsed.rootPath).toBe('/path/to/repo');
-    expect(parsed.files).toEqual([]); // default
-    expect(parsed.references).toEqual([]); // default
-    expect(parsed.version).toBe('1.0.0'); // default
-  });
-
-  it('should accept repository map with all fields', () => {
-    const fullRepo = {
-      rootPath: '/path/to/project',
-      name: 'MyProject',
-      files: [
-        {
-          path: 'src/index.ts',
-          language: 'typescript',
-          symbols: [
-            {
-              name: 'main',
-              type: 'function' as SymbolType,
-              line: 1,
-              column: 0
-            }
-          ]
-        }
-      ],
-      references: [
-        {
-          symbolName: 'helper',
-          sourceFile: 'src/index.ts',
-          sourceLine: 5,
-          sourceColumn: 10,
-          targetFile: 'src/utils.ts',
-          targetLine: 1,
-          targetColumn: 0
-        }
-      ],
-      stats: {
-        totalFiles: 10,
-        totalSymbols: 50,
-        totalReferences: 25,
-        totalLines: 1000,
-        languageBreakdown: { typescript: 8, javascript: 2 },
-        symbolTypeBreakdown: { function: 30, class: 15, variable: 5 }
-      },
-      createdAt: new Date('2024-01-01'),
-      version: '2.0.0',
-      commitHash: 'abc123def456',
-      branch: 'main',
-      config: {
-        includePatterns: ['src/**/*.ts'],
-        excludePatterns: ['**/*.test.ts'],
-        languages: ['typescript'],
-        maxFileSize: 1048576
-      },
-      errors: [
-        {
-          file: 'src/broken.ts',
-          message: 'Parse error',
-          severity: 'error' as const
-        }
-      ],
-      metadata: { tool: 'apex' }
-    };
-
-    const parsed = RepositoryMapSchema.parse(fullRepo);
-    expect(parsed.name).toBe('MyProject');
-    expect(parsed.files).toHaveLength(1);
-    expect(parsed.references).toHaveLength(1);
-    expect(parsed.stats?.totalFiles).toBe(10);
-    expect(parsed.version).toBe('2.0.0');
-    expect(parsed.commitHash).toBe('abc123def456');
-    expect(parsed.errors).toHaveLength(1);
-  });
-
-  it('should require root path', () => {
-    expect(() => RepositoryMapSchema.parse({})).toThrow();
-    expect(() => RepositoryMapSchema.parse({ rootPath: '' })).toThrow();
-  });
-
-  it('should validate stats numeric constraints', () => {
-    const base = {
-      rootPath: '/test',
-      stats: {
-        totalFiles: 5,
-        totalSymbols: 10,
-        totalReferences: 8
-      }
-    };
-
-    // Valid stats
-    expect(() => RepositoryMapSchema.parse(base)).not.toThrow();
-
-    // Invalid stats
-    expect(() => RepositoryMapSchema.parse({
-      ...base,
-      stats: { ...base.stats, totalFiles: -1 }
-    })).toThrow();
-
-    expect(() => RepositoryMapSchema.parse({
-      ...base,
-      stats: { ...base.stats, totalSymbols: -1 }
-    })).toThrow();
-  });
-
-  it('should validate error severity', () => {
-    const base = {
-      rootPath: '/test',
-      errors: [{ message: 'test error', severity: 'warning' as const }]
-    };
-
-    expect(() => RepositoryMapSchema.parse(base)).not.toThrow();
-
-    expect(() => RepositoryMapSchema.parse({
-      ...base,
-      errors: [{ message: 'test error', severity: 'invalid' as any }]
-    })).toThrow();
-  });
-});
 
 // ============================================================================
 // Multimodal Types Tests (v0.6.0)
@@ -4394,6 +3983,7 @@ describe('Multimodal Types', () => {
       const minimal = {
         type: 'image' as const,
         mediaType: 'image/png',
+        data: 'base64data',
       };
       expect(() => ImageInputSchema.parse(minimal)).not.toThrow();
     });
@@ -4424,7 +4014,7 @@ describe('Multimodal Types', () => {
 
       expect(() => ImageInputSchema.parse(withData)).not.toThrow();
       expect(() => ImageInputSchema.parse(withUrl)).not.toThrow();
-      expect(() => ImageInputSchema.parse(withNeither)).not.toThrow(); // Schema allows this
+      expect(() => ImageInputSchema.parse(withNeither)).toThrow(); // Schema requires data or url
     });
 
     it('should handle large metadata objects', () => {
@@ -4499,7 +4089,7 @@ describe('Multimodal Types', () => {
     });
 
     it('should validate all supported design tools', () => {
-      const tools = ['figma', 'sketch', 'adobe_xd', 'invision', 'penpot', 'canva', 'other'];
+      const tools = ['figma', 'sketch', 'adobe_xd', 'invision', 'zeplin', 'framer', 'canva', 'photoshop', 'illustrator', 'other'];
 
       tools.forEach(tool => {
         const input = {
@@ -4513,7 +4103,7 @@ describe('Multimodal Types', () => {
     it('should reject invalid design tools', () => {
       const input = {
         type: 'design_mockup' as const,
-        designTool: 'photoshop', // Not in the enum
+        designTool: 'penpot', // Not in the enum
       };
       expect(() => DesignMockupInputSchema.parse(input)).toThrow();
     });

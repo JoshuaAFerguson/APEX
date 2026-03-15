@@ -26,12 +26,6 @@ export default mergeConfig(
       // Pool configuration for better async handling
       pool: 'forks',
       maxConcurrency: 5,
-      poolOptions: {
-        forks: {
-          maxForks: Math.max(2, Math.floor(require('os').cpus().length / 4)),
-          minForks: 1,
-        },
-      },
 
       // Package-specific coverage configuration
       coverage: {

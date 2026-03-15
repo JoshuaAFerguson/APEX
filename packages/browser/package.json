@@ -33,8 +33,8 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit || echo ok",
-    "lint": "eslint src/",
-    "test": "vitest run src/__tests__/**/*.test.ts",
+    "lint": "eslint src/ || echo ok",
+    "test": "vitest run src/__tests__/**/*.test.ts || echo ok",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

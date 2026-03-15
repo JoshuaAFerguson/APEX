@@ -405,7 +405,7 @@ describe('loadConfig and saveConfig', () => {
         buildCommand: 'npm run build',
       },
       autonomy: {
-        default: 'full',
+        level: 'full-auto',
       },
     };
 
@@ -414,7 +414,7 @@ describe('loadConfig and saveConfig', () => {
 
     expect(loaded.project.name).toBe('test-project');
     expect(loaded.project.language).toBe('typescript');
-    expect(loaded.autonomy?.default).toBe('full');
+    expect(loaded.autonomy?.level).toBe('full-auto');
   });
 
   it('should throw error for missing config', async () => {

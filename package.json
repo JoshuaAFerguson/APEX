@@ -10,7 +10,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "test": "vitest run",
+    "test": "turbo run test --continue",
     "test:unified": "node scripts/unified-test-runner.js",
     "test:unified:e2e": "node scripts/unified-test-runner.js --type=e2e",
     "test:unified:unit": "node scripts/unified-test-runner.js --type=unit",

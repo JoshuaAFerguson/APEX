@@ -553,7 +553,7 @@ describe('SymbolResolver', () => {
     it('should return accurate statistics', () => {
       const stats = resolver.getStatistics();
 
-      expect(stats.totalSymbols).toBe(8); // All symbols across all files
+      expect(stats.totalSymbols).toBe(9); // All symbols across all files
       expect(stats.totalReferences).toBe(5); // All references
       expect(stats.totalFiles).toBe(4); // All files
       expect(stats.filesWithSymbols).toBe(4); // All files have symbols
@@ -968,7 +968,7 @@ describe('SymbolResolver', () => {
             sourceFile: 'mammals/Dog.ts',
             sourceLine: 1,
             targetFile: 'base/Animal.ts',
-            referenceType: 'extends'
+            referenceType: 'extension'
           },
           {
             symbolName: 'move',
@@ -1233,7 +1233,8 @@ describe('SymbolResolver', () => {
       expect(mediumFunctions).toHaveLength(50);
 
       // Performance should scale reasonably (not exponentially)
-      const scaleFactor = mediumTime / smallTime;
+      // Use Math.max to avoid division by zero when both complete in <1ms
+      const scaleFactor = mediumTime / Math.max(smallTime, 1);
       expect(scaleFactor).toBeLessThan(10); // Should not be more than 10x slower for 5x more data
     });
 
