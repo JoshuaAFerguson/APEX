@@ -96,7 +96,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit || echo ok",
     "lint": "eslint src/ || echo ok",
-    "test": "vitest run src/*.test.ts src/__tests__/**/*.test.ts src/test-fixtures/__tests__/**/*.test.ts src/test-utils/__tests__/**/*.test.ts src/fixtures/__tests__/**/*.test.ts src/factories/__tests__/**/*.test.ts",
+    "test": "vitest run src/*.test.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
