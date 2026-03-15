@@ -335,8 +335,18 @@ export function SubtaskTree({
     if (propsTree) {
       setTree(propsTree);
       setFocusedNodeId(propsTree.id);
+
+      // If defaultCollapsed is true, also update collapsed nodes when tree changes
+      if (defaultCollapsed) {
+        const getNodeIds = (node: SubtaskTreeNode): string[] => {
+          const ids = node.children.length > 0 ? [node.id] : [];
+          node.children.forEach(child => ids.push(...getNodeIds(child)));
+          return ids;
+        };
+        setCollapsedNodes(new Set(getNodeIds(propsTree)));
+      }
     }
-  }, [propsTree]);
+  }, [propsTree, defaultCollapsed]);
 
   // Memoized visible nodes computation
   const visibleNodes = useMemo(() => {
@@ -619,14 +629,20 @@ const SubtaskTreeNode = React.memo<SubtaskTreeNodeProps>(function SubtaskTreeNod
   );
 }, (prev, next) => {
   // Custom comparison for memoization
+  // Return true if props are equal (don't re-render), false if different (re-render)
   return (
     prev.node.id === next.node.id &&
     prev.node.status === next.node.status &&
     prev.node.description === next.node.description &&
+    prev.node.children.length === next.node.children.length &&
     prev.focusedNodeId === next.focusedNodeId &&
     prev.collapsedNodes.has(prev.node.id) === next.collapsedNodes.has(next.node.id) &&
     prev.depth === next.depth &&
-    prev.isLast === next.isLast
+    prev.maxDepth === next.maxDepth &&
+    prev.isLast === next.isLast &&
+    prev.prefix === next.prefix &&
+    prev.toggleCollapse === next.toggleCollapse &&
+    prev.onNodeClick === next.onNodeClick
   );
 });
 
