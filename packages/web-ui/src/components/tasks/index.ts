@@ -1,3 +1,12 @@
+export { ActiveTasksPanel } from './ActiveTasksPanel'
+export type { ActiveTasksPanelProps } from './ActiveTasksPanel'
+
+export { ActiveTasksPanelRealtime } from './ActiveTasksPanelRealtime'
+export type { ActiveTasksPanelRealtimeProps } from './ActiveTasksPanelRealtime'
+
+export { TaskCard } from './TaskCard'
+export type { TaskCardProps } from './TaskCard'
+
 export { ThoughtDisplay } from './ThoughtDisplay'
 export type { ThoughtDisplayProps } from './ThoughtDisplay'
 

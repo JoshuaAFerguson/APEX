@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
@@ -10,6 +10,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { LogViewer } from '@/components/tasks/LogViewer'
 import { GatePanel } from '@/components/tasks/GatePanel'
 import { SubtaskList, ParentTaskInfo } from '@/components/tasks/SubtaskList'
+import { SubtaskTree } from '@/components/tasks/SubtaskTree'
+import { TaskDependencyGraph } from '@/components/tasks/TaskDependencyGraph'
 import { TokenUsageChart } from '@/components/charts/TokenUsageChart'
 import { apiClient } from '@/lib/api-client'
 import { useTaskStream } from '@/lib/websocket-client'
@@ -36,9 +38,67 @@ export default function TaskDetailPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [hasSubtasks, setHasSubtasks] = useState(false)
   const [hasPendingSubtasks, setHasPendingSubtasks] = useState(false)
+  const [relatedTasks, setRelatedTasks] = useState<Task[]>([])
+  const [dependenciesLoading, setDependenciesLoading] = useState(false)
+  const [dependenciesError, setDependenciesError] = useState<string | null>(null)
 
   // WebSocket streaming for real-time updates
   const { events, isConnected } = useTaskStream(taskId)
+
+  // Load related tasks for dependency graph
+  const loadRelatedTasks = useCallback(async (currentTask: Task) => {
+    try {
+      setDependenciesLoading(true)
+      setDependenciesError(null)
+
+      const relatedTaskIds = new Set<string>()
+
+      // Add dependency task IDs
+      if (currentTask.dependsOn) {
+        currentTask.dependsOn.forEach(id => relatedTaskIds.add(id))
+      }
+
+      // Add blocked task IDs
+      if (currentTask.blockedBy) {
+        currentTask.blockedBy.forEach(id => relatedTaskIds.add(id))
+      }
+
+      // Add parent task ID
+      if (currentTask.parentTaskId) {
+        relatedTaskIds.add(currentTask.parentTaskId)
+      }
+
+      // Add subtask IDs
+      if (currentTask.subtaskIds) {
+        currentTask.subtaskIds.forEach(id => relatedTaskIds.add(id))
+      }
+
+      // Remove current task ID from the set
+      relatedTaskIds.delete(currentTask.id)
+
+      // Fetch all related tasks
+      const relatedTasksPromises = Array.from(relatedTaskIds).map(async (id) => {
+        try {
+          return await apiClient.getTask(id) as unknown as Task
+        } catch (err) {
+          // Ignore individual task fetch errors (task might not exist)
+          console.warn(`Failed to fetch related task ${id}:`, err)
+          return null
+        }
+      })
+
+      const fetchedTasks = await Promise.all(relatedTasksPromises)
+      const validTasks = fetchedTasks.filter((task): task is Task => task !== null)
+
+      // Include the current task in the related tasks for the dependency graph
+      setRelatedTasks([currentTask, ...validTasks])
+    } catch (err) {
+      setDependenciesError(err instanceof Error ? err.message : 'Failed to load related tasks')
+      setRelatedTasks([currentTask]) // Fallback to show current task only
+    } finally {
+      setDependenciesLoading(false)
+    }
+  }, [])
 
   // Load initial task data
   const loadTask = useCallback(async () => {
@@ -75,12 +135,15 @@ export default function TaskDetailPage() {
         setHasSubtasks(false)
         setHasPendingSubtasks(false)
       }
+
+      // Load related tasks for dependency graph
+      await loadRelatedTasks(response as Task)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load task')
     } finally {
       setLoading(false)
     }
-  }, [taskId])
+  }, [taskId, loadRelatedTasks])
 
   useEffect(() => {
     loadTask()
@@ -354,9 +417,9 @@ export default function TaskDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content - 2 columns */}
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Main Content - 2 columns on xl screens, full width on smaller screens */}
+        <div className="xl:col-span-2 space-y-6">
           {/* Approval Gate Panel */}
           {isWaitingApproval && (
             <GatePanel
@@ -366,7 +429,50 @@ export default function TaskDetailPage() {
             />
           )}
 
-          {/* Subtasks Panel */}
+          {/* Task Dependencies Graph */}
+          {relatedTasks.length > 1 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Task Dependencies</h2>
+                  {dependenciesLoading && (
+                    <Spinner size="sm" />
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {dependenciesError ? (
+                  <div className="text-sm text-red-500 py-2">
+                    <p>{dependenciesError}</p>
+                  </div>
+                ) : (
+                  <TaskDependencyGraph
+                    tasks={relatedTasks}
+                    height={300}
+                    className="border-0"
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Subtask Tree */}
+          {hasSubtasks && (
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold">Subtask Tree</h2>
+              </CardHeader>
+              <CardContent>
+                <SubtaskTree
+                  taskId={task.id}
+                  maxDepth={5}
+                  defaultCollapsed={false}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Subtasks Panel (Legacy - keeping for compatibility) */}
           {hasSubtasks && (
             <SubtaskList taskId={task.id} />
           )}
@@ -403,7 +509,7 @@ export default function TaskDetailPage() {
           )}
         </div>
 
-        {/* Sidebar - 1 column */}
+        {/* Sidebar - 1 column on xl screens, full width on smaller screens */}
         <div className="space-y-6">
           {/* Token Usage */}
           <Card>

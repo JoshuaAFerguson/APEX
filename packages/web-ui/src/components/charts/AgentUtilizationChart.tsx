@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import React, { useMemo } from 'react'
 import { cn, formatCost } from '@/lib/utils'
 import {
   AgentUtilizationChartProps,
@@ -315,7 +315,7 @@ export function AgentUtilizationChart({
                     ) : (
                       <div
                         className="h-full bg-apex-500"
-                        title={`Total: ${formatNumber(agent.totalTokens)} tokens`}
+                        title={`Total: ${agent.totalTokens.toLocaleString()} tokens`}
                       />
                     )}
                   </div>
