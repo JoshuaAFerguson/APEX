@@ -726,7 +726,7 @@ export async function handleDoctor(ctx: CliContext, args: string[]): Promise<voi
   }
 
   // Generate the health report
-  const report = createHealthReport(checks, { apexVersion: '0.6.0' });
+  const report = createHealthReport(checks, { apexVersion: '0.7.0' });
 
   // Display report based on output format
   if (isJsonOutput) {
@@ -738,11 +738,11 @@ export async function handleDoctor(ctx: CliContext, args: string[]): Promise<voi
     if (!isQuickMode) {
       try {
         const latestVersion = await getLatestPackageVersion('apex-cli', { timeout: 3000 });
-        if (latestVersion && latestVersion !== '0.6.0') {
+        if (latestVersion && latestVersion !== '0.7.0') {
           console.log(boxen(
             `${chalk.blue('💡 Update Available')}\n\n` +
             `A newer version of APEX is available: ${chalk.green(latestVersion)}\n` +
-            `Current version: ${chalk.yellow('0.6.0')}\n\n` +
+            `Current version: ${chalk.yellow('0.7.0')}\n\n` +
             `Run ${chalk.cyan('npm install -g apex-cli')} to update`,
             {
               padding: 1,

@@ -550,8 +550,8 @@ export class TechnicalDebtAnalyzer implements CodebaseAnalyzer<TechnicalDebtAnal
       categoryInfo.totalScore += issue.score || 1;
 
       // Update severity to highest found
-      const severityOrder = { 'low': 0, 'medium': 1, 'high': 2, 'critical': 3 };
-      if (severityOrder[issue.severity] > severityOrder[categoryInfo.severity]) {
+      const severityOrder: Record<string, number> = { 'low': 0, 'medium': 1, 'high': 2, 'critical': 3 };
+      if (severityOrder[issue.severity as string] > severityOrder[categoryInfo.severity]) {
         categoryInfo.severity = issue.severity;
       }
 

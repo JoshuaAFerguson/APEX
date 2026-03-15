@@ -36,10 +36,10 @@ export function getCurrentVersion(): string {
     // Try to find and read package.json from CLI package
     const packageJsonPath = path.join(__dirname, '../../package.json');
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-    return packageJson.version || '0.6.0';
+    return packageJson.version || '0.7.0';
   } catch {
     // Fallback for development environment or if package.json can't be read
-    return '0.6.0';
+    return '0.7.0';
   }
 }
 

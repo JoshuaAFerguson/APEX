@@ -304,7 +304,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // ============================================================================
 
   app.get('/health', async () => {
-    return { status: 'ok', version: '0.6.0' };
+    return { status: 'ok', version: '0.7.0' };
   });
 
   // Comprehensive daemon health endpoint

@@ -19,7 +19,7 @@ import type { CodebaseAnalyzer } from '../types.js';
 /**
  * Architectural pattern detection rules
  */
-const ARCHITECTURE_PATTERNS = {
+const ARCHITECTURE_PATTERNS: Record<string, { indicators: RegExp[]; files: string[] }> = {
   'microservices': {
     indicators: [
       /packages\/[^/]+\//, // packages/ directory structure

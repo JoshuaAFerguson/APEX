@@ -1,4 +1,4 @@
-import { promises as fs } from 'fs';
+import { promises as fs, statSync, readdirSync, existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import {
   MCPMarketplaceEntry,
@@ -399,18 +399,18 @@ export class MCPMarketplaceService {
 
       // Detect Git repository
       const gitPath = path.join(this.projectPath, '.git');
-      if (fs.existsSync(gitPath)) {
+      if (existsSync(gitPath)) {
         recommended.push('git');
       }
 
       // Detect Node.js projects
       const packageJsonPath = path.join(this.projectPath, 'package.json');
-      if (fs.existsSync(packageJsonPath)) {
+      if (existsSync(packageJsonPath)) {
         recommended.push('github-integration');
 
         // Try to read package.json for more specific recommendations
         try {
-          const packageContent = fs.readFileSync(packageJsonPath, 'utf-8');
+          const packageContent = readFileSync(packageJsonPath, 'utf-8');
           const packageJson = JSON.parse(packageContent);
 
           // Check for specific frameworks and tools
@@ -444,7 +444,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, 'environment.yml')
       ];
 
-      if (pythonFiles.some(file => fs.existsSync(file))) {
+      if (pythonFiles.some(file => existsSync(file))) {
         recommended.push('github-integration');
       }
 
@@ -455,7 +455,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, 'build.gradle.kts')
       ];
 
-      if (javaFiles.some(file => fs.existsSync(file))) {
+      if (javaFiles.some(file => existsSync(file))) {
         recommended.push('github-integration');
       }
 
@@ -466,7 +466,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, 'Gopkg.toml')
       ];
 
-      if (goFiles.some(file => fs.existsSync(file))) {
+      if (goFiles.some(file => existsSync(file))) {
         recommended.push('github-integration');
       }
 
@@ -476,7 +476,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, 'Cargo.lock')
       ];
 
-      if (rustFiles.some(file => fs.existsSync(file))) {
+      if (rustFiles.some(file => existsSync(file))) {
         recommended.push('github-integration');
       }
 
@@ -487,7 +487,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, 'docker-compose.yaml')
       ];
 
-      if (dockerFiles.some(file => fs.existsSync(file))) {
+      if (dockerFiles.some(file => existsSync(file))) {
         recommended.push('docker-management');
       }
 
@@ -499,7 +499,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, 'manifests')
       ];
 
-      if (k8sPaths.some(pathName => fs.existsSync(pathName))) {
+      if (k8sPaths.some(pathName => existsSync(pathName))) {
         recommended.push('kubernetes-operator');
       }
 
@@ -512,7 +512,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, '.circleci')
       ];
 
-      if (cicdPaths.some(pathName => fs.existsSync(pathName))) {
+      if (cicdPaths.some(pathName => existsSync(pathName))) {
         recommended.push('github-integration');
       }
 
@@ -525,7 +525,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, 'ansible')
       ];
 
-      if (iacFiles.some(file => fs.existsSync(file))) {
+      if (iacFiles.some(file => existsSync(file))) {
         recommended.push('aws-integration');
       }
 
@@ -539,7 +539,7 @@ export class MCPMarketplaceService {
         path.join(this.projectPath, 'docusaurus.config.js')
       ];
 
-      if (docFiles.some(file => fs.existsSync(file))) {
+      if (docFiles.some(file => existsSync(file))) {
         recommended.push('notion-integration'); // For knowledge management
       }
 
@@ -548,13 +548,13 @@ export class MCPMarketplaceService {
 
       // Detect if this is a large project (likely needs time tracking)
       try {
-        const stats = fs.statSync(this.projectPath);
+        const stats = statSync(this.projectPath);
         if (stats.isDirectory()) {
           // Simple heuristic: if there are many subdirectories, it's likely a complex project
-          const items = fs.readdirSync(this.projectPath);
+          const items = readdirSync(this.projectPath);
           const directories = items.filter(item => {
             try {
-              return fs.statSync(path.join(this.projectPath, item)).isDirectory() &&
+              return statSync(path.join(this.projectPath, item)).isDirectory() &&
                      !item.startsWith('.') &&
                      item !== 'node_modules';
             } catch {

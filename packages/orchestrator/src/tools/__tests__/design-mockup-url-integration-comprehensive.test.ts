@@ -323,7 +323,7 @@ describe('Design Mockup URL Integration - Comprehensive', () => {
         exportScale: 3,
         headers: {
           'Authorization': 'Bearer figma-token-123',
-          'User-Agent': 'ApexCLI/0.6.0',
+          'User-Agent': 'ApexCLI/0.7.0',
         },
         timeout: 30000,
         bypassCache: true,
@@ -352,7 +352,7 @@ describe('Design Mockup URL Integration - Comprehensive', () => {
         expect.objectContaining({
           headers: {
             'Authorization': 'Bearer figma-token-123',
-            'User-Agent': 'ApexCLI/0.6.0',
+            'User-Agent': 'ApexCLI/0.7.0',
           },
           timeout: 30000,
           bypassCache: true,

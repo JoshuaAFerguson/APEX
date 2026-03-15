@@ -294,8 +294,8 @@ export const DEFAULT_EMPTY_CATALOG: MCPCatalog = Object.freeze({
   version: '0.0.0',
   updated: new Date().toISOString(),
   description: 'Default empty catalog (actual catalog failed to load)',
-  categories: Object.freeze({}),
-  servers: Object.freeze([]),
+  categories: Object.freeze({}) as Record<string, { name: string; description: string }>,
+  servers: Object.freeze([]) as unknown as MCPMarketplaceEntry[],
 });
 
 /**

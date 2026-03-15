@@ -16,9 +16,7 @@ import { promises as fs } from 'fs';
 import { join, relative, basename } from 'path';
 import type { IntegrationAnalysis } from '@apexcli/core';
 import type { CodebaseAnalyzer } from '../types.js';
-import { queryNpmRegistry } from '@apexcli/core';
-// Import compareVersions from utils since it's not exported from the main package
-import { compareVersions } from '@apexcli/core/src/utils.js';
+import { queryNpmRegistry, compareVersions } from '@apexcli/core';
 
 /**
  * Service integration detection patterns

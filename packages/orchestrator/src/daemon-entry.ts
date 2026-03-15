@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   let eventLogger: any = null;
   if (isWindowsService && process.platform === 'win32') {
     try {
-      const { createApexEventLogger, APEX_EVENT_IDS } = await import('./windows-event-log');
+      const { createApexEventLogger, APEX_EVENT_IDS } = await import('./windows-event-log.js');
       eventLogger = createApexEventLogger();
 
       // Try to register event source (might fail without admin privileges, but events can still be written)
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
         try {
           await eventLogger.writeInfo(
             'APEX Daemon service stopping (SIGTERM received)',
-            (await import('./windows-event-log')).APEX_EVENT_IDS.SERVICE_STOPPED
+            (await import('./windows-event-log.js')).APEX_EVENT_IDS.SERVICE_STOPPED
           );
         } catch {
           // Ignore event log errors during shutdown
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
         try {
           await eventLogger.writeInfo(
             'APEX Daemon service stopping (SIGINT received)',
-            (await import('./windows-event-log')).APEX_EVENT_IDS.SERVICE_STOPPED
+            (await import('./windows-event-log.js')).APEX_EVENT_IDS.SERVICE_STOPPED
           );
         } catch {
           // Ignore event log errors during shutdown

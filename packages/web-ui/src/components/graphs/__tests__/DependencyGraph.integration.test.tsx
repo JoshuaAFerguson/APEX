@@ -82,7 +82,7 @@ describe('DependencyGraph Integration Tests', () => {
         type: 'dependency',
         status: 'completed',
         packageName: '@apexcli/core',
-        packageVersion: '0.6.0',
+        packageVersion: '0.7.0',
       },
     },
     {
@@ -94,7 +94,7 @@ describe('DependencyGraph Integration Tests', () => {
         type: 'dependency',
         status: 'active',
         packageName: '@apexcli/web-ui',
-        packageVersion: '0.6.0',
+        packageVersion: '0.7.0',
       },
     },
     {

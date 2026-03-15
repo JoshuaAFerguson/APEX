@@ -1342,15 +1342,15 @@ ${Object.entries(this.options.environment).map(([key, value]) => `set ${key}=${v
   // Windows Service Management Integration
   // ============================================================================
 
-  private windowsServiceManager?: import('./windows-service-manager').WindowsServiceManager;
-  private windowsEventLogger?: import('./windows-event-log').WindowsEventLogger;
+  private windowsServiceManager?: import('./windows-service-manager.js').WindowsServiceManager;
+  private windowsEventLogger?: import('./windows-event-log.js').WindowsEventLogger;
 
   /**
    * Get Windows Service Manager instance (lazy loaded)
    */
-  private async getWindowsServiceManager(): Promise<import('./windows-service-manager').WindowsServiceManager> {
+  private async getWindowsServiceManager(): Promise<import('./windows-service-manager.js').WindowsServiceManager> {
     if (!this.windowsServiceManager) {
-      const { WindowsServiceManager } = await import('./windows-service-manager');
+      const { WindowsServiceManager } = await import('./windows-service-manager.js');
       this.windowsServiceManager = new WindowsServiceManager();
     }
     return this.windowsServiceManager;
@@ -1359,9 +1359,9 @@ ${Object.entries(this.options.environment).map(([key, value]) => `set ${key}=${v
   /**
    * Get Windows Event Logger instance (lazy loaded)
    */
-  private async getWindowsEventLogger(): Promise<import('./windows-event-log').WindowsEventLogger> {
+  private async getWindowsEventLogger(): Promise<import('./windows-event-log.js').WindowsEventLogger> {
     if (!this.windowsEventLogger) {
-      const { createApexEventLogger } = await import('./windows-event-log');
+      const { createApexEventLogger } = await import('./windows-event-log.js');
       this.windowsEventLogger = createApexEventLogger();
 
       // Try to register the event source (requires admin privileges)
@@ -1471,7 +1471,7 @@ ${Object.entries(this.options.environment).map(([key, value]) => `set ${key}=${v
   /**
    * Get enhanced Windows service status
    */
-  async getWindowsServiceStatusNative(): Promise<import('./windows-service-manager').WindowsServiceStatus> {
+  async getWindowsServiceStatusNative(): Promise<import('./windows-service-manager.js').WindowsServiceStatus> {
     if (this.platform !== 'win32') {
       throw new ServiceError('Windows service status only available on Windows', 'PLATFORM_UNSUPPORTED');
     }
@@ -1532,7 +1532,7 @@ ${Object.entries(this.options.environment).map(([key, value]) => `set ${key}=${v
   /**
    * Get Windows Event Logger for external use
    */
-  async getEventLogger(): Promise<import('./windows-event-log').WindowsEventLogger | null> {
+  async getEventLogger(): Promise<import('./windows-event-log.js').WindowsEventLogger | null> {
     if (this.platform !== 'win32') {
       return null;
     }

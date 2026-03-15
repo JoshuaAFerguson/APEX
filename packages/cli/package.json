@@ -1,6 +1,6 @@
 {
   "name": "@apexcli/cli",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "APEX - AI-powered development team automation CLI",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,7 @@
   ],
   "scripts": {
     "build": "tsc || echo ok",
+    "postbuild": "chmod +x dist/index.js",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit || echo ok",

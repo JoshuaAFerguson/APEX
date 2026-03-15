@@ -14,7 +14,7 @@
 
 import { promises as fs } from 'fs';
 import { join, relative, dirname, basename, extname } from 'path';
-import type { TestingPatternAnalysis } from '@apexcli/core/src/types.js';
+import type { TestingPatternAnalysis } from '@apexcli/core';
 import type { CodebaseAnalyzer } from '../types.js';
 
 /**
@@ -338,9 +338,8 @@ export class TestingPatternAnalyzer implements CodebaseAnalyzer<TestingPatternAn
     }
 
     // Convert location sets to arrays
-    Object.keys(locationSets).forEach(key => {
-      const category = key as keyof typeof patterns;
-      patterns[category].locations = Array.from(locationSets[category]).sort();
+    (Object.keys(locationSets) as Array<keyof typeof locationSets>).forEach(key => {
+      patterns[key].locations = Array.from(locationSets[key]).sort();
     });
 
     return patterns;

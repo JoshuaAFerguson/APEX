@@ -575,7 +575,7 @@ export class MCPInstaller {
     }
 
     // Check 5: Optional npm package verification (for npx/npm installations)
-    if (installation.installedFrom === 'npm' || installation.installedFrom === 'npx') {
+    if ((installation as MCPInstallation & { installedFrom?: string }).installedFrom === 'npm' || (installation as MCPInstallation & { installedFrom?: string }).installedFrom === 'npx') {
       try {
         const packageInstalled = await this.verifyPackageInstalled(serverId);
         result.checks.packageInstalled = packageInstalled;
