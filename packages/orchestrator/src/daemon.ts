@@ -196,13 +196,20 @@ function killProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
     // Kill the entire process group (negative PID)
     process.kill(-pid, signal);
     return true;
-  } catch {
+  } catch (groupError) {
     // Process group kill failed (e.g., process is not a group leader).
     // Fall back to killing just the process itself.
     try {
       process.kill(pid, signal);
       return true;
-    } catch {
+    } catch (singleError) {
+      const err = singleError as NodeJS.ErrnoException;
+      if (err.code === 'EPERM') {
+        throw new Error(
+          `Permission denied when stopping daemon (PID ${pid}). ` +
+          `Try: sudo kill ${signal === 'SIGKILL' ? '-9 ' : ''}${pid}`
+        );
+      }
       return false;
     }
   }
@@ -213,7 +220,10 @@ async function terminateProcessCrossPlatform(pid: number): Promise<void> {
     // On Windows, use taskkill with /T to kill the process tree
     await execAsync(`taskkill /pid ${pid} /T`);
   } else {
-    killProcessGroup(pid, 'SIGTERM');
+    // killProcessGroup throws on EPERM — let it propagate
+    if (!killProcessGroup(pid, 'SIGTERM')) {
+      // Process doesn't exist — not an error for termination
+    }
   }
 }
 
@@ -227,7 +237,10 @@ async function forceKillProcessCrossPlatform(pid: number): Promise<void> {
     // On Windows, use taskkill with /f and /T flags for force kill of tree
     await execAsync(`taskkill /f /pid ${pid} /T`);
   } else {
-    killProcessGroup(pid, 'SIGKILL');
+    // killProcessGroup throws on EPERM — let it propagate
+    if (!killProcessGroup(pid, 'SIGKILL')) {
+      // Process doesn't exist — not an error for force kill
+    }
   }
 }
 

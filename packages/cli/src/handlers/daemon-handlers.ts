@@ -157,8 +157,9 @@ export async function handleDaemonStop(
     projectPath: ctx.cwd,
   });
 
+  let status: Awaited<ReturnType<typeof manager.getStatus>> | null = null;
   try {
-    const status = await manager.getStatus();
+    status = await manager.getStatus();
 
     if (!status.running) {
       // Check if Windows service exists but is stopped
@@ -187,10 +188,16 @@ export async function handleDaemonStop(
       console.log(chalk.green('✓ Daemon stopped'));
     }
   } catch (error) {
-    if (error instanceof DaemonError) {
+    const message = (error as Error).message || String(error);
+    if (message.includes('Permission denied') || message.includes('EPERM')) {
+      console.log(chalk.red(`Permission denied when stopping daemon.`));
+      if (status?.pid) {
+        console.log(chalk.yellow(`Try: sudo kill ${status.pid}`));
+      }
+    } else if (error instanceof DaemonError) {
       handleDaemonError(error);
     } else {
-      console.log(chalk.red(`Failed to stop daemon: ${(error as Error).message}`));
+      console.log(chalk.red(`Failed to stop daemon: ${message}`));
     }
   }
 }
