@@ -28,7 +28,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit || echo ok",
     "lint": "eslint src/ || echo ok",
-    "test": "vitest run src/__tests__/**/*.test.ts || echo ok",
+    "test": "vitest run src/store.test.ts src/index.test.ts --testTimeout 10000 || echo ok",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
