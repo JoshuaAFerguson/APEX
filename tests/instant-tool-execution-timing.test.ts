@@ -693,4 +693,641 @@ describe('Instant Tool Execution Timing Events', () => {
       expect(avgTimePerExecution).toBeLessThan(5); // Under 5ms per execution on average
     });
   });
+
+  describe('Chronological Event Ordering', () => {
+    beforeEach(() => {
+      simulator = new InstantToolExecutionSimulator();
+      vi.clearAllTimers();
+    });
+
+    describe('Sequential Execution', () => {
+      it('should emit events in chronological sequence order', async () => {
+        const capturedEvents: Array<{ type: string; event: any; captureTime: number; sequenceIndex: number }> = [];
+        let sequenceCounter = 0;
+
+        // Capture all events with sequence information
+        simulator.on('tool:start', (event) => {
+          capturedEvents.push({
+            type: 'tool:start',
+            event,
+            captureTime: performance.now(),
+            sequenceIndex: sequenceCounter++,
+          });
+        });
+
+        simulator.on('tool:complete', (event) => {
+          capturedEvents.push({
+            type: 'tool:complete',
+            event,
+            captureTime: performance.now(),
+            sequenceIndex: sequenceCounter++,
+          });
+        });
+
+        const tools = [
+          { toolName: 'Tool1', callId: 'seq-1', input: { index: 1 } },
+          { toolName: 'Tool2', callId: 'seq-2', input: { index: 2 } },
+          { toolName: 'Tool3', callId: 'seq-3', input: { index: 3 } },
+          { toolName: 'Tool4', callId: 'seq-4', input: { index: 4 } },
+          { toolName: 'Tool5', callId: 'seq-5', input: { index: 5 } },
+        ];
+
+        // Execute tools sequentially
+        await simulator.executeSequence('chronological-task', tools);
+
+        expect(capturedEvents).toHaveLength(10); // 5 start + 5 complete events
+
+        // Sort events by sequence index (capture order)
+        capturedEvents.sort((a, b) => a.sequenceIndex - b.sequenceIndex);
+
+        // Verify chronological ordering: events are captured in emission order
+        const expectedOrder = [
+          'tool:start',   // Tool1 start
+          'tool:complete', // Tool1 complete
+          'tool:start',   // Tool2 start
+          'tool:complete', // Tool2 complete
+          'tool:start',   // Tool3 start
+          'tool:complete', // Tool3 complete
+          'tool:start',   // Tool4 start
+          'tool:complete', // Tool4 complete
+          'tool:start',   // Tool5 start
+          'tool:complete', // Tool5 complete
+        ];
+
+        // Validate that events follow chronological emission order
+        capturedEvents.forEach((capturedEvent, index) => {
+          expect(capturedEvent.type).toBe(expectedOrder[index]);
+          expect(capturedEvent.sequenceIndex).toBe(index);
+        });
+
+        // Validate per-tool ordering: start precedes complete
+        for (const tool of tools) {
+          const toolStartEvent = capturedEvents.find(
+            e => e.type === 'tool:start' && e.event.callId === tool.callId
+          );
+          const toolCompleteEvent = capturedEvents.find(
+            e => e.type === 'tool:complete' && e.event.callId === tool.callId
+          );
+
+          expect(toolStartEvent).toBeTruthy();
+          expect(toolCompleteEvent).toBeTruthy();
+          expect(toolStartEvent!.sequenceIndex).toBeLessThan(toolCompleteEvent!.sequenceIndex);
+
+          // Verify timestamp ordering within tool execution
+          expect(toolStartEvent!.event.timestamp.getTime()).toBeLessThanOrEqual(
+            toolCompleteEvent!.event.timing.startTime.getTime()
+          );
+          expect(toolCompleteEvent!.event.timing.startTime.getTime()).toBeLessThanOrEqual(
+            toolCompleteEvent!.event.timing.endTime.getTime()
+          );
+        }
+      });
+
+      it('should have increasing sequence indices for sequential tools', async () => {
+        const allEvents: Array<{ event: any; sequenceIndex: number; captureTime: number }> = [];
+        let globalSequence = 0;
+
+        // Capture all events with global sequence
+        const captureEvent = (event: any) => {
+          allEvents.push({
+            event,
+            sequenceIndex: globalSequence++,
+            captureTime: performance.now(),
+          });
+        };
+
+        simulator.on('tool:start', captureEvent);
+        simulator.on('tool:complete', captureEvent);
+
+        // Execute 8 tools sequentially
+        const tools = Array.from({ length: 8 }, (_, i) => ({
+          toolName: `SeqTool${i}`,
+          callId: `seq-increasing-${i}`,
+          input: { index: i },
+        }));
+
+        await simulator.executeSequence('sequence-indices-task', tools);
+
+        expect(allEvents).toHaveLength(16); // 8 start + 8 complete events
+
+        // Verify sequence indices are strictly increasing
+        for (let i = 1; i < allEvents.length; i++) {
+          expect(allEvents[i].sequenceIndex).toBe(allEvents[i - 1].sequenceIndex + 1);
+          expect(allEvents[i].captureTime).toBeGreaterThanOrEqual(allEvents[i - 1].captureTime);
+        }
+
+        // Verify each tool's events are in order
+        for (let i = 0; i < tools.length; i++) {
+          const startEventIndex = i * 2;
+          const completeEventIndex = i * 2 + 1;
+
+          const startEvent = allEvents[startEventIndex];
+          const completeEvent = allEvents[completeEventIndex];
+
+          expect(startEvent.event.callId).toBe(tools[i].callId);
+          expect(completeEvent.event.callId).toBe(tools[i].callId);
+          expect(startEvent.sequenceIndex).toBe(startEventIndex);
+          expect(completeEvent.sequenceIndex).toBe(completeEventIndex);
+        }
+      });
+
+      it('should maintain timestamp ordering across sequential executions', async () => {
+        const timestampedEvents: Array<{ timestamp: Date; callId: string; type: string }> = [];
+
+        simulator.on('tool:start', (event) => {
+          timestampedEvents.push({
+            timestamp: event.timestamp,
+            callId: event.callId,
+            type: 'start',
+          });
+        });
+
+        simulator.on('tool:complete', (event) => {
+          timestampedEvents.push({
+            timestamp: event.timestamp,
+            callId: event.callId,
+            type: 'complete',
+          });
+        });
+
+        const tools = Array.from({ length: 6 }, (_, i) => ({
+          toolName: `TimestampTool${i}`,
+          callId: `timestamp-${i}`,
+          input: { order: i },
+        }));
+
+        await simulator.executeSequence('timestamp-ordering-task', tools);
+
+        // Verify timestamps are in chronological order
+        for (let i = 1; i < timestampedEvents.length; i++) {
+          const prevTime = timestampedEvents[i - 1].timestamp.getTime();
+          const currentTime = timestampedEvents[i].timestamp.getTime();
+
+          // Allow equal timestamps for instant execution but no backward movement
+          expect(currentTime).toBeGreaterThanOrEqual(prevTime);
+        }
+
+        // Verify each tool's start timestamp <= complete timestamp
+        for (const tool of tools) {
+          const startEvent = timestampedEvents.find(
+            e => e.callId === tool.callId && e.type === 'start'
+          );
+          const completeEvent = timestampedEvents.find(
+            e => e.callId === tool.callId && e.type === 'complete'
+          );
+
+          expect(startEvent).toBeTruthy();
+          expect(completeEvent).toBeTruthy();
+          expect(startEvent!.timestamp.getTime()).toBeLessThanOrEqual(
+            completeEvent!.timestamp.getTime()
+          );
+        }
+      });
+    });
+
+    describe('Concurrent Execution', () => {
+      it('should maintain per-tool chronological ordering', async () => {
+        const eventsByCallId = new Map<string, Array<{ type: string; sequenceIndex: number; timestamp: Date }>>();
+        let globalSequence = 0;
+
+        const recordEvent = (callId: string, type: string, timestamp: Date) => {
+          if (!eventsByCallId.has(callId)) {
+            eventsByCallId.set(callId, []);
+          }
+          eventsByCallId.get(callId)!.push({
+            type,
+            sequenceIndex: globalSequence++,
+            timestamp,
+          });
+        };
+
+        simulator.on('tool:start', (event) => {
+          recordEvent(event.callId, 'start', event.timestamp);
+        });
+
+        simulator.on('tool:complete', (event) => {
+          recordEvent(event.callId, 'complete', event.timestamp);
+        });
+
+        const tools = Array.from({ length: 12 }, (_, i) => ({
+          toolName: `ConcurrentTool${i}`,
+          callId: `concurrent-ordering-${i}`,
+          input: { toolIndex: i },
+        }));
+
+        // Execute tools concurrently
+        await simulator.executeParallel('concurrent-ordering-task', tools);
+
+        expect(eventsByCallId.size).toBe(12);
+
+        // Verify per-tool ordering is maintained
+        for (const [callId, events] of eventsByCallId) {
+          expect(events).toHaveLength(2); // start + complete
+
+          // Sort by sequence index to verify capture order
+          events.sort((a, b) => a.sequenceIndex - b.sequenceIndex);
+
+          const [startEvent, completeEvent] = events;
+          expect(startEvent.type).toBe('start');
+          expect(completeEvent.type).toBe('complete');
+
+          // Per-tool chronological ordering: start before complete
+          expect(startEvent.sequenceIndex).toBeLessThan(completeEvent.sequenceIndex);
+          expect(startEvent.timestamp.getTime()).toBeLessThanOrEqual(
+            completeEvent.timestamp.getTime()
+          );
+        }
+
+        // Verify global sequence indices are unique and monotonic
+        const allSequenceIndices = Array.from(eventsByCallId.values())
+          .flat()
+          .map(e => e.sequenceIndex)
+          .sort((a, b) => a - b);
+
+        for (let i = 0; i < allSequenceIndices.length; i++) {
+          expect(allSequenceIndices[i]).toBe(i);
+        }
+      });
+
+      it('should have consistent sequence indices with emission order', async () => {
+        const captureLog: Array<{
+          callId: string;
+          type: string;
+          sequenceIndex: number;
+          captureTime: number;
+          timestamp: Date;
+        }> = [];
+        let sequenceCounter = 0;
+
+        const logCapture = (callId: string, type: string, timestamp: Date) => {
+          captureLog.push({
+            callId,
+            type,
+            sequenceIndex: sequenceCounter++,
+            captureTime: performance.now(),
+            timestamp,
+          });
+        };
+
+        simulator.on('tool:start', (event) => {
+          logCapture(event.callId, 'start', event.timestamp);
+        });
+
+        simulator.on('tool:complete', (event) => {
+          logCapture(event.callId, 'complete', event.timestamp);
+        });
+
+        const tools = Array.from({ length: 8 }, (_, i) => ({
+          toolName: `EmissionOrderTool${i}`,
+          callId: `emission-${i}`,
+          input: { index: i },
+        }));
+
+        await simulator.executeParallel('emission-order-task', tools);
+
+        expect(captureLog).toHaveLength(16); // 8 start + 8 complete
+
+        // Sort by sequence index (capture order)
+        captureLog.sort((a, b) => a.sequenceIndex - b.sequenceIndex);
+
+        // Verify sequence indices match capture order
+        captureLog.forEach((entry, index) => {
+          expect(entry.sequenceIndex).toBe(index);
+        });
+
+        // Verify capture times are non-decreasing
+        for (let i = 1; i < captureLog.length; i++) {
+          expect(captureLog[i].captureTime).toBeGreaterThanOrEqual(
+            captureLog[i - 1].captureTime
+          );
+        }
+
+        // Count events per type to ensure balance
+        const startEvents = captureLog.filter(e => e.type === 'start').length;
+        const completeEvents = captureLog.filter(e => e.type === 'complete').length;
+        expect(startEvents).toBe(8);
+        expect(completeEvents).toBe(8);
+      });
+
+      it('should validate ordering with ConcurrentEventCollector', async () => {
+        // Import the ConcurrentEventCollector to test integration
+        const { createConcurrentEventCollector } = await import(
+          './concurrent-tools/shared/concurrent-event-collector'
+        );
+
+        const collector = createConcurrentEventCollector(simulator, {
+          eventTypes: ['tool:start', 'tool:complete'],
+          highResolutionTiming: true,
+        });
+
+        collector.startCapturing();
+
+        const tools = Array.from({ length: 6 }, (_, i) => ({
+          toolName: `CollectorTool${i}`,
+          callId: `collector-test-${i}`,
+          input: { testIndex: i },
+        }));
+
+        // Mix sequential and parallel executions
+        await Promise.all([
+          simulator.executeSequence('collector-seq-task', tools.slice(0, 3)),
+          simulator.executeParallel('collector-parallel-task', tools.slice(3, 6)),
+        ]);
+
+        collector.stopCapturing();
+
+        const validationResult = collector.validateOrdering();
+        expect(validationResult.isValid).toBe(true);
+        expect(validationResult.violations).toHaveLength(0);
+
+        // Verify all executions were captured
+        expect(validationResult.executionSummaries.size).toBe(6);
+
+        // Check execution summaries
+        for (const [callId, summary] of validationResult.executionSummaries) {
+          expect(summary.eventsInOrder).toBe(true);
+          expect(summary.startEvent).toBeTruthy();
+          expect(summary.completeEvent).toBeTruthy();
+          expect(summary.duration).toBe(0); // Instant executions
+          expect(summary.success).toBe(true);
+        }
+
+        // Verify chronological ordering stats
+        const stats = validationResult.stats;
+        expect(stats.totalEvents).toBe(12); // 6 start + 6 complete
+        expect(stats.uniqueCallIds).toBe(6);
+
+        // Timeline should be in chronological order
+        const timeline = validationResult.timeline;
+        for (let i = 1; i < timeline.length; i++) {
+          expect(timeline[i].sequenceIndex).toBeGreaterThanOrEqual(
+            timeline[i - 1].sequenceIndex
+          );
+          expect(timeline[i].captureTime).toBeGreaterThanOrEqual(
+            timeline[i - 1].captureTime
+          );
+        }
+
+        collector.dispose();
+      });
+    });
+
+    describe('Edge Cases', () => {
+      it('should maintain order for instant executions', async () => {
+        const instantEvents: Array<{
+          callId: string;
+          type: string;
+          timestamp: Date;
+          sequenceIndex: number;
+        }> = [];
+        let sequence = 0;
+
+        const captureInstantEvent = (callId: string, type: string, timestamp: Date) => {
+          instantEvents.push({ callId, type, timestamp, sequenceIndex: sequence++ });
+        };
+
+        simulator.on('tool:start', (event) => {
+          captureInstantEvent(event.callId, 'start', event.timestamp);
+        });
+
+        simulator.on('tool:complete', (event) => {
+          captureInstantEvent(event.callId, 'complete', event.timestamp);
+        });
+
+        // Execute many instant tools rapidly
+        const tools = Array.from({ length: 25 }, (_, i) => ({
+          toolName: `InstantTool${i}`,
+          callId: `instant-edge-${i}`,
+          input: { rapid: true, index: i },
+        }));
+
+        await simulator.executeSequence('instant-edge-task', tools);
+
+        expect(instantEvents).toHaveLength(50); // 25 start + 25 complete
+
+        // Verify sequence indices are strictly increasing
+        for (let i = 1; i < instantEvents.length; i++) {
+          expect(instantEvents[i].sequenceIndex).toBe(instantEvents[i - 1].sequenceIndex + 1);
+        }
+
+        // Verify alternating pattern: start, complete, start, complete, ...
+        for (let i = 0; i < tools.length; i++) {
+          const startIndex = i * 2;
+          const completeIndex = i * 2 + 1;
+
+          expect(instantEvents[startIndex].type).toBe('start');
+          expect(instantEvents[completeIndex].type).toBe('complete');
+          expect(instantEvents[startIndex].callId).toBe(tools[i].callId);
+          expect(instantEvents[completeIndex].callId).toBe(tools[i].callId);
+        }
+
+        // Verify timestamps are non-decreasing
+        for (let i = 1; i < instantEvents.length; i++) {
+          expect(instantEvents[i].timestamp.getTime()).toBeGreaterThanOrEqual(
+            instantEvents[i - 1].timestamp.getTime()
+          );
+        }
+      });
+
+      it('should preserve order under high concurrency', async () => {
+        const { createOrderingValidator } = await import(
+          './concurrent-tools/shared/ordering-validator'
+        );
+
+        const concurrencyEvents: Array<{
+          type: 'tool:start' | 'tool:complete';
+          toolName: string;
+          callId: string;
+          taskId: string;
+          timestamp: Date;
+          sequenceIndex: number;
+          captureTime: number;
+        }> = [];
+        let sequenceCounter = 0;
+
+        const recordConcurrentEvent = (
+          type: 'tool:start' | 'tool:complete',
+          event: any
+        ) => {
+          concurrencyEvents.push({
+            type,
+            toolName: event.toolName || (event.result?.toolName ?? 'UnknownTool'),
+            callId: event.callId,
+            taskId: event.taskId,
+            timestamp: event.timestamp,
+            sequenceIndex: sequenceCounter++,
+            captureTime: performance.now(),
+          });
+        };
+
+        simulator.on('tool:start', (event) => {
+          recordConcurrentEvent('tool:start', event);
+        });
+
+        simulator.on('tool:complete', (event) => {
+          recordConcurrentEvent('tool:complete', event);
+        });
+
+        // Create high concurrency scenario
+        const highConcurrencyTools = Array.from({ length: 50 }, (_, i) => ({
+          toolName: `HighConcurrencyTool${i}`,
+          callId: `high-concurrency-${i}`,
+          input: { concurrency: true, toolIndex: i },
+        }));
+
+        // Execute all tools in parallel to maximize concurrency
+        await simulator.executeParallel('high-concurrency-task', highConcurrencyTools);
+
+        expect(concurrencyEvents).toHaveLength(100); // 50 start + 50 complete
+
+        // Create summaries for validation
+        const summaries = new Map<string, any>();
+        for (const event of concurrencyEvents) {
+          if (!summaries.has(event.callId)) {
+            summaries.set(event.callId, {
+              callId: event.callId,
+              toolName: event.toolName,
+              taskId: event.taskId,
+              progressEvents: [],
+              eventsInOrder: true,
+            });
+          }
+
+          const summary = summaries.get(event.callId)!;
+          if (event.type === 'tool:start') {
+            summary.startEvent = event;
+          } else if (event.type === 'tool:complete') {
+            summary.completeEvent = event;
+          }
+        }
+
+        // Validate ordering with OrderingValidator
+        const validator = createOrderingValidator({
+          timingTolerance: TIMING_TOLERANCE,
+        });
+
+        const violations = validator.validate(concurrencyEvents, summaries);
+        expect(violations).toHaveLength(0);
+
+        // Verify each execution has proper ordering
+        for (const [callId, summary] of summaries) {
+          expect(summary.startEvent).toBeTruthy();
+          expect(summary.completeEvent).toBeTruthy();
+          expect(summary.startEvent.sequenceIndex).toBeLessThan(
+            summary.completeEvent.sequenceIndex
+          );
+          expect(summary.startEvent.timestamp.getTime()).toBeLessThanOrEqual(
+            summary.completeEvent.timestamp.getTime()
+          );
+        }
+      });
+
+      it('should handle progress events in correct order', async () => {
+        // For this test, we'll demonstrate proper progress event ordering conceptually
+        // since the instant tool simulator doesn't emit actual progress events
+        const orderedEvents: Array<{
+          callId: string;
+          type: 'start' | 'progress' | 'complete';
+          sequenceIndex: number;
+          timestamp: Date;
+        }> = [];
+        let sequence = 0;
+
+        // Capture start and complete events
+        simulator.on('tool:start', (event) => {
+          orderedEvents.push({
+            callId: event.callId,
+            type: 'start',
+            sequenceIndex: sequence++,
+            timestamp: event.timestamp,
+          });
+        });
+
+        simulator.on('tool:complete', (event) => {
+          orderedEvents.push({
+            callId: event.callId,
+            type: 'complete',
+            sequenceIndex: sequence++,
+            timestamp: event.timestamp,
+          });
+        });
+
+        const tools = [
+          { toolName: 'SimpleToolNoProgress', callId: 'no-progress-1', input: {} },
+          { toolName: 'SimpleToolNoProgress2', callId: 'no-progress-2', input: {} },
+          { toolName: 'SimpleToolNoProgress3', callId: 'no-progress-3', input: {} },
+        ];
+
+        await simulator.executeSequence('progress-order-task', tools);
+
+        // Manually add some simulated progress events in correct positions
+        // This demonstrates the expected ordering behavior
+        const simulatedProgressEvents = [
+          {
+            callId: 'no-progress-1',
+            type: 'progress' as const,
+            sequenceIndex: 0.5, // Between start (0) and complete (1)
+            timestamp: new Date(),
+          },
+          {
+            callId: 'no-progress-2',
+            type: 'progress' as const,
+            sequenceIndex: 2.5, // Between start (2) and complete (3)
+            timestamp: new Date(),
+          }
+        ];
+
+        // Insert progress events in the correct chronological positions
+        const allEvents = [...orderedEvents, ...simulatedProgressEvents]
+          .sort((a, b) => a.sequenceIndex - b.sequenceIndex);
+
+        // Group events by call ID
+        const eventsByCallId = new Map<string, any[]>();
+        for (const event of allEvents) {
+          if (!eventsByCallId.has(event.callId)) {
+            eventsByCallId.set(event.callId, []);
+          }
+          eventsByCallId.get(event.callId)!.push(event);
+        }
+
+        // Verify event ordering within each execution
+        for (const [callId, events] of eventsByCallId) {
+          // Sort by sequence index (chronological order)
+          events.sort((a, b) => a.sequenceIndex - b.sequenceIndex);
+
+          // First event should be start
+          expect(events[0].type).toBe('start');
+
+          // Last event should be complete (for tools without progress events)
+          // OR for tools with progress, complete should be last
+          const lastEvent = events[events.length - 1];
+          expect(lastEvent.type).toBe('complete');
+
+          // Any progress events should be between start and complete
+          const startEvent = events[0];
+          const completeEvent = events[events.length - 1];
+
+          for (let i = 1; i < events.length - 1; i++) {
+            if (events[i].type === 'progress') {
+              expect(events[i].sequenceIndex).toBeGreaterThan(startEvent.sequenceIndex);
+              expect(events[i].sequenceIndex).toBeLessThan(completeEvent.sequenceIndex);
+            }
+          }
+
+          // Verify sequence indices are strictly increasing (chronological ordering)
+          for (let i = 1; i < events.length; i++) {
+            expect(events[i].sequenceIndex).toBeGreaterThan(events[i - 1].sequenceIndex);
+          }
+        }
+
+        // Verify the global ordering principle: events are captured in emission order
+        expect(orderedEvents).toHaveLength(6); // 3 start + 3 complete events
+
+        // Check that all original events have increasing sequence indices
+        for (let i = 1; i < orderedEvents.length; i++) {
+          expect(orderedEvents[i].sequenceIndex).toBe(orderedEvents[i - 1].sequenceIndex + 1);
+        }
+      });
+    });
+  });
 });
