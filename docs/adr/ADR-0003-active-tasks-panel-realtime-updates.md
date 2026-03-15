@@ -1,7 +1,7 @@
 # ADR-0003: ActiveTasksPanel WebSocket Real-time Updates Integration
 
 ## Status
-Proposed
+Accepted (Implementation Complete)
 
 ## Date
 2025-01-15

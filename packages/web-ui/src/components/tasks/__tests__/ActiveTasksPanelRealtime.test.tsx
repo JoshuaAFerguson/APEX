@@ -365,19 +365,20 @@ describe('ActiveTasksPanelRealtime', () => {
 
   describe('Filtering', () => {
     it('filters tasks by active status', async () => {
-      // Create mock tasks with running, completed, and failed tasks
+      // Create mock tasks with in-progress, completed, and failed tasks
+      // Note: isTaskRunning checks for 'in-progress' or 'planning', not 'running'
       const tasksWithActive = [
-        { ...mockTasks[0], status: 'in-progress' as any }, // This should be shown as "active"
-        { ...mockTasks[1], status: 'completed' as any },
-        { ...mockTasks[2], status: 'failed' as any },
+        { ...mockTasks[0], id: 'task-active', status: 'in-progress' as any }, // This should be shown as "active"
+        { ...mockTasks[1], id: 'task-completed', status: 'completed' as any },
+        { ...mockTasks[2], id: 'task-failed', status: 'failed' as any },
       ]
 
       render(<ActiveTasksPanelRealtime initialTasks={tasksWithActive} defaultShowActiveOnly={true} />)
 
-      // Only running/in-progress task should be visible by default
-      expect(screen.getByTestId('task-card-task-1')).toBeInTheDocument()
-      expect(screen.queryByTestId('task-card-task-2')).not.toBeInTheDocument()
-      expect(screen.queryByTestId('task-card-task-3')).not.toBeInTheDocument()
+      // Only in-progress task should be visible by default
+      expect(screen.getByTestId('task-card-task-active')).toBeInTheDocument()
+      expect(screen.queryByTestId('task-card-task-completed')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('task-card-task-failed')).not.toBeInTheDocument()
     })
 
     it('allows switching between filter types', async () => {

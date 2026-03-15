@@ -7,7 +7,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
-import { ActiveTasksPanel } from '@/components/tasks/ActiveTasksPanel'
+import { ActiveTasksPanelRealtime } from '@/components/tasks/ActiveTasksPanelRealtime'
 import { apiClient } from '@/lib/api-client'
 import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId } from '@/lib/utils'
 import type { Task } from '@apexcli/core'
@@ -22,7 +22,6 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   useEffect(() => {
     loadDashboard()
@@ -50,31 +49,8 @@ export default function DashboardPage() {
     router.push(`/tasks/${taskId}`)
   }
 
-  // Cancel handler (optional action)
-  const handleCancel = async (taskId: string) => {
-    try {
-      setActionLoading(`cancel-${taskId}`)
-      await apiClient.cancelTask(taskId)
-      await loadDashboard()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel task')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  // Retry handler (optional action)
-  const handleRetry = async (taskId: string) => {
-    try {
-      setActionLoading(`retry-${taskId}`)
-      await apiClient.retryTask(taskId)
-      await loadDashboard()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to retry task')
-    } finally {
-      setActionLoading(null)
-    }
-  }
+  // Note: Task actions (cancel/retry) are now handled by the real-time panel component itself
+  // through WebSocket events and direct API calls, eliminating the need for manual refresh
 
   const pendingTasks = (stats?.byStatus['pending'] || 0) + (stats?.byStatus['queued'] || 0)
   const activeTasks = (stats?.byStatus['planning'] || 0) + (stats?.byStatus['in-progress'] || 0) + (stats?.byStatus['waiting-approval'] || 0)
@@ -203,17 +179,15 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-8">
-        <ActiveTasksPanel
-          tasks={tasks}
+        <ActiveTasksPanelRealtime
+          initialTasks={tasks}
           onViewDetails={handleViewDetails}
-          onRefresh={loadDashboard}
-          loading={loading}
           defaultShowActiveOnly={false}
           maxTasks={15}
           compact={false}
-          onCancel={handleCancel}
-          onRetry={handleRetry}
-          actionLoadingTaskId={actionLoading}
+          showConnectionIndicator={true}
+          connectionIndicatorSize="md"
+          autoConnect={true}
         />
       </div>
     </div>

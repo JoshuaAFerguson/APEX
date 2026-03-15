@@ -23,11 +23,10 @@ vi.mock('next/navigation', () => ({
   useRouter: vi.fn(),
 }))
 
-// Mock API client
-const mockGetSubtasks = vi.fn()
+// Mock API client - use inline vi.fn() to avoid hoisting issues
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
-    getSubtasks: mockGetSubtasks,
+    getSubtasks: vi.fn(),
   },
 }))
 

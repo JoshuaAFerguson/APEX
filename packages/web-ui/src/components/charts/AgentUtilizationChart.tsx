@@ -22,6 +22,11 @@ import {
  * Format large numbers for display (K, M format)
  */
 function formatNumber(num: number): string {
+  // Handle undefined, null, or invalid numbers
+  if (typeof num !== 'number' || !isFinite(num)) {
+    return '0'
+  }
+
   if (num >= 1000000) {
     return `${(num / 1000000).toFixed(1)}M`
   }
@@ -35,6 +40,11 @@ function formatNumber(num: number): string {
  * Format tokens per second with appropriate units
  */
 function formatTokensPerSecond(tokensPerSec: number): string {
+  // Handle undefined, null, or invalid numbers
+  if (typeof tokensPerSec !== 'number' || !isFinite(tokensPerSec)) {
+    return '0/s'
+  }
+
   if (tokensPerSec >= 1000) {
     return `${(tokensPerSec / 1000).toFixed(1)}K/s`
   }
@@ -66,6 +76,9 @@ function useProcessedAgents(
   }
 ): ProcessedAgentData[] {
   return useMemo(() => {
+    // Handle null or undefined data
+    if (!data || !data.agents) return []
+
     const { agents } = data
     const { sortBy, sortDirection, maxAgents, colors } = options
 
@@ -153,11 +166,11 @@ function useProcessedAgents(
     // Process agents with additional data
     return processedAgents.map((agent, index) => {
       const tokenPercentage = data.totalTokens > 0
-        ? (agent.totalTokens / data.totalTokens) * 100
+        ? ((agent.totalTokens || 0) / data.totalTokens) * 100
         : 0
 
       const costPercentage = data.totalEstimatedCost > 0
-        ? (agent.estimatedCost / data.totalEstimatedCost) * 100
+        ? ((agent.estimatedCost || 0) / data.totalEstimatedCost) * 100
         : 0
 
       // Assign colors from the color configuration
@@ -255,7 +268,7 @@ export function AgentUtilizationChart({
     return (
       <div className={cn('flex items-center justify-center py-8 text-foreground-secondary', className)} style={{ height }}>
         <p className="text-sm">
-          {data.agents.length === 0
+          {(!data?.agents || data.agents.length === 0)
             ? emptyMessage
             : 'No usage data yet'  // Match TokenUsageChart pattern when agents exist but no tokens
           }
@@ -385,8 +398,8 @@ export function AgentUtilizationChart({
       {/* Hidden summary for screen readers */}
       <div className="sr-only">
         Agent utilization summary: {processedAgents.length} agents shown.
-        Total tokens: {formatNumber(data.totalTokens)}.
-        Total cost: {formatCost(data.totalEstimatedCost)}.
+        Total tokens: {formatNumber(data?.totalTokens || 0)}.
+        Total cost: {formatCost(data?.totalEstimatedCost || 0)}.
         Top agent: {processedAgents[0]?.agentName} with {formatNumber(processedAgents[0]?.totalTokens || 0)} tokens.
       </div>
     </div>

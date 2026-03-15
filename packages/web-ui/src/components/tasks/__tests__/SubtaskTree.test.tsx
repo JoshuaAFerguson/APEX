@@ -78,7 +78,9 @@ vi.mock('lucide-react', () => ({
   RefreshCw: vi.fn(() => <div data-testid="refresh-icon">↻</div>),
 }))
 
-const mockApiClient = await import('@/lib/api-client')
+// Get reference to mocked api-client after all vi.mock calls
+import * as apiClientModule from '@/lib/api-client'
+const mockApiClient = apiClientModule
 
 describe('SubtaskTree', () => {
   const mockPush = vi.fn()

@@ -334,9 +334,11 @@ describe('AgentUtilizationChart', () => {
 
       renderChart({ data: longNameData })
 
-      // Name should be truncated with ellipsis
-      const agentElement = screen.getByText(/Very Long Age.../)
+      // Name should be truncated with ellipsis - check via title attribute which has full name
+      const agentElement = screen.getByTitle('Very Long Agent Name That Exceeds Character Limit')
       expect(agentElement).toBeInTheDocument()
+      // The display text should be truncated (17 chars - 3 for ellipsis = 14 chars + ...)
+      expect(agentElement.textContent).toMatch(/Very Long Agen\.\.\./)
     })
   })
 })
