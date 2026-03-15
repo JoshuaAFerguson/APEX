@@ -10,3 +10,6 @@ export { KanbanBoard } from './KanbanBoard'
 export { LogViewer } from './LogViewer'
 
 export { SubtaskList } from './SubtaskList'
+
+export { TaskDependencyGraph } from './TaskDependencyGraph'
+export type { TaskDependencyGraphProps } from './TaskDependencyGraph'

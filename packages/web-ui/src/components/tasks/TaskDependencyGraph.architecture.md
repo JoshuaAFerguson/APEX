@@ -70,16 +70,17 @@ interface TaskNodeData extends DependencyNodeData {
 **Decision**: Map TaskStatus to DependencyNodeStatus
 
 ```typescript
-const STATUS_MAP: Record<TaskStatus, DependencyNodeStatus> = {
-  'pending': 'pending',
-  'queued': 'pending',
-  'running': 'active',
-  'paused': 'warning',
-  'completed': 'completed',
-  'failed': 'error',
-  'cancelled': 'default',
-  'trashed': 'default',
-  'archived': 'completed',
+const TASK_STATUS_TO_NODE_STATUS: Record<TaskStatus, DependencyNodeStatus> = {
+  'pending': 'pending',      // Not yet queued
+  'queued': 'pending',       // Ready for execution
+  'planning': 'active',      // Planning approach
+  'in-progress': 'active',   // Actively executing
+  'waiting-approval': 'warning',  // Deprecated
+  'awaiting-approval': 'warning', // Requires approval
+  'paused': 'warning',       // Execution paused
+  'completed': 'completed',  // Successfully finished
+  'failed': 'error',         // Execution failed
+  'cancelled': 'default',    // Cancelled
 }
 ```
 

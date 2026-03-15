@@ -144,7 +144,12 @@ export const DEFAULT_TASK_GRAPH_LAYOUT: TaskGraphLayoutConfig = {
 /**
  * Helper function to truncate text for node labels
  */
-export function truncateDescription(description: string, maxLength: number = 40): string {
+export function truncateDescription(description: string | undefined | null, maxLength: number = 40): string {
+  // Handle undefined, null, or empty description
+  if (!description || typeof description !== 'string') {
+    return 'Untitled Task'
+  }
+
   if (description.length <= maxLength) {
     return description
   }
