@@ -47,6 +47,8 @@ import {
   ToolErrorHookCallback,
   loadConfig,
   loadAgents,
+  saveAgent,
+  deleteAgent,
   loadWorkflows,
   loadWorkflow,
   getEffectiveConfig,
@@ -373,6 +375,11 @@ export interface OrchestratorEvents {
   // Template events
   'template:created': (template: TaskTemplate) => void;
   'template:updated': (template: TaskTemplate) => void;
+
+  // Agent events
+  'agent:created': (agent: AgentDefinition) => void;
+  'agent:updated': (agent: AgentDefinition) => void;
+  'agent:deleted': (data: { name: string; agent: AgentDefinition }) => void;
 
   // Resource limit events
   'limit:warning': (event: LimitWarningEvent) => void;
@@ -11839,6 +11846,130 @@ Co-Authored-By: Claude Sonnet 4 <noreply@anthropic.com>`;
 
     this.emit('template:updated', updatedTemplate);
     return updatedTemplate;
+  }
+
+  /**
+   * Create a new agent definition
+   * @param agent The agent definition to create
+   * @returns The created agent definition
+   * @throws {Error} When agent validation fails or save operation fails
+   *
+   * @example
+   * ```typescript
+   * const agent = await orchestrator.createAgent({
+   *   name: 'custom-agent',
+   *   description: 'A custom agent for specific tasks',
+   *   prompt: 'You are a specialized agent...',
+   *   tools: ['Read', 'Write'],
+   *   model: 'sonnet'
+   * });
+   * ```
+   */
+  async createAgent(agent: AgentDefinition): Promise<AgentDefinition> {
+    await this.ensureInitialized();
+
+    // Save agent to disk using core function
+    await saveAgent(this.projectPath, agent);
+
+    // Update internal cache
+    this.agents[agent.name] = agent;
+
+    // Emit event
+    this.emit('agent:created', agent);
+
+    return agent;
+  }
+
+  /**
+   * Update an existing agent definition
+   * @param name The name of the agent to update
+   * @param updates Partial agent updates (cannot change name)
+   * @returns The updated agent definition
+   * @throws {Error} When agent is not found or update fails
+   *
+   * @example
+   * ```typescript
+   * const updatedAgent = await orchestrator.updateAgent('custom-agent', {
+   *   description: 'Updated description',
+   *   tools: ['Read', 'Write', 'Edit']
+   * });
+   * ```
+   */
+  async updateAgent(name: string, updates: Partial<Omit<AgentDefinition, 'name'>>): Promise<AgentDefinition> {
+    await this.ensureInitialized();
+
+    // Check if agent exists in cache
+    const existingAgent = this.agents[name];
+    if (!existingAgent) {
+      throw new Error(`Agent not found: ${name}`);
+    }
+
+    // Create updated agent definition
+    const updatedAgent: AgentDefinition = {
+      ...existingAgent,
+      ...updates,
+      name, // Ensure name cannot be changed
+    };
+
+    // Save updated agent to disk
+    await saveAgent(this.projectPath, updatedAgent);
+
+    // Update internal cache
+    this.agents[name] = updatedAgent;
+
+    // Emit event
+    this.emit('agent:updated', updatedAgent);
+
+    return updatedAgent;
+  }
+
+  /**
+   * Delete an agent definition
+   * @param name The name of the agent to delete
+   * @throws {Error} When agent is not found or deletion fails
+   *
+   * @example
+   * ```typescript
+   * await orchestrator.deleteAgent('custom-agent');
+   * ```
+   */
+  async deleteAgent(name: string): Promise<void> {
+    await this.ensureInitialized();
+
+    // Check if agent exists in cache
+    const existingAgent = this.agents[name];
+    if (!existingAgent) {
+      throw new Error(`Agent not found: ${name}`);
+    }
+
+    // Delete agent from disk using core function
+    await deleteAgent(this.projectPath, name);
+
+    // Remove from internal cache
+    delete this.agents[name];
+
+    // Emit event
+    this.emit('agent:deleted', { name, agent: existingAgent });
+  }
+
+  /**
+   * Get an agent definition by name
+   * @param name The name of the agent to retrieve
+   * @returns The agent definition or null if not found
+   *
+   * @example
+   * ```typescript
+   * const agent = await orchestrator.getAgent('developer');
+   * if (agent) {
+   *   console.log(`Found agent: ${agent.description}`);
+   * }
+   * ```
+   */
+  async getAgent(name: string): Promise<AgentDefinition | null> {
+    await this.ensureInitialized();
+
+    // Return from internal cache
+    return this.agents[name] || null;
   }
 
   /**

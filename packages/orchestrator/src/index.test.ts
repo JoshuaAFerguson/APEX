@@ -4,8 +4,8 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { ApexOrchestrator } from './index';
-import { initializeApex } from '@apexcli/core';
-import type { FileSnapshot } from '@apexcli/core';
+import { initializeApex, saveAgent, deleteAgent } from '@apexcli/core';
+import type { FileSnapshot, AgentDefinition } from '@apexcli/core';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { exec } from 'child_process';
 
@@ -26,6 +26,16 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 // Mock child_process using simple automocking
 vi.mock('child_process');
+
+// Mock @apexcli/core agent functions
+vi.mock('@apexcli/core', async () => {
+  const actual = await vi.importActual('@apexcli/core');
+  return {
+    ...actual,
+    saveAgent: vi.fn(),
+    deleteAgent: vi.fn(),
+  };
+});
 
 // Store exec mock behavior for dynamic control
 let execMockBehavior: Record<string, { stdout?: string; error?: Error }> = {};
@@ -5001,6 +5011,575 @@ You are a developer agent that implements code changes.
 
         const task = await orchestrator.getTask(taskId);
         expect(task?.status).toBe('failed'); // Should override to failed
+      });
+    });
+  });
+
+  describe('Agent CRUD Operations', () => {
+    const mockSaveAgent = vi.mocked(saveAgent);
+    const mockDeleteAgent = vi.mocked(deleteAgent);
+
+    beforeEach(() => {
+      // Clear all mocks before each test
+      mockSaveAgent.mockClear();
+      mockDeleteAgent.mockClear();
+    });
+
+    describe('createAgent()', () => {
+      it('should create a valid agent and cache it', async () => {
+        const agent: AgentDefinition = {
+          name: 'test-agent',
+          description: 'A test agent for unit testing',
+          prompt: 'You are a test agent designed to help with testing.',
+          tools: ['Read', 'Write'],
+          model: 'sonnet'
+        };
+
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const result = await orchestrator.createAgent(agent);
+
+        expect(mockSaveAgent).toHaveBeenCalledWith(testDir, agent);
+        expect(result).toEqual(agent);
+        expect(orchestrator.agents[agent.name]).toEqual(agent);
+      });
+
+      it('should create a minimal agent with default model', async () => {
+        const agent: AgentDefinition = {
+          name: 'minimal-agent',
+          description: 'Minimal agent',
+          prompt: 'You are minimal.'
+        };
+
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const result = await orchestrator.createAgent(agent);
+
+        expect(mockSaveAgent).toHaveBeenCalledWith(testDir, agent);
+        expect(result).toEqual(agent);
+        expect(result.model).toBe('sonnet'); // Should have default model
+      });
+
+      it('should emit agent:created event', async () => {
+        const agent: AgentDefinition = {
+          name: 'event-agent',
+          description: 'Agent for testing events',
+          prompt: 'You emit events.'
+        };
+
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const eventHandler = vi.fn();
+        orchestrator.on('agent:created', eventHandler);
+
+        await orchestrator.createAgent(agent);
+
+        expect(eventHandler).toHaveBeenCalledWith(agent);
+      });
+
+      it('should handle agent with full configuration', async () => {
+        const agent: AgentDefinition = {
+          name: 'full-agent',
+          description: 'Agent with all optional fields',
+          prompt: 'You are a comprehensive agent.',
+          tools: ['Read', 'Write', 'Edit', 'Bash'],
+          skills: ['coding', 'testing', 'debugging'],
+          model: 'opus'
+        };
+
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const result = await orchestrator.createAgent(agent);
+
+        expect(result).toEqual(agent);
+        expect(result.tools).toEqual(['Read', 'Write', 'Edit', 'Bash']);
+        expect(result.skills).toEqual(['coding', 'testing', 'debugging']);
+        expect(result.model).toBe('opus');
+      });
+
+      it('should reject agent creation if save fails', async () => {
+        const agent: AgentDefinition = {
+          name: 'fail-agent',
+          description: 'Agent that fails to save',
+          prompt: 'Save will fail.'
+        };
+
+        const saveError = new Error('Failed to save agent to disk');
+        mockSaveAgent.mockRejectedValue(saveError);
+
+        await expect(orchestrator.createAgent(agent))
+          .rejects.toThrow('Failed to save agent to disk');
+
+        expect(orchestrator.agents['fail-agent']).toBeUndefined();
+      });
+
+      it('should handle agents with special characters in name', async () => {
+        const agent: AgentDefinition = {
+          name: 'special-agent_with-chars',
+          description: 'Agent with special characters in name',
+          prompt: 'Special characters work.'
+        };
+
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const result = await orchestrator.createAgent(agent);
+
+        expect(result.name).toBe('special-agent_with-chars');
+        expect(orchestrator.agents['special-agent_with-chars']).toEqual(agent);
+      });
+    });
+
+    describe('updateAgent()', () => {
+      const existingAgent: AgentDefinition = {
+        name: 'existing-agent',
+        description: 'An existing agent',
+        prompt: 'Original prompt.',
+        tools: ['Read'],
+        model: 'sonnet'
+      };
+
+      beforeEach(() => {
+        // Add existing agent to cache
+        orchestrator.agents[existingAgent.name] = existingAgent;
+      });
+
+      it('should update agent description', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const updates = { description: 'Updated description' };
+        const result = await orchestrator.updateAgent('existing-agent', updates);
+
+        const expectedUpdated = { ...existingAgent, ...updates };
+        expect(mockSaveAgent).toHaveBeenCalledWith(testDir, expectedUpdated);
+        expect(result).toEqual(expectedUpdated);
+        expect(orchestrator.agents['existing-agent']).toEqual(expectedUpdated);
+      });
+
+      it('should update multiple fields at once', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const updates = {
+          description: 'Multi-field update',
+          prompt: 'New prompt for the agent.',
+          tools: ['Read', 'Write', 'Edit'],
+          model: 'opus' as const
+        };
+
+        const result = await orchestrator.updateAgent('existing-agent', updates);
+
+        const expectedUpdated = { ...existingAgent, ...updates };
+        expect(result).toEqual(expectedUpdated);
+        expect(result.tools).toEqual(['Read', 'Write', 'Edit']);
+        expect(result.model).toBe('opus');
+      });
+
+      it('should emit agent:updated event', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const eventHandler = vi.fn();
+        orchestrator.on('agent:updated', eventHandler);
+
+        const updates = { description: 'Event test update' };
+        const result = await orchestrator.updateAgent('existing-agent', updates);
+
+        expect(eventHandler).toHaveBeenCalledWith(result);
+      });
+
+      it('should reject update for non-existent agent', async () => {
+        const updates = { description: 'This will fail' };
+
+        await expect(orchestrator.updateAgent('non-existent', updates))
+          .rejects.toThrow('Agent not found: non-existent');
+
+        expect(mockSaveAgent).not.toHaveBeenCalled();
+      });
+
+      it('should handle save failure during update', async () => {
+        const saveError = new Error('Update save failed');
+        mockSaveAgent.mockRejectedValue(saveError);
+
+        const updates = { description: 'Will fail to save' };
+
+        await expect(orchestrator.updateAgent('existing-agent', updates))
+          .rejects.toThrow('Update save failed');
+
+        // Agent cache should remain unchanged
+        expect(orchestrator.agents['existing-agent']).toEqual(existingAgent);
+      });
+
+      it('should update agent with empty tools array', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const updates = { tools: [] };
+        const result = await orchestrator.updateAgent('existing-agent', updates);
+
+        expect(result.tools).toEqual([]);
+        expect(orchestrator.agents['existing-agent'].tools).toEqual([]);
+      });
+
+      it('should prevent name field updates through type system', () => {
+        // This test verifies the TypeScript types prevent name updates
+        // The updateAgent method signature should use Partial<Omit<AgentDefinition, 'name'>>
+        const updates = { description: 'Valid update' };
+
+        // This should compile fine
+        expect(() => {
+          type UpdateType = Parameters<typeof orchestrator.updateAgent>[1];
+          const validUpdate: UpdateType = updates;
+          return validUpdate;
+        }).not.toThrow();
+
+        // The type system should prevent this (can't test directly, but documents intention)
+        // const invalidUpdate: UpdateType = { name: 'new-name' }; // Should cause TypeScript error
+      });
+    });
+
+    describe('deleteAgent()', () => {
+      const agentToDelete: AgentDefinition = {
+        name: 'delete-me',
+        description: 'Agent marked for deletion',
+        prompt: 'I will be deleted.'
+      };
+
+      beforeEach(() => {
+        // Add agent to cache
+        orchestrator.agents[agentToDelete.name] = agentToDelete;
+      });
+
+      it('should delete existing agent from cache and disk', async () => {
+        mockDeleteAgent.mockResolvedValue(undefined);
+
+        await orchestrator.deleteAgent('delete-me');
+
+        expect(mockDeleteAgent).toHaveBeenCalledWith(testDir, 'delete-me');
+        expect(orchestrator.agents['delete-me']).toBeUndefined();
+      });
+
+      it('should emit agent:deleted event', async () => {
+        mockDeleteAgent.mockResolvedValue(undefined);
+
+        const eventHandler = vi.fn();
+        orchestrator.on('agent:deleted', eventHandler);
+
+        await orchestrator.deleteAgent('delete-me');
+
+        expect(eventHandler).toHaveBeenCalledWith({
+          name: 'delete-me',
+          agent: agentToDelete
+        });
+      });
+
+      it('should reject deletion of non-existent agent', async () => {
+        await expect(orchestrator.deleteAgent('non-existent'))
+          .rejects.toThrow('Agent not found: non-existent');
+
+        expect(mockDeleteAgent).not.toHaveBeenCalled();
+      });
+
+      it('should handle deletion failure', async () => {
+        const deleteError = new Error('Failed to delete agent file');
+        mockDeleteAgent.mockRejectedValue(deleteError);
+
+        await expect(orchestrator.deleteAgent('delete-me'))
+          .rejects.toThrow('Failed to delete agent file');
+
+        // Agent should remain in cache if deletion fails
+        expect(orchestrator.agents['delete-me']).toEqual(agentToDelete);
+      });
+
+      it('should handle deletion of agent with special characters', async () => {
+        const specialAgent: AgentDefinition = {
+          name: 'special-agent_123',
+          description: 'Special char agent',
+          prompt: 'Special.'
+        };
+
+        orchestrator.agents[specialAgent.name] = specialAgent;
+        mockDeleteAgent.mockResolvedValue(undefined);
+
+        await orchestrator.deleteAgent('special-agent_123');
+
+        expect(mockDeleteAgent).toHaveBeenCalledWith(testDir, 'special-agent_123');
+        expect(orchestrator.agents['special-agent_123']).toBeUndefined();
+      });
+    });
+
+    describe('getAgent()', () => {
+      const cachedAgent: AgentDefinition = {
+        name: 'cached-agent',
+        description: 'Agent in cache',
+        prompt: 'I am cached.'
+      };
+
+      beforeEach(() => {
+        // Add agent to cache
+        orchestrator.agents[cachedAgent.name] = cachedAgent;
+      });
+
+      it('should return agent from cache', async () => {
+        const result = await orchestrator.getAgent('cached-agent');
+
+        expect(result).toEqual(cachedAgent);
+      });
+
+      it('should return null for non-existent agent', async () => {
+        const result = await orchestrator.getAgent('non-existent');
+
+        expect(result).toBeNull();
+      });
+
+      it('should return agent with all fields intact', async () => {
+        const fullAgent: AgentDefinition = {
+          name: 'full-cached',
+          description: 'Full agent with all fields',
+          prompt: 'Comprehensive prompt.',
+          tools: ['Read', 'Write', 'Edit'],
+          skills: ['skill1', 'skill2'],
+          model: 'opus'
+        };
+
+        orchestrator.agents[fullAgent.name] = fullAgent;
+
+        const result = await orchestrator.getAgent('full-cached');
+
+        expect(result).toEqual(fullAgent);
+        expect(result?.tools).toEqual(['Read', 'Write', 'Edit']);
+        expect(result?.skills).toEqual(['skill1', 'skill2']);
+        expect(result?.model).toBe('opus');
+      });
+
+      it('should handle agent names with special characters', async () => {
+        const specialAgent: AgentDefinition = {
+          name: 'agent-with_special-chars',
+          description: 'Special chars',
+          prompt: 'Special.'
+        };
+
+        orchestrator.agents[specialAgent.name] = specialAgent;
+
+        const result = await orchestrator.getAgent('agent-with_special-chars');
+
+        expect(result).toEqual(specialAgent);
+      });
+
+      it('should be case sensitive for agent names', async () => {
+        const result1 = await orchestrator.getAgent('cached-agent');
+        const result2 = await orchestrator.getAgent('Cached-Agent');
+        const result3 = await orchestrator.getAgent('CACHED-AGENT');
+
+        expect(result1).toEqual(cachedAgent);
+        expect(result2).toBeNull();
+        expect(result3).toBeNull();
+      });
+    });
+
+    describe('Integration between CRUD methods', () => {
+      it('should handle full CRUD lifecycle', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+        mockDeleteAgent.mockResolvedValue(undefined);
+
+        // Create
+        const agent: AgentDefinition = {
+          name: 'lifecycle-agent',
+          description: 'Full lifecycle test',
+          prompt: 'Testing CRUD operations.'
+        };
+
+        const created = await orchestrator.createAgent(agent);
+        expect(created).toEqual(agent);
+        expect(orchestrator.agents['lifecycle-agent']).toEqual(agent);
+
+        // Read
+        const retrieved = await orchestrator.getAgent('lifecycle-agent');
+        expect(retrieved).toEqual(agent);
+
+        // Update
+        const updates = { description: 'Updated lifecycle test' };
+        const updated = await orchestrator.updateAgent('lifecycle-agent', updates);
+        expect(updated.description).toBe('Updated lifecycle test');
+        expect(orchestrator.agents['lifecycle-agent'].description).toBe('Updated lifecycle test');
+
+        // Delete
+        await orchestrator.deleteAgent('lifecycle-agent');
+        expect(orchestrator.agents['lifecycle-agent']).toBeUndefined();
+
+        // Verify deletion
+        const afterDelete = await orchestrator.getAgent('lifecycle-agent');
+        expect(afterDelete).toBeNull();
+      });
+
+      it('should maintain cache consistency across operations', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        // Create multiple agents
+        const agent1: AgentDefinition = {
+          name: 'consistency-1',
+          description: 'First agent',
+          prompt: 'First.'
+        };
+
+        const agent2: AgentDefinition = {
+          name: 'consistency-2',
+          description: 'Second agent',
+          prompt: 'Second.'
+        };
+
+        await orchestrator.createAgent(agent1);
+        await orchestrator.createAgent(agent2);
+
+        expect(Object.keys(orchestrator.agents)).toContain('consistency-1');
+        expect(Object.keys(orchestrator.agents)).toContain('consistency-2');
+
+        // Update one agent
+        await orchestrator.updateAgent('consistency-1', { description: 'Updated first' });
+
+        expect(orchestrator.agents['consistency-1'].description).toBe('Updated first');
+        expect(orchestrator.agents['consistency-2'].description).toBe('Second agent');
+
+        // Ensure agents() getter includes all agents
+        const allAgents = await orchestrator.getAgents();
+        expect(allAgents['consistency-1']).toBeDefined();
+        expect(allAgents['consistency-2']).toBeDefined();
+        expect(allAgents['consistency-1'].description).toBe('Updated first');
+      });
+
+      it('should handle concurrent agent operations', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+        mockDeleteAgent.mockResolvedValue(undefined);
+
+        const agents = [
+          { name: 'concurrent-1', description: 'First concurrent', prompt: 'One.' },
+          { name: 'concurrent-2', description: 'Second concurrent', prompt: 'Two.' },
+          { name: 'concurrent-3', description: 'Third concurrent', prompt: 'Three.' }
+        ];
+
+        // Create agents concurrently
+        await Promise.all(agents.map(agent => orchestrator.createAgent(agent)));
+
+        // Verify all were created
+        for (const agent of agents) {
+          expect(orchestrator.agents[agent.name]).toBeDefined();
+        }
+
+        // Update and delete concurrently
+        await Promise.all([
+          orchestrator.updateAgent('concurrent-1', { description: 'Updated concurrently' }),
+          orchestrator.deleteAgent('concurrent-2'),
+          orchestrator.getAgent('concurrent-3')
+        ]);
+
+        expect(orchestrator.agents['concurrent-1'].description).toBe('Updated concurrently');
+        expect(orchestrator.agents['concurrent-2']).toBeUndefined();
+        expect(orchestrator.agents['concurrent-3']).toBeDefined();
+      });
+    });
+
+    describe('Event emission validation', () => {
+      it('should emit all CRUD events with correct data structure', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+        mockDeleteAgent.mockResolvedValue(undefined);
+
+        const createdHandler = vi.fn();
+        const updatedHandler = vi.fn();
+        const deletedHandler = vi.fn();
+
+        orchestrator.on('agent:created', createdHandler);
+        orchestrator.on('agent:updated', updatedHandler);
+        orchestrator.on('agent:deleted', deletedHandler);
+
+        const agent: AgentDefinition = {
+          name: 'event-test',
+          description: 'Event testing agent',
+          prompt: 'Testing events.'
+        };
+
+        // Create
+        await orchestrator.createAgent(agent);
+        expect(createdHandler).toHaveBeenCalledWith(agent);
+
+        // Update
+        const updated = await orchestrator.updateAgent('event-test', { description: 'Updated for events' });
+        expect(updatedHandler).toHaveBeenCalledWith(updated);
+
+        // Delete
+        await orchestrator.deleteAgent('event-test');
+        expect(deletedHandler).toHaveBeenCalledWith({
+          name: 'event-test',
+          agent: updated
+        });
+      });
+
+      it('should emit events in correct order during operations', async () => {
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        const eventOrder: string[] = [];
+
+        orchestrator.on('agent:created', () => eventOrder.push('created'));
+        orchestrator.on('agent:updated', () => eventOrder.push('updated'));
+
+        const agent: AgentDefinition = {
+          name: 'order-test',
+          description: 'Order test',
+          prompt: 'Testing order.'
+        };
+
+        await orchestrator.createAgent(agent);
+        await orchestrator.updateAgent('order-test', { description: 'Updated order' });
+
+        expect(eventOrder).toEqual(['created', 'updated']);
+      });
+    });
+
+    describe('Error handling and edge cases', () => {
+      it('should handle initialization state correctly', async () => {
+        // Test that methods check initialization
+        const agent: AgentDefinition = {
+          name: 'init-test',
+          description: 'Init test',
+          prompt: 'Testing init.'
+        };
+
+        mockSaveAgent.mockResolvedValue(undefined);
+
+        // These should work because ensureInitialized() is called
+        await expect(orchestrator.createAgent(agent)).resolves.not.toThrow();
+        await expect(orchestrator.getAgent('init-test')).resolves.not.toThrow();
+      });
+
+      it('should handle empty agent caches gracefully', async () => {
+        // Clear the cache
+        orchestrator.agents = {};
+
+        const result = await orchestrator.getAgent('any-agent');
+        expect(result).toBeNull();
+
+        await expect(orchestrator.updateAgent('any-agent', {}))
+          .rejects.toThrow('Agent not found: any-agent');
+
+        await expect(orchestrator.deleteAgent('any-agent'))
+          .rejects.toThrow('Agent not found: any-agent');
+      });
+
+      it('should preserve agent cache integrity on partial failures', async () => {
+        const agent: AgentDefinition = {
+          name: 'integrity-test',
+          description: 'Cache integrity test',
+          prompt: 'Testing integrity.'
+        };
+
+        // First create the agent to put it in the cache
+        mockSaveAgent.mockResolvedValueOnce(undefined);
+        await orchestrator.createAgent(agent);
+
+        // Now mock save failure for update
+        mockSaveAgent.mockRejectedValue(new Error('Save failed'));
+
+        // Update should fail and not modify cache
+        await expect(orchestrator.updateAgent('integrity-test', { description: 'Should fail' }))
+          .rejects.toThrow('Save failed');
+
+        expect(orchestrator.agents['integrity-test']).toEqual(agent);
+        expect(orchestrator.agents['integrity-test'].description).toBe('Cache integrity test');
       });
     });
   });

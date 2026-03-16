@@ -24,6 +24,8 @@ import type { FileDiff, DiffViewMode } from '../components/diff/types'
  * for pending approval gates
  */
 export interface PendingApprovalGate extends Gate {
+  /** Unique identifier for the gate (required for UI operations) */
+  id: string
   /** Extended status for pending gates - always 'pending' */
   status: Extract<GateStatus, 'pending'>
   /** Description of what the gate is protecting */
@@ -51,6 +53,8 @@ export interface PendingApprovalGate extends Gate {
  * for gates that have been approved or rejected
  */
 export interface ResolvedApprovalGate extends Gate {
+  /** Unique identifier for the gate (required for UI operations) */
+  id: string
   /** Extended status for resolved gates */
   status: Extract<GateStatus, 'approved' | 'rejected' | 'skipped' | 'timeout'>
   /** Who approved/rejected the gate */

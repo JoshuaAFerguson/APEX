@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardFooter } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -82,14 +82,26 @@ export function ApprovalGateItem({
     : null
 
   /**
-   * Calculate timeout status
+   * Calculate timeout status with live updates
    */
+  const [currentTime, setCurrentTime] = useState(() => Date.now())
+
+  // Update time every second for live countdown
+  useEffect(() => {
+    if (!gate.timeoutAt) return
+
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now())
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [gate.timeoutAt])
+
   const timeoutInfo = useMemo(() => {
     if (!gate.timeoutAt) return null
 
-    const now = Date.now()
     const timeoutTime = new Date(gate.timeoutAt).getTime()
-    const remainingMs = timeoutTime - now
+    const remainingMs = timeoutTime - currentTime
 
     if (remainingMs <= 0) {
       return {
@@ -99,17 +111,18 @@ export function ApprovalGateItem({
       }
     }
 
-    const remainingMinutes = Math.ceil(remainingMs / 60000)
+    const remainingMinutes = Math.floor(remainingMs / 60000)
+    const remainingSeconds = Math.floor((remainingMs % 60000) / 1000)
     const isUrgent = remainingMs < APPROVAL_GATE_PANEL_DEFAULTS.timeoutWarningThreshold
 
     return {
       status: isUrgent ? 'urgent' : 'normal' as const,
-      label: remainingMinutes > 60
-        ? `${Math.ceil(remainingMinutes / 60)}h remaining`
-        : `${remainingMinutes}m remaining`,
+      label: remainingMinutes > 0
+        ? `${remainingMinutes}m ${remainingSeconds}s`
+        : `${remainingSeconds}s`,
       className: isUrgent ? 'text-orange-500' : 'text-foreground-secondary',
     }
-  }, [gate.timeoutAt])
+  }, [gate.timeoutAt, currentTime])
 
   /**
    * Handle expand/collapse toggle
