@@ -269,6 +269,9 @@ describe('AgentUtilizationWidget - Edge Cases', () => {
     it('handles rapid connection state changes', () => {
       const states = ['connected', 'disconnected', 'reconnecting', 'error', 'connecting'] as const
 
+      // Initial mock setup
+      vi.mocked(useAgentMetrics).mockReturnValue(createMockAgentMetrics())
+
       const { rerender } = render(<AgentUtilizationWidget />)
 
       for (let i = 0; i < 20; i++) {
@@ -283,6 +286,9 @@ describe('AgentUtilizationWidget - Edge Cases', () => {
     })
 
     it('handles rapid agent list changes', () => {
+      // Initial mock setup
+      vi.mocked(useAgentMetrics).mockReturnValue(createMockAgentMetrics())
+
       const { rerender } = render(<AgentUtilizationWidget />)
 
       for (let i = 0; i < 10; i++) {

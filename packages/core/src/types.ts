@@ -4548,6 +4548,232 @@ export const SlackIntegrationConfigSchema = z.object({
 export type SlackIntegrationConfig = z.infer<typeof SlackIntegrationConfigSchema>;
 
 /**
+ * Microsoft Teams integration configuration (v0.7.0)
+ */
+export const TeamsIntegrationConfigSchema = z.object({
+  /** Enable Teams integration */
+  enabled: z.boolean().optional().default(false),
+
+  /** Microsoft App ID from Azure Bot registration */
+  appId: z.string().optional(),
+
+  /** Microsoft App Password (client secret) */
+  appPassword: z.string().optional(),
+
+  /** Tenant ID for single-tenant apps (use 'common' for multi-tenant) */
+  tenantId: z.string().optional().default('common'),
+
+  /** OAuth connection name configured in Azure Bot Service */
+  oauthConnectionName: z.string().optional(),
+
+  /** Default Team ID for notifications (optional) */
+  defaultTeamId: z.string().optional(),
+
+  /** Default Channel ID for notifications (optional) */
+  defaultChannelId: z.string().optional(),
+
+  /** Use Adaptive Cards for responses (v1.5 schema) */
+  useAdaptiveCards: z.boolean().optional().default(true),
+
+  /** Enable thread/reply updates for task progress */
+  threadUpdates: z.boolean().optional().default(true),
+
+  /** Service URL override for local development */
+  serviceUrl: z.string().optional(),
+});
+export type TeamsIntegrationConfig = z.infer<typeof TeamsIntegrationConfigSchema>;
+
+/**
+ * Discord integration configuration (v0.7.0)
+ */
+export const DiscordIntegrationConfigSchema = z.object({
+  /** Enable Discord integration */
+  enabled: z.boolean().optional().default(false),
+
+  /** Discord bot token from Discord Developer Portal */
+  botToken: z.string().optional(),
+
+  /** Discord application ID from Developer Portal */
+  applicationId: z.string().optional(),
+
+  /** Discord client secret for OAuth2 flow */
+  clientSecret: z.string().optional(),
+
+  /** Discord application public key for interaction verification */
+  publicKey: z.string().optional(),
+
+  /** Development guild ID for faster command registration */
+  devGuildId: z.string().optional(),
+
+  /** Default channel ID for notifications */
+  defaultChannelId: z.string().optional(),
+
+  /** Additional notification channel IDs */
+  notificationChannelIds: z.array(z.string()).optional().default([]),
+
+  /** Enable thread updates for task progress */
+  threadUpdates: z.boolean().optional().default(true),
+
+  /** Use Discord embeds for responses */
+  useEmbeds: z.boolean().optional().default(true),
+
+  /** Discord connection mode */
+  mode: z.enum(['gateway', 'interactions']).optional().default('gateway'),
+
+  /** Interactions endpoint URL for interactions mode */
+  interactionsEndpoint: z.string().optional(),
+});
+export type DiscordIntegrationConfig = z.infer<typeof DiscordIntegrationConfigSchema>;
+
+/**
+ * Webhook subscription configuration (v0.7.0)
+ */
+export const WebhookSubscriptionSchema = z.object({
+  /** Unique webhook identifier */
+  id: z.string(),
+
+  /** Human-readable name for the webhook */
+  name: z.string().min(1).max(100),
+
+  /** Webhook endpoint URL (must be HTTPS in production) */
+  url: z.string().url(),
+
+  /** Secret for HMAC-SHA256 signature generation */
+  secret: z.string().min(16).max(256).optional(),
+
+  /** Whether the webhook is currently active */
+  enabled: z.boolean().default(true),
+
+  /** Event types to subscribe to (empty = all events) */
+  events: z.array(z.string()).default([]),
+
+  /** Optional filter by task IDs (empty = all tasks) */
+  taskFilters: z.array(z.string()).optional().default([]),
+
+  /** Optional filter by workflow types */
+  workflowFilters: z.array(z.string()).optional().default([]),
+
+  /** Custom HTTP headers to include */
+  headers: z.record(z.string()).optional().default({}),
+
+  /** Retry configuration */
+  retry: z.object({
+    /** Maximum retry attempts (default: 5) */
+    maxAttempts: z.number().min(0).max(10).default(5),
+    /** Initial retry delay in ms (default: 1000) */
+    initialDelayMs: z.number().min(100).max(60000).default(1000),
+    /** Maximum retry delay in ms (default: 300000 = 5 min) */
+    maxDelayMs: z.number().min(1000).max(3600000).default(300000),
+    /** Backoff multiplier (default: 2) */
+    backoffMultiplier: z.number().min(1).max(5).default(2),
+  }).optional().default({}),
+
+  /** Request timeout in ms (default: 30000) */
+  timeoutMs: z.number().min(1000).max(300000).default(30000),
+
+  /** Content type for payload (default: application/json) */
+  contentType: z.enum(['application/json', 'application/x-www-form-urlencoded']).default('application/json'),
+
+  /** Creation timestamp */
+  createdAt: z.date(),
+
+  /** Last update timestamp */
+  updatedAt: z.date(),
+
+  /** Optional description */
+  description: z.string().max(500).optional(),
+
+  /** Tags for organization */
+  tags: z.array(z.string()).optional().default([]),
+});
+
+export type WebhookSubscription = z.infer<typeof WebhookSubscriptionSchema>;
+
+/**
+ * Webhook delivery attempt log entry
+ */
+export const WebhookDeliveryLogSchema = z.object({
+  /** Unique log entry ID */
+  id: z.string(),
+
+  /** Associated webhook ID */
+  webhookId: z.string(),
+
+  /** Event that triggered delivery */
+  eventType: z.string(),
+
+  /** Related task ID */
+  taskId: z.string(),
+
+  /** HTTP status code returned (null if network error) */
+  statusCode: z.number().nullable(),
+
+  /** Delivery status */
+  status: z.enum(['pending', 'success', 'failed', 'retrying']),
+
+  /** Number of retry attempts made */
+  attemptNumber: z.number().default(1),
+
+  /** Request payload (truncated for storage) */
+  requestPayload: z.string().optional(),
+
+  /** Response body (truncated for storage) */
+  responseBody: z.string().max(10000).optional(),
+
+  /** Error message if failed */
+  errorMessage: z.string().optional(),
+
+  /** Request duration in ms */
+  durationMs: z.number().optional(),
+
+  /** Timestamp of delivery attempt */
+  attemptedAt: z.date(),
+
+  /** Next retry scheduled time (if retrying) */
+  nextRetryAt: z.date().optional(),
+
+  /** IP address the request was sent to */
+  resolvedIp: z.string().optional(),
+});
+
+export type WebhookDeliveryLog = z.infer<typeof WebhookDeliveryLogSchema>;
+
+/**
+ * Webhook system configuration (v0.7.0)
+ */
+export const WebhookConfigSchema = z.object({
+  /** Enable webhook system globally */
+  enabled: z.boolean().optional().default(true),
+
+  /** Maximum number of webhooks allowed */
+  maxWebhooks: z.number().min(1).max(100).optional().default(50),
+
+  /** Global timeout for webhook requests in ms */
+  defaultTimeoutMs: z.number().min(1000).max(300000).optional().default(30000),
+
+  /** Maximum concurrent webhook deliveries */
+  maxConcurrentDeliveries: z.number().min(1).max(50).optional().default(10),
+
+  /** Log retention period in days */
+  logRetentionDays: z.number().min(1).max(365).optional().default(30),
+
+  /** Require HTTPS for webhook URLs (recommended for production) */
+  requireHttps: z.boolean().optional().default(true),
+
+  /** Allow webhooks to localhost (for development) */
+  allowLocalhost: z.boolean().optional().default(false),
+
+  /** Default events for new webhooks */
+  defaultEvents: z.array(z.string()).optional().default([
+    'task:completed',
+    'task:failed',
+    'approval:required',
+  ]),
+});
+
+export type WebhookConfig = z.infer<typeof WebhookConfigSchema>;
+
+/**
  * Schema for API authentication configuration
  * Controls access to the APEX REST API and WebSocket endpoints
  */
@@ -4651,6 +4877,12 @@ export const ApexConfigSchema = z.object({
   visualRegression: VisualRegressionConfigSchema.optional(),
   /** Slack integration configuration (v0.7.0) */
   slack: SlackIntegrationConfigSchema.optional(),
+  /** Microsoft Teams integration configuration (v0.7.0) */
+  teams: TeamsIntegrationConfigSchema.optional(),
+  /** Discord integration configuration (v0.7.0) */
+  discord: DiscordIntegrationConfigSchema.optional(),
+  /** Webhook system configuration (v0.7.0) */
+  webhooks: WebhookConfigSchema.optional(),
   /** Project-specific rules defined in .apexrules (v0.4.0) */
   projectRules: z.lazy(() => z.array(ApexRuleSchema)).optional().default([]),
   /** Unified guardrails configuration for policies, secrets, and access control (v0.5.0) */
@@ -6035,7 +6267,16 @@ export type ApexEventType =
   | 'mcp:error'
   | 'mcp:reconnecting'
   | 'mcp:health-check'
-  | 'mcp:state-change';
+  | 'mcp:state-change'
+  // Webhook lifecycle events (v0.7.0)
+  | 'webhook:created'
+  | 'webhook:updated'
+  | 'webhook:deleted'
+  | 'webhook:enabled'
+  | 'webhook:disabled'
+  | 'webhook:delivery:success'
+  | 'webhook:delivery:failed'
+  | 'webhook:delivery:retry';
 
 export interface ApexEvent {
   type: ApexEventType;

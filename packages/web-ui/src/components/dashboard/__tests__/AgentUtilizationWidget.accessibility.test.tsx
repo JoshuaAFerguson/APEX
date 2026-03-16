@@ -327,15 +327,17 @@ describe('AgentUtilizationWidget - Accessibility Tests', () => {
     })
 
     it('does not rely solely on color for information', () => {
+      // Mock error state with actual error message to trigger error UI
       vi.mocked(useAgentMetrics).mockReturnValue(
-        createMockAgentMetrics({ connectionStatus: 'error' })
+        createAgentMetricsErrorMock('Connection failed')
       )
 
       render(<AgentUtilizationWidget />)
 
       // Error should have both visual (color) and textual indicators
       expect(screen.getByText('Unable to load agent data')).toBeInTheDocument()
-      expect(screen.getByText('Connection Error')).toBeInTheDocument()
+      // Check for error text in accessible elements (title attribute or content)
+      expect(screen.getByTitle('Connection Error')).toBeInTheDocument()
     })
   })
 

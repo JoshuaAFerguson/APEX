@@ -40,6 +40,8 @@ export default function TasksPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('kanban') // Default to kanban view
   const [refreshKey, setRefreshKey] = useState(0)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const loadTasks = useCallback(async (pageNum?: number) => {
     const currentPage = pageNum ?? page
@@ -125,6 +127,18 @@ export default function TasksPage() {
     router.push(`/tasks/${taskId}`)
   }
 
+  function handleError(error: string) {
+    setErrorMessage(error)
+    // Auto-clear error after 5 seconds
+    setTimeout(() => setErrorMessage(null), 5000)
+  }
+
+  function handleSuccess(message: string) {
+    setSuccessMessage(message)
+    // Auto-clear success after 3 seconds
+    setTimeout(() => setSuccessMessage(null), 3000)
+  }
+
   if (loading && viewMode === 'list') {
     return (
       <div className="flex items-center justify-center h-full">
@@ -158,6 +172,18 @@ export default function TasksPage() {
 
   return (
     <div className="p-6">
+      {/* Success/Error Notifications */}
+      {successMessage && (
+        <div className="mb-4 p-3 bg-green-500/10 border border-green-500 text-green-500 rounded-lg">
+          {successMessage}
+        </div>
+      )}
+      {errorMessage && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500 text-red-500 rounded-lg">
+          {errorMessage}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Tasks</h1>
@@ -237,6 +263,8 @@ export default function TasksPage() {
           onRetry={handleRetry}
           actionLoading={actionLoading}
           refreshKey={refreshKey}
+          onError={handleError}
+          onSuccess={handleSuccess}
         />
       )}
 

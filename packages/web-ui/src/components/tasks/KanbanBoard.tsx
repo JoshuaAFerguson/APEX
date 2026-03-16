@@ -1,7 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
@@ -17,8 +25,12 @@ import {
   RotateCcw,
   ChevronDown,
   ChevronRight,
-  Layers
+  Layers,
+  Undo2
 } from 'lucide-react'
+import { DraggableKanbanCard } from './DraggableKanbanCard'
+import { DroppableKanbanColumn } from './DroppableKanbanColumn'
+import { useKanbanDragDrop } from './hooks/useKanbanDragDrop'
 
 const COLUMN_PAGE_SIZE = 20
 
@@ -72,12 +84,39 @@ interface KanbanBoardProps {
   onRetry: (taskId: string, e: React.MouseEvent) => void
   actionLoading: string | null
   refreshKey?: number
+  onError?: (error: string) => void
+  onSuccess?: (message: string) => void
 }
 
-export function KanbanBoard({ onCancel, onRetry, actionLoading, refreshKey }: KanbanBoardProps) {
+export function KanbanBoard({ onCancel, onRetry, actionLoading, refreshKey, onError, onSuccess }: KanbanBoardProps) {
   const [columnData, setColumnData] = useState<Record<string, { tasks: Task[]; total: number }>>({})
   const [stats, setStats] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+
+  // Initialize drag-and-drop functionality
+  const {
+    draggedTask,
+    isUpdating,
+    canUndo,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    undoLastOperation,
+  } = useKanbanDragDrop({
+    columnData,
+    setColumnData,
+    onError,
+    onSuccess,
+  })
+
+  // Configure drag sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px movement before drag starts
+      },
+    })
+  )
 
   const loadData = useCallback(async () => {
     try {
@@ -138,26 +177,72 @@ export function KanbanBoard({ onCancel, onRetry, actionLoading, refreshKey }: Ka
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-200px)]">
-      {KANBAN_COLUMNS.map((column) => {
-        const data = columnData[column.id] || { tasks: [], total: 0 }
-        // Sum counts from stats for this column's statuses
-        const totalCount = column.statuses.reduce((sum, s) => sum + (stats[s] || 0), 0)
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="space-y-4">
+        {/* Undo Button */}
+        {canUndo && (
+          <div className="flex justify-end">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={undoLastOperation}
+              disabled={isUpdating}
+              className="text-xs"
+            >
+              {isUpdating ? (
+                <Spinner size="sm" className="mr-2" />
+              ) : (
+                <Undo2 className="w-3 h-3 mr-2" />
+              )}
+              Undo last change
+            </Button>
+          </div>
+        )}
 
-        return (
-          <KanbanColumn
-            key={column.id}
-            column={column}
-            tasks={data.tasks}
-            totalCount={totalCount}
-            shownCount={data.tasks.length}
-            onCancel={onCancel}
-            onRetry={onRetry}
-            actionLoading={actionLoading}
-          />
-        )
-      })}
-    </div>
+        {/* Kanban Board */}
+        <div className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-200px)]">
+          {KANBAN_COLUMNS.map((column) => {
+            const data = columnData[column.id] || { tasks: [], total: 0 }
+            // Sum counts from stats for this column's statuses
+            const totalCount = column.statuses.reduce((sum, s) => sum + (stats[s] || 0), 0)
+
+            return (
+              <KanbanColumn
+                key={column.id}
+                column={column}
+                tasks={data.tasks}
+                totalCount={totalCount}
+                shownCount={data.tasks.length}
+                onCancel={onCancel}
+                onRetry={onRetry}
+                actionLoading={actionLoading}
+                isDragContext={true}
+              />
+            )
+          })}
+        </div>
+
+        {/* Drag Overlay */}
+        <DragOverlay>
+          {draggedTask ? (
+            <DraggableKanbanCard task={draggedTask} isDragOverlay>
+              <KanbanCard
+                task={draggedTask}
+                onCancel={onCancel}
+                onRetry={onRetry}
+                actionLoading={actionLoading}
+              />
+            </DraggableKanbanCard>
+          ) : null}
+        </DragOverlay>
+      </div>
+    </DndContext>
   )
 }
 
@@ -169,15 +254,16 @@ interface KanbanColumnProps {
   onCancel: (taskId: string, e: React.MouseEvent) => void
   onRetry: (taskId: string, e: React.MouseEvent) => void
   actionLoading: string | null
+  isDragContext?: boolean
 }
 
-function KanbanColumn({ column, tasks, totalCount, shownCount, onCancel, onRetry, actionLoading }: KanbanColumnProps) {
+function KanbanColumn({ column, tasks, totalCount, shownCount, onCancel, onRetry, actionLoading, isDragContext }: KanbanColumnProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const hasMore = totalCount > shownCount
 
-  return (
+  const content = (
     <div className={cn(
-      "flex-shrink-0 w-80 bg-background-secondary rounded-lg border border-border",
+      "flex-shrink-0 w-80 bg-background-secondary rounded-lg border border-border relative",
       "border-t-4",
       column.color
     )}>
@@ -209,13 +295,25 @@ function KanbanColumn({ column, tasks, totalCount, shownCount, onCancel, onRetry
           ) : (
             <>
               {tasks.map((task) => (
-                <KanbanCard
-                  key={task.id}
-                  task={task}
-                  onCancel={onCancel}
-                  onRetry={onRetry}
-                  actionLoading={actionLoading}
-                />
+                <div key={task.id}>
+                  {isDragContext ? (
+                    <DraggableKanbanCard task={task}>
+                      <KanbanCard
+                        task={task}
+                        onCancel={onCancel}
+                        onRetry={onRetry}
+                        actionLoading={actionLoading}
+                      />
+                    </DraggableKanbanCard>
+                  ) : (
+                    <KanbanCard
+                      task={task}
+                      onCancel={onCancel}
+                      onRetry={onRetry}
+                      actionLoading={actionLoading}
+                    />
+                  )}
+                </div>
               ))}
               {hasMore && (
                 <div className="text-center text-foreground-secondary text-xs py-3 opacity-70">
@@ -228,6 +326,17 @@ function KanbanColumn({ column, tasks, totalCount, shownCount, onCancel, onRetry
       )}
     </div>
   )
+
+  // Wrap with droppable area when in drag context
+  if (isDragContext) {
+    return (
+      <DroppableKanbanColumn columnId={column.id}>
+        {content}
+      </DroppableKanbanColumn>
+    )
+  }
+
+  return content
 }
 
 interface KanbanCardProps {

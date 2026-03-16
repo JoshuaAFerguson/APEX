@@ -31,11 +31,9 @@ import { useAgentMetrics } from '@/hooks/useAgentMetrics'
 describe('AgentUtilizationWidget - Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers()
   })
 
   afterEach(() => {
-    vi.useRealTimers()
     vi.resetAllMocks()
   })
 
@@ -274,7 +272,7 @@ describe('AgentUtilizationWidget - Integration Tests', () => {
       await waitFor(() => {
         expect(mockRefresh).toHaveBeenCalledTimes(1)
         expect(onRefresh).toHaveBeenCalledTimes(1)
-      })
+      }, { timeout: 1000 })
     })
 
     it('refreshes data and updates display', async () => {
@@ -299,7 +297,7 @@ describe('AgentUtilizationWidget - Integration Tests', () => {
 
       await waitFor(() => {
         expect(mockRefresh).toHaveBeenCalled()
-      })
+      }, { timeout: 1000 })
 
       // Simulate new data after refresh
       vi.mocked(useAgentMetrics).mockReturnValue(
@@ -337,7 +335,7 @@ describe('AgentUtilizationWidget - Integration Tests', () => {
 
       await waitFor(() => {
         expect(mockRefresh).toHaveBeenCalled()
-      })
+      }, { timeout: 1000 })
 
       // Simulate successful recovery
       vi.mocked(useAgentMetrics).mockReturnValue(
@@ -528,6 +526,16 @@ describe('AgentUtilizationWidget - Integration Tests', () => {
 
   describe('Data Integrity', () => {
     it('maintains display integrity during rapid updates', () => {
+      // Initial mock setup
+      vi.mocked(useAgentMetrics).mockReturnValue(
+        createMockAgentMetrics({
+          metrics: createMockAgentMetricsData([
+            createMockAgent('agent1', 'Agent 1', 1000, 0.05),
+            createMockAgent('agent2', 'Agent 2', 500, 0.025),
+          ]),
+        })
+      )
+
       const { rerender } = render(<AgentUtilizationWidget />)
 
       // Simulate rapid updates

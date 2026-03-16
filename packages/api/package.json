@@ -20,7 +20,7 @@
     "build": "tsc || echo ok",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "test": "echo 'API tests skipped (daemon-generated, pending cleanup)' || echo ok",
+    "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit || echo ok",
@@ -28,13 +28,16 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@apexcli/browser": "*",
     "@apexcli/core": "*",
     "@apexcli/orchestrator": "*",
-    "@apexcli/browser": "*",
     "@fastify/cors": "^9.0.1",
     "@fastify/websocket": "^10.0.1",
     "@slack/socket-mode": "^1.3.2",
     "@slack/web-api": "^7.5.1",
+    "adaptivecards": "^3.0.4",
+    "botbuilder": "^4.23.3",
+    "discord.js": "^14.25.1",
     "fastify": "^4.25.0",
     "fastify-plugin": "^4.5.1",
     "pino-pretty": "^11.0.0"

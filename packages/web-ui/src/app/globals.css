@@ -89,4 +89,82 @@
   .animate-collapse-inner {
     overflow: hidden;
   }
+
+  /* Diff Viewer Syntax Highlighting */
+  .diff-keyword {
+    color: #c792ea; /* Purple for keywords */
+    font-weight: 500;
+  }
+
+  .diff-string {
+    color: #c3e88d; /* Green for strings */
+  }
+
+  .diff-number {
+    color: #f78c6c; /* Orange for numbers */
+  }
+
+  .diff-comment {
+    color: #546e7a; /* Gray for comments */
+    font-style: italic;
+  }
+
+  .diff-function {
+    color: #82aaff; /* Blue for functions */
+  }
+
+  .diff-type {
+    color: #ffcb6b; /* Yellow for types */
+    font-weight: 500;
+  }
+
+  .diff-property {
+    color: #89ddff; /* Cyan for properties */
+  }
+
+  .diff-constant {
+    color: #c792ea; /* Purple for constants */
+    font-weight: 600;
+  }
+
+  .diff-tag {
+    color: #f07178; /* Pink for HTML tags */
+  }
+
+  /* Light theme overrides */
+  .light .diff-keyword {
+    color: #7c3aed; /* Purple */
+  }
+
+  .light .diff-string {
+    color: #16a34a; /* Green */
+  }
+
+  .light .diff-number {
+    color: #ea580c; /* Orange */
+  }
+
+  .light .diff-comment {
+    color: #6b7280; /* Gray */
+  }
+
+  .light .diff-function {
+    color: #2563eb; /* Blue */
+  }
+
+  .light .diff-type {
+    color: #ca8a04; /* Yellow */
+  }
+
+  .light .diff-property {
+    color: #0891b2; /* Cyan */
+  }
+
+  .light .diff-constant {
+    color: #7c3aed; /* Purple */
+  }
+
+  .light .diff-tag {
+    color: #dc2626; /* Red */
+  }
 }

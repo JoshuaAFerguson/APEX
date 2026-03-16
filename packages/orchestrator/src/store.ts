@@ -47,6 +47,8 @@ import {
   MCPServerConfig,
   MCPInstallation,
   MCPInstallationStatus,
+  WebhookSubscription,
+  WebhookDeliveryLog,
 } from '@apexcli/core';
 
 /**
@@ -823,6 +825,72 @@ export class TaskStore {
       CREATE INDEX IF NOT EXISTS idx_audit_logs_correlation_id ON audit_logs(correlation_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_session_id ON audit_logs(session_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_success ON audit_logs(success);
+
+      -- v0.7.0 Webhook System
+      CREATE TABLE IF NOT EXISTS webhooks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        secret TEXT,
+        enabled INTEGER DEFAULT 1,
+        events TEXT NOT NULL DEFAULT '[]',
+        task_filters TEXT DEFAULT '[]',
+        workflow_filters TEXT DEFAULT '[]',
+        headers TEXT DEFAULT '{}',
+        retry_config TEXT DEFAULT '{}',
+        timeout_ms INTEGER DEFAULT 30000,
+        content_type TEXT DEFAULT 'application/json',
+        description TEXT,
+        tags TEXT DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS webhook_events (
+        webhook_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        PRIMARY KEY (webhook_id, event_type),
+        FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS webhook_logs (
+        id TEXT PRIMARY KEY,
+        webhook_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        status_code INTEGER,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'success', 'failed', 'retrying')),
+        attempt_number INTEGER DEFAULT 1,
+        request_payload TEXT,
+        response_body TEXT,
+        error_message TEXT,
+        duration_ms INTEGER,
+        attempted_at TEXT NOT NULL,
+        next_retry_at TEXT,
+        resolved_ip TEXT,
+        FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS webhook_retry_queue (
+        id TEXT PRIMARY KEY,
+        log_id TEXT NOT NULL,
+        webhook_id TEXT NOT NULL,
+        event_data TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL,
+        scheduled_at TEXT NOT NULL,
+        FOREIGN KEY (log_id) REFERENCES webhook_logs(id) ON DELETE CASCADE,
+        FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
+      );
+
+      -- v0.7.0 Webhook System Indexes
+      CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled);
+      CREATE INDEX IF NOT EXISTS idx_webhooks_created_at ON webhooks(created_at);
+      CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(event_type);
+      CREATE INDEX IF NOT EXISTS idx_webhook_logs_webhook_id ON webhook_logs(webhook_id);
+      CREATE INDEX IF NOT EXISTS idx_webhook_logs_status ON webhook_logs(status);
+      CREATE INDEX IF NOT EXISTS idx_webhook_logs_attempted_at ON webhook_logs(attempted_at);
+      CREATE INDEX IF NOT EXISTS idx_webhook_logs_task_id ON webhook_logs(task_id);
+      CREATE INDEX IF NOT EXISTS idx_webhook_retry_scheduled ON webhook_retry_queue(scheduled_at);
     `);
   }
 

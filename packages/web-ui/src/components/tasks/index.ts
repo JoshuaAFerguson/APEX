@@ -15,6 +15,9 @@ export { CreateTaskDialog } from './CreateTaskDialog'
 export { GatePanel } from './GatePanel'
 
 export { KanbanBoard } from './KanbanBoard'
+export { DraggableKanbanCard } from './DraggableKanbanCard'
+export { DroppableKanbanColumn } from './DroppableKanbanColumn'
+export { useKanbanDragDrop } from './hooks/useKanbanDragDrop'
 
 export { LogViewer } from './LogViewer'
 

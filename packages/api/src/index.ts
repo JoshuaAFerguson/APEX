@@ -43,6 +43,8 @@ import {
 
 import { registerScreenshotRoutes } from './routes/screenshot.js';
 import { SlackService } from './services/slack-service.js';
+import { TeamsService } from './services/teams-service.js';
+import { DiscordService } from './services/discord-service.js';
 import authPlugin from './middleware/auth.js';
 
 /**
@@ -245,6 +247,20 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     await slackService.start();
   } catch (error) {
     app.log.error(`Slack integration failed to start: ${error instanceof Error ? error.message : error}`);
+  }
+
+  const teamsService = new TeamsService({ orchestrator, config: config.teams, logger: app.log });
+  try {
+    await teamsService.start();
+  } catch (error) {
+    app.log.error(`Teams integration failed to start: ${error instanceof Error ? error.message : error}`);
+  }
+
+  const discordService = new DiscordService({ orchestrator, config: config.discord, logger: app.log });
+  try {
+    await discordService.start();
+  } catch (error) {
+    app.log.error(`Discord integration failed to start: ${error instanceof Error ? error.message : error}`);
   }
 
   // Initialize daemon manager and health monitor for health endpoint
@@ -1943,6 +1959,8 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       healthMonitoringInterval = null;
     }
     await slackService.stop();
+    await teamsService.stop();
+    await discordService.stop();
   });
 
   return app;

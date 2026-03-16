@@ -655,6 +655,9 @@ describe('BudgetWidget - Edge Cases', () => {
     it('handles rapid connection state changes', () => {
       const states = ['connected', 'disconnected', 'reconnecting', 'error', 'connecting'] as const
 
+      // Initial mock setup
+      vi.mocked(useRealtimeUpdates).mockReturnValue(createMockRealtimeUpdates())
+
       const { rerender } = render(<BudgetWidget budgetLimit={1000} />)
 
       for (let i = 0; i < 20; i++) {

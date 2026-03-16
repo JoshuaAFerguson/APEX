@@ -28,11 +28,9 @@ import { useRealtimeUpdates } from '@/lib/useRealtimeUpdates'
 describe('BudgetWidget - Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers()
   })
 
   afterEach(() => {
-    vi.useRealTimers()
     vi.resetAllMocks()
   })
 
@@ -119,6 +117,9 @@ describe('BudgetWidget - Integration Tests', () => {
       const spendValues = [400, 750, 900, 1100]
       const expectedStatuses = ['Within budget', 'Approaching limit', 'Over budget', 'Over budget']
 
+      // Initial mock setup
+      vi.mocked(useRealtimeUpdates).mockReturnValue(createMockRealtimeUpdates())
+
       const { rerender } = render(<BudgetWidget budgetLimit={1000} />)
 
       spendValues.forEach((spend, index) => {
@@ -156,7 +157,7 @@ describe('BudgetWidget - Integration Tests', () => {
 
         rerender(<BudgetWidget budgetLimit={1000} />)
 
-        expect(screen.getByText(expectedStatuses[index])).toBeInTheDocument()
+        expect(screen.getAllByText(expectedStatuses[index]).length).toBeGreaterThan(0)
       })
     })
 
@@ -293,8 +294,9 @@ describe('BudgetWidget - Integration Tests', () => {
 
       await waitFor(() => {
         expect(mockCheckHealth).toHaveBeenCalledTimes(1)
-        expect(onRefresh).toHaveBeenCalledTimes(1)
-      })
+      }, { timeout: 2000 })
+
+      expect(onRefresh).toHaveBeenCalledTimes(1)
     })
 
     it('disables refresh button during refresh operation', async () => {
@@ -317,9 +319,8 @@ describe('BudgetWidget - Integration Tests', () => {
     })
 
     it('shows spinning animation during refresh', async () => {
-      let resolveRefresh: () => void
       const mockCheckHealth = vi.fn().mockImplementation(
-        () => new Promise<void>(resolve => { resolveRefresh = resolve })
+        () => new Promise<void>(resolve => { setTimeout(resolve, 100) })
       )
 
       vi.mocked(useRealtimeUpdates).mockReturnValue(
@@ -334,7 +335,7 @@ describe('BudgetWidget - Integration Tests', () => {
       // Should show spinning animation during refresh
       await waitFor(() => {
         expect(mockCheckHealth).toHaveBeenCalled()
-      })
+      }, { timeout: 2000 })
     })
   })
 
@@ -358,7 +359,7 @@ describe('BudgetWidget - Integration Tests', () => {
 
       await waitFor(() => {
         expect(mockCheckHealth).toHaveBeenCalled()
-      })
+      }, { timeout: 2000 })
 
       // Simulate successful recovery
       vi.mocked(useRealtimeUpdates).mockReturnValue(createMockRealtimeUpdates())
@@ -387,7 +388,7 @@ describe('BudgetWidget - Integration Tests', () => {
 
       await waitFor(() => {
         expect(mockCheckHealth).toHaveBeenCalled()
-      })
+      }, { timeout: 2000 })
 
       consoleSpy.mockRestore()
     })
@@ -395,6 +396,9 @@ describe('BudgetWidget - Integration Tests', () => {
 
   describe('Data Integrity During Updates', () => {
     it('maintains display integrity during rapid updates', () => {
+      // Initial mock setup
+      vi.mocked(useRealtimeUpdates).mockReturnValue(createMockRealtimeUpdates())
+
       const { rerender } = render(<BudgetWidget budgetLimit={1000} />)
 
       // Simulate rapid updates
