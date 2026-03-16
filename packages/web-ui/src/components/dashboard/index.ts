@@ -18,6 +18,12 @@ export type { MetricCardProps } from '@/types/project-health'
 export { PerformanceMetricsPanel } from './PerformanceMetricsPanel'
 export type { PerformanceMetricsPanelProps } from '@/types/performance-metrics'
 
+export { BudgetWidget } from './BudgetWidget'
+export type { BudgetWidgetProps } from './BudgetWidget'
+
+export { AgentUtilizationWidget } from './AgentUtilizationWidget'
+export type { AgentUtilizationWidgetProps } from './AgentUtilizationWidget'
+
 // Re-export types and utilities for convenience
 export type {
   ProjectHealthStatus,

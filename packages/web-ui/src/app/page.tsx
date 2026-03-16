@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import { ActiveTasksPanelRealtime } from '@/components/tasks/ActiveTasksPanelRealtime'
+import { BudgetWidget } from '@/components/dashboard/BudgetWidget'
+import { AgentUtilizationWidget } from '@/components/dashboard/AgentUtilizationWidget'
 import { apiClient } from '@/lib/api-client'
 import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId } from '@/lib/utils'
 import type { Task } from '@apexcli/core'
@@ -176,6 +178,32 @@ export default function DashboardPage() {
             </p>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Budget and Agent Utilization Widgets */}
+      <div className="mt-8 grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+        <BudgetWidget
+          budgetLimit={1000} // Default budget limit - could be configurable
+          size="md"
+          thresholds={{
+            warning: 75,
+            danger: 90,
+          }}
+          onRefresh={loadDashboard}
+          autoRefreshInterval={0} // Use real-time updates
+        />
+        <AgentUtilizationWidget
+          maxAgents={6}
+          height={300}
+          showCost={true}
+          showPerformance={false}
+          showTokenBreakdown={true}
+          onRefresh={loadDashboard}
+          onAgentClick={(agent) => {
+            // Could navigate to agent details page if it exists
+            console.log('Agent clicked:', agent.agentName, agent)
+          }}
+        />
       </div>
 
       <div className="mt-8">

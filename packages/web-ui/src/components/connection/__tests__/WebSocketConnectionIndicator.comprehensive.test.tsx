@@ -19,33 +19,21 @@ vi.mock('@/lib/utils', () => ({
   cn: (...classes: (string | undefined)[]) => classes.filter(Boolean).join(' '),
 }))
 
-// Mock the tooltip component with interaction capabilities
-const MockTooltip = ({ children, health }: { children: React.ReactNode; health?: WebSocketConnectionHealth }) => {
-  const [isVisible, setIsVisible] = React.useState(false)
+// Mock functions are now inlined below
 
-  return (
-    <div
-      data-testid="websocket-tooltip"
-      data-tooltip-visible={isVisible}
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-      onFocus={() => setIsVisible(true)}
-      onBlur={() => setIsVisible(false)}
-    >
+vi.mock('../WebSocketConnectionTooltip', () => ({
+  WebSocketConnectionTooltip: ({ children, health }: { children: React.ReactNode; health: WebSocketConnectionHealth }) => (
+    <div data-testid="websocket-tooltip" data-health={JSON.stringify(health)}>
       {children}
-      {isVisible && health && (
-        <div data-testid="tooltip-content">
+      {health.showTooltip !== false && (
+        <div data-testid="tooltip-content" role="tooltip">
           <div data-testid="tooltip-status">{health.status}</div>
-          <div data-testid="tooltip-latency">{health.latencyMs}</div>
+          <div data-testid="tooltip-latency">{health.latencyMs}ms</div>
           <div data-testid="tooltip-reconnect-attempts">{health.reconnectAttempts}</div>
         </div>
       )}
     </div>
-  )
-}
-
-vi.mock('../WebSocketConnectionTooltip', () => ({
-  WebSocketConnectionTooltip: MockTooltip,
+  ),
 }))
 
 // Controllable mock hook state
@@ -62,11 +50,9 @@ let mockHookHealth: WebSocketConnectionHealth = {
   connectionUptime: 3600000, // 1 hour
 }
 
-// Hook that can be controlled by tests
-const useWebSocketConnectionMock = vi.fn(() => mockHookHealth)
-
+// Mock the hook with default values that uses the mockHookHealth variable
 vi.mock('@/hooks/useWebSocketConnection', () => ({
-  useWebSocketConnection: useWebSocketConnectionMock,
+  useWebSocketConnection: () => mockHookHealth,
 }))
 
 // Test data for comprehensive state coverage
@@ -143,7 +129,7 @@ describe('WebSocketConnectionIndicator - Comprehensive Tests', () => {
       lastCheckAt: new Date(),
       connectionUptime: 3600000,
     }
-    useWebSocketConnectionMock.mockReturnValue(mockHookHealth)
+    // Note: The mock is set up at the module level and will use the mockHookHealth value
   })
 
   afterEach(() => {

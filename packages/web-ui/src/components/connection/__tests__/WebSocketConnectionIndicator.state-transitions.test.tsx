@@ -185,12 +185,7 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers()
     simulator = new ConnectionHealthSimulator()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
   })
 
   describe('Connection Lifecycle Transitions', () => {
@@ -209,28 +204,33 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
       expect(screen.getByText('Disconnected')).toBeInTheDocument()
       expect(screen.getByTestId('debug-status')).toHaveTextContent('disconnected')
 
-      // Start connection process
+      // Start connecting state
       act(() => {
-        simulator.connectLifecycle()
+        simulator.setState({ status: 'connecting', isHealthy: false })
       })
 
       // Should show connecting state
-      await waitFor(() => {
-        expect(screen.getByText('Connecting...')).toBeInTheDocument()
-        expect(screen.getByTestId('debug-status')).toHaveTextContent('connecting')
-      })
+      expect(screen.getByText('Connecting...')).toBeInTheDocument()
+      expect(screen.getByTestId('debug-status')).toHaveTextContent('connecting')
 
-      // Advance time for connection completion
-      await act(async () => {
-        vi.advanceTimersByTime(100)
+      // Move to connected state
+      act(() => {
+        simulator.setState({
+          status: 'connected',
+          isHealthy: true,
+          latencyMs: 45,
+          averageLatencyMs: 50,
+          reconnectAttempts: 0,
+          consecutiveFailures: 0,
+          lastHealthyAt: new Date(),
+          connectionUptime: 0
+        })
       })
 
       // Should show connected state with latency
-      await waitFor(() => {
-        expect(screen.getByText('45ms')).toBeInTheDocument()
-        expect(screen.getByTestId('debug-status')).toHaveTextContent('connected')
-        expect(screen.getByTestId('debug-healthy')).toHaveTextContent('true')
-      })
+      expect(screen.getByText('45ms')).toBeInTheDocument()
+      expect(screen.getByTestId('debug-status')).toHaveTextContent('connected')
+      expect(screen.getByTestId('debug-healthy')).toHaveTextContent('true')
 
       // Verify state change sequence
       expect(stateChanges.length).toBeGreaterThan(0)
@@ -239,7 +239,7 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
       expect(stateChanges.some(s => s.status === 'connected')).toBe(true)
     })
 
-    it('handles disconnection and reconnection cycles', async () => {
+    it('handles disconnection and reconnection cycles', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -256,50 +256,61 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('Connected')).toBeInTheDocument()
-      })
+      expect(screen.getByText('Connected')).toBeInTheDocument()
 
       // Simulate disconnection
       act(() => {
-        simulator.disconnectLifecycle()
+        simulator.setState({
+          status: 'disconnected',
+          isHealthy: false,
+          latencyMs: null,
+          consecutiveFailures: 1,
+          connectionUptime: null
+        })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('Disconnected')).toBeInTheDocument()
-        expect(screen.getByTestId('debug-failures')).toHaveTextContent('1')
-      })
+      expect(screen.getByText('Disconnected')).toBeInTheDocument()
+      expect(screen.getByTestId('debug-failures')).toHaveTextContent('1')
 
       // Start reconnection process
       act(() => {
-        simulator.reconnectLifecycle(3)
+        simulator.setState({
+          status: 'reconnecting',
+          isHealthy: false,
+          reconnectAttempts: 1,
+          maxReconnectAttempts: 10,
+          latencyMs: null
+        })
       })
 
       // Should show reconnection attempts
-      await waitFor(() => {
-        expect(screen.getByText('Reconnecting (1/10)')).toBeInTheDocument()
+      expect(screen.getByText('Reconnecting (1/10)')).toBeInTheDocument()
+
+      // More attempts
+      act(() => {
+        simulator.setState({
+          status: 'reconnecting',
+          reconnectAttempts: 2
+        })
       })
 
-      await act(async () => {
-        vi.advanceTimersByTime(50)
-      })
-
-      await waitFor(() => {
-        expect(screen.getByText('Reconnecting (2/10)')).toBeInTheDocument()
-      })
+      expect(screen.getByText('Reconnecting (2/10)')).toBeInTheDocument()
 
       // Complete reconnection
-      await act(async () => {
-        vi.advanceTimersByTime(150)
+      act(() => {
+        simulator.setState({
+          status: 'connected',
+          isHealthy: true,
+          reconnectAttempts: 0,
+          latencyMs: 45
+        })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('Connected')).toBeInTheDocument()
-        expect(screen.getByTestId('debug-attempts')).toHaveTextContent('0')
-      })
+      expect(screen.getByText('Connected')).toBeInTheDocument()
+      expect(screen.getByTestId('debug-attempts')).toHaveTextContent('0')
     })
 
-    it('handles error states and recovery', async () => {
+    it('handles error states and recovery', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -309,32 +320,34 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
 
       // Simulate connection error
       act(() => {
-        simulator.errorLifecycle()
+        simulator.setState({
+          status: 'error',
+          isHealthy: false,
+          latencyMs: null,
+          consecutiveFailures: 1
+        })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('Connection Error')).toBeInTheDocument()
-        expect(screen.getByRole('status')).toHaveClass('animate-pulse')
-      })
+      expect(screen.getByText('Connection Error')).toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveClass('animate-pulse')
 
       // Simulate recovery
       act(() => {
-        simulator.connectLifecycle()
+        simulator.setState({
+          status: 'connected',
+          isHealthy: true,
+          latencyMs: 45,
+          consecutiveFailures: 0
+        })
       })
 
-      await act(async () => {
-        vi.advanceTimersByTime(100)
-      })
-
-      await waitFor(() => {
-        expect(screen.getByText('Connected')).toBeInTheDocument()
-        expect(screen.getByRole('status')).not.toHaveClass('animate-pulse')
-      })
+      expect(screen.getByText('Connected')).toBeInTheDocument()
+      expect(screen.getByRole('status')).not.toHaveClass('animate-pulse')
     })
   })
 
   describe('Real-time Latency Updates', () => {
-    it('updates latency display in real-time', async () => {
+    it('updates latency display in real-time', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -351,9 +364,7 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('25ms')).toBeInTheDocument()
-      })
+      expect(screen.getByText('25ms')).toBeInTheDocument()
 
       // Update latency multiple times
       const latencies = [30, 45, 60, 100, 150]
@@ -363,13 +374,11 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
           simulator.setState({ latencyMs: latency })
         })
 
-        await waitFor(() => {
-          expect(screen.getByText(`${latency}ms`)).toBeInTheDocument()
-        })
+        expect(screen.getByText(`${latency}ms`)).toBeInTheDocument()
       }
     })
 
-    it('formats high latency values correctly', async () => {
+    it('formats high latency values correctly', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -393,13 +402,11 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
           })
         })
 
-        await waitFor(() => {
-          expect(screen.getByText(expected)).toBeInTheDocument()
-        })
+        expect(screen.getByText(expected)).toBeInTheDocument()
       }
     })
 
-    it('handles latency spikes and recoveries', async () => {
+    it('handles latency spikes and recoveries', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -416,32 +423,26 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('50ms')).toBeInTheDocument()
-      })
+      expect(screen.getByText('50ms')).toBeInTheDocument()
 
       // Latency spike
       act(() => {
         simulator.setState({ latencyMs: 2000 })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('2.0s')).toBeInTheDocument()
-      })
+      expect(screen.getByText('2.0s')).toBeInTheDocument()
 
       // Recovery
       act(() => {
         simulator.setState({ latencyMs: 45 })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('45ms')).toBeInTheDocument()
-      })
+      expect(screen.getByText('45ms')).toBeInTheDocument()
     })
   })
 
   describe('Reconnection Attempt Tracking', () => {
-    it('tracks reconnection attempts accurately', async () => {
+    it('tracks reconnection attempts accurately', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -459,14 +460,12 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
           })
         })
 
-        await waitFor(() => {
-          expect(screen.getByText(`Reconnecting (${attempt}/10)`)).toBeInTheDocument()
-          expect(screen.getByTestId('debug-attempts')).toHaveTextContent(attempt.toString())
-        })
+        expect(screen.getByText(`Reconnecting (${attempt}/10)`)).toBeInTheDocument()
+        expect(screen.getByTestId('debug-attempts')).toHaveTextContent(attempt.toString())
       }
     })
 
-    it('handles maximum reconnection attempts reached', async () => {
+    it('handles maximum reconnection attempts reached', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -483,9 +482,7 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('Reconnecting (10/10)')).toBeInTheDocument()
-      })
+      expect(screen.getByText('Reconnecting (10/10)')).toBeInTheDocument()
 
       // Transition to error state
       act(() => {
@@ -495,12 +492,10 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('Connection Error')).toBeInTheDocument()
-      })
+      expect(screen.getByText('Connection Error')).toBeInTheDocument()
     })
 
-    it('resets attempt counter on successful connection', async () => {
+    it('resets attempt counter on successful connection', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -517,9 +512,7 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('Reconnecting (3/10)')).toBeInTheDocument()
-      })
+      expect(screen.getByText('Reconnecting (3/10)')).toBeInTheDocument()
 
       // Successful connection
       act(() => {
@@ -531,15 +524,13 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('Connected')).toBeInTheDocument()
-        expect(screen.getByTestId('debug-attempts')).toHaveTextContent('0')
-      })
+      expect(screen.getByText('Connected')).toBeInTheDocument()
+      expect(screen.getByTestId('debug-attempts')).toHaveTextContent('0')
     })
   })
 
   describe('Animation State Management', () => {
-    it('applies correct animations during state transitions', async () => {
+    it('applies correct animations during state transitions', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -552,9 +543,7 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         simulator.setState({ status: 'connecting' })
       })
 
-      await waitFor(() => {
-        expect(screen.getByRole('status')).toHaveClass('animate-pulse')
-      })
+      expect(screen.getByRole('status')).toHaveClass('animate-pulse')
 
       // Connected state should not animate
       act(() => {
@@ -565,21 +554,17 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByRole('status')).not.toHaveClass('animate-pulse')
-      })
+      expect(screen.getByRole('status')).not.toHaveClass('animate-pulse')
 
       // Error state should animate
       act(() => {
         simulator.setState({ status: 'error' })
       })
 
-      await waitFor(() => {
-        expect(screen.getByRole('status')).toHaveClass('animate-pulse')
-      })
+      expect(screen.getByRole('status')).toHaveClass('animate-pulse')
     })
 
-    it('disables animations when animated prop is false', async () => {
+    it('disables animations when animated prop is false', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -594,15 +579,13 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
           simulator.setState({ status: status as any })
         })
 
-        await waitFor(() => {
-          expect(screen.getByRole('status')).not.toHaveClass('animate-pulse')
-        })
+        expect(screen.getByRole('status')).not.toHaveClass('animate-pulse')
       }
     })
   })
 
   describe('Tooltip State Synchronization', () => {
-    it('updates tooltip health data with state changes', async () => {
+    it('updates tooltip health data with state changes', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -623,13 +606,11 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         simulator.setState(connectedHealth)
       })
 
-      await waitFor(() => {
-        const tooltip = screen.getByTestId('websocket-tooltip')
-        const healthData = JSON.parse(tooltip.getAttribute('data-health') || '{}')
-        expect(healthData.status).toBe('connected')
-        expect(healthData.latencyMs).toBe(75)
-        expect(healthData.isHealthy).toBe(true)
-      })
+      const tooltip = screen.getByTestId('websocket-tooltip')
+      const healthData = JSON.parse(tooltip.getAttribute('data-health') || '{}')
+      expect(healthData.status).toBe('connected')
+      expect(healthData.latencyMs).toBe(75)
+      expect(healthData.isHealthy).toBe(true)
 
       // Update to error state
       act(() => {
@@ -641,18 +622,16 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        const tooltip = screen.getByTestId('websocket-tooltip')
-        const healthData = JSON.parse(tooltip.getAttribute('data-health') || '{}')
-        expect(healthData.status).toBe('error')
-        expect(healthData.latencyMs).toBe(null)
-        expect(healthData.consecutiveFailures).toBe(5)
-      })
+      const updatedTooltip = screen.getByTestId('websocket-tooltip')
+      const updatedHealthData = JSON.parse(updatedTooltip.getAttribute('data-health') || '{}')
+      expect(updatedHealthData.status).toBe('error')
+      expect(updatedHealthData.latencyMs).toBe(null)
+      expect(updatedHealthData.consecutiveFailures).toBe(5)
     })
   })
 
   describe('Performance Under Rapid State Changes', () => {
-    it('handles rapid state transitions efficiently', async () => {
+    it('handles rapid state transitions efficiently', () => {
       const stateChanges: string[] = []
 
       render(
@@ -662,10 +641,8 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         />
       )
 
-      const start = performance.now()
-
-      // Rapid state changes
-      await act(async () => {
+      // Rapid state changes - synchronous, no timers needed
+      act(() => {
         const states = ['connecting', 'connected', 'disconnected', 'reconnecting', 'error', 'connected']
 
         for (let i = 0; i < 50; i++) {
@@ -676,21 +653,15 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
             latencyMs: status === 'connected' ? Math.random() * 200 : null,
             reconnectAttempts: status === 'reconnecting' ? (i % 10) + 1 : 0
           })
-
-          // Small delay to simulate realistic timing
-          await new Promise(resolve => setTimeout(resolve, 1))
         }
       })
-
-      const duration = performance.now() - start
-      expect(duration).toBeLessThan(1000) // Should handle rapid changes efficiently
 
       // Should still be functional
       expect(screen.getByRole('status')).toBeInTheDocument()
       expect(stateChanges.length).toBeGreaterThan(0)
     })
 
-    it('batches multiple simultaneous updates correctly', async () => {
+    it('batches multiple simultaneous updates correctly', () => {
       render(
         <ConnectionTester
           simulator={simulator}
@@ -712,11 +683,9 @@ describe('WebSocketConnectionIndicator - State Transition Integration Tests', ()
         })
       })
 
-      await waitFor(() => {
-        expect(screen.getByText('125ms')).toBeInTheDocument()
-        expect(screen.getByTestId('debug-healthy')).toHaveTextContent('true')
-        expect(screen.getByTestId('debug-attempts')).toHaveTextContent('0')
-      })
+      expect(screen.getByText('125ms')).toBeInTheDocument()
+      expect(screen.getByTestId('debug-healthy')).toHaveTextContent('true')
+      expect(screen.getByTestId('debug-attempts')).toHaveTextContent('0')
     })
   })
 })

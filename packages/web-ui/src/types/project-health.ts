@@ -272,6 +272,9 @@ export function formatDuration(ms: number): string {
  * Format percentage for display
  */
 export function formatPercentage(value: number, decimals: number = 1): string {
+  if (value == null || isNaN(value)) {
+    return '0.0%'
+  }
   return `${value.toFixed(decimals)}%`
 }
 
