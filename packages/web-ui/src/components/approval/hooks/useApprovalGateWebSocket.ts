@@ -7,12 +7,14 @@ import type {
   PendingApprovalGate,
   ResolvedApprovalGate,
   ApprovalGateWebSocketEvent,
-  isGateRequiredEvent,
-  isGateResolvedEvent,
   GateRequiredEvent,
   GateApprovedEvent,
   GateRejectedEvent,
   ApprovalResolvedEvent,
+} from '@/types/approval-gate-panel'
+import {
+  isGateRequiredEvent,
+  isGateResolvedEvent,
 } from '@/types/approval-gate-panel'
 import type { WebSocketConnectionStatus } from '@/types/websocket-connection'
 import type { ApexEvent } from '@/lib/websocket-client'
@@ -126,7 +128,7 @@ export function useApprovalGateWebSocket(
             console.warn('[ApprovalGateWebSocket] Error in gate received handler:', err)
           }
         })
-      } else if (isGateResolvedEvent(gateEvent) || gateEvent.type === 'approval-resolved') {
+      } else if (isGateResolvedEvent(gateEvent)) {
         // Gate resolved - handle all resolution types
         let resolvedGate: ResolvedApprovalGate
 
@@ -178,7 +180,7 @@ export function useApprovalGateWebSocket(
     } else if (!connected) {
       // When disconnected, we assume reconnecting if health check was recent
       // The health state timing helps us infer reconnection attempts
-      const timeSinceLastCheck = Date.now() - (healthState.lastCheckTime || 0)
+      const timeSinceLastCheck = Date.now() - (healthState.lastCheckAt?.getTime() || 0)
       const isLikelyReconnecting = timeSinceLastCheck < 5000 // Within 5 seconds indicates active reconnection
 
       setConnectionStatus(isLikelyReconnecting ? 'reconnecting' : 'disconnected')
@@ -254,7 +256,7 @@ export function useApprovalGateWebSocket(
       setError(null)
 
       // Fetch tasks with approval gates
-      const tasks = await apiClient.listTasks({
+      const response = await apiClient.listTasks({
         status: 'awaiting-approval',
         ...(taskId && { taskId }),
       })
@@ -266,7 +268,7 @@ export function useApprovalGateWebSocket(
       const newPendingGates: PendingApprovalGate[] = []
       const newResolvedGates: ResolvedApprovalGate[] = []
 
-      tasks.forEach(task => {
+      response.tasks.forEach(task => {
         // Extract approval gates from task if available
         if ('gates' in task && Array.isArray(task.gates)) {
           task.gates.forEach((gate: PendingApprovalGate | ResolvedApprovalGate) => {

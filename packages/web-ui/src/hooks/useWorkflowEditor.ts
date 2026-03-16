@@ -22,8 +22,8 @@ import type {
   WorkflowEditorEdge,
   StageTemplate,
   StageNodeData,
-  DependencyEdgeData,
-  Position,
+  WorkflowEdgeData,
+  StagePosition,
 } from '@/types/workflow-editor'
 import { useWorkflowHistory } from './useWorkflowHistory'
 import { calculateStageLayout, calculateNewStagePosition } from '@/lib/workflow-editor'
@@ -98,7 +98,7 @@ export function useWorkflowEditor({
       const stageName = stage.name
       if (stage.dependsOn && stageName) {
         for (const dependency of stage.dependsOn) {
-          const edgeData: DependencyEdgeData = {
+          const edgeData: WorkflowEdgeData = {
             sourceStage: dependency,
             targetStage: stageName,
             isConditional: Boolean(stage.condition),
@@ -237,9 +237,9 @@ export function useWorkflowEditor({
    * Add a new stage from template
    */
   const addStage = useCallback(
-    (template: StageTemplate, position?: Position) => {
+    (template: StageTemplate, position?: StagePosition) => {
       const stages = getStages(workflow)
-      const existingPositions = new Map<string, Position>(
+      const existingPositions = new Map<string, StagePosition>(
         stages
           .filter((s): s is WorkflowStage & { name: string } => typeof s.name === 'string')
           .map(s => [s.name, { x: 0, y: 0 }]) // We'd need actual positions

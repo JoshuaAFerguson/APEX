@@ -6,7 +6,7 @@
  */
 
 import type { WorkflowStage } from '@apexcli/core'
-import type { LayoutConfig, Position } from '@/types/workflow-editor'
+import type { LayoutConfig, StagePosition } from '@/types/workflow-editor'
 import { DEFAULT_LAYOUT_CONFIG } from './constants'
 
 /**
@@ -22,8 +22,8 @@ import { DEFAULT_LAYOUT_CONFIG } from './constants'
 export function calculateStageLayout(
   stages: WorkflowStage[],
   config: LayoutConfig = DEFAULT_LAYOUT_CONFIG
-): Map<string, Position> {
-  const positions = new Map<string, Position>()
+): Map<string, StagePosition> {
+  const positions = new Map<string, StagePosition>()
 
   if (stages.length === 0) {
     return positions
@@ -96,7 +96,7 @@ export function calculateStageLayout(
   }
 
   // Calculate positions based on layers
-  calculateLayeredPositions(layers, config, positions)
+  calculateLayeredStagePositions(layers, config, positions)
 
   return positions
 }
@@ -108,10 +108,10 @@ export function calculateStageLayout(
  * @param config - Layout configuration
  * @param positions - Map to populate with positions
  */
-function calculateLayeredPositions(
+function calculateLayeredStagePositions(
   layers: string[][],
   config: LayoutConfig,
-  positions: Map<string, Position>
+  positions: Map<string, StagePosition>
 ): void {
   // Calculate the maximum width needed
   const maxLayerWidth = Math.max(...layers.map(layer => layer.length))
@@ -138,26 +138,26 @@ function calculateLayeredPositions(
  *
  * Finds a good position that doesn't overlap with existing stages.
  *
- * @param existingPositions - Positions of existing stages
+ * @param existingStagePositions - StagePositions of existing stages
  * @param config - Layout configuration
- * @param preferredPosition - Preferred position (e.g., from mouse cursor)
+ * @param preferredStagePosition - Preferred position (e.g., from mouse cursor)
  * @returns Calculated position for the new stage
  */
 export function calculateNewStagePosition(
-  existingPositions: Map<string, Position>,
+  existingStagePositions: Map<string, StagePosition>,
   config: LayoutConfig = DEFAULT_LAYOUT_CONFIG,
-  preferredPosition?: Position
-): Position {
+  preferredStagePosition?: StagePosition
+): StagePosition {
   // If no existing stages, start at the default position
-  if (existingPositions.size === 0) {
+  if (existingStagePositions.size === 0) {
     return { x: config.startX, y: config.startY }
   }
 
   // If a preferred position is given, try to use it
-  if (preferredPosition) {
-    const snapPosition = snapToGrid(preferredPosition, config)
-    if (!isPositionOccupied(snapPosition, existingPositions, config)) {
-      return snapPosition
+  if (preferredStagePosition) {
+    const snapStagePosition = snapToGrid(preferredStagePosition, config)
+    if (!isStagePositionOccupied(snapStagePosition, existingStagePositions, config)) {
+      return snapStagePosition
     }
   }
 
@@ -165,38 +165,38 @@ export function calculateNewStagePosition(
   let maxX = config.startX
   let maxY = config.startY
 
-  for (const position of existingPositions.values()) {
+  for (const position of existingStagePositions.values()) {
     maxX = Math.max(maxX, position.x)
     maxY = Math.max(maxY, position.y)
   }
 
   // Try placing to the right of the rightmost stage
-  const rightPosition = {
+  const rightStagePosition = {
     x: maxX + config.nodeWidth + config.horizontalSpacing,
     y: config.startY,
   }
 
-  if (!isPositionOccupied(rightPosition, existingPositions, config)) {
-    return rightPosition
+  if (!isStagePositionOccupied(rightStagePosition, existingStagePositions, config)) {
+    return rightStagePosition
   }
 
   // Try placing below the existing stages
-  const belowPosition = {
+  const belowStagePosition = {
     x: config.startX,
     y: maxY + config.nodeHeight + config.verticalSpacing,
   }
 
-  return belowPosition
+  return belowStagePosition
 }
 
 /**
  * Snap a position to the layout grid
  *
- * @param position - Position to snap
+ * @param position - StagePosition to snap
  * @param config - Layout configuration
  * @returns Grid-aligned position
  */
-export function snapToGrid(position: Position, config: LayoutConfig): Position {
+export function snapToGrid(position: StagePosition, config: LayoutConfig): StagePosition {
   const gridX = config.nodeWidth + config.horizontalSpacing
   const gridY = config.nodeHeight + config.verticalSpacing
 
@@ -209,19 +209,19 @@ export function snapToGrid(position: Position, config: LayoutConfig): Position {
 /**
  * Check if a position is occupied by an existing stage
  *
- * @param position - Position to check
- * @param existingPositions - Map of existing stage positions
+ * @param position - StagePosition to check
+ * @param existingStagePositions - Map of existing stage positions
  * @param config - Layout configuration
  * @returns True if position is occupied
  */
-function isPositionOccupied(
-  position: Position,
-  existingPositions: Map<string, Position>,
+function isStagePositionOccupied(
+  position: StagePosition,
+  existingStagePositions: Map<string, StagePosition>,
   config: LayoutConfig
 ): boolean {
   const tolerance = 10 // Allow small positioning differences
 
-  for (const existing of existingPositions.values()) {
+  for (const existing of existingStagePositions.values()) {
     const deltaX = Math.abs(existing.x - position.x)
     const deltaY = Math.abs(existing.y - position.y)
 
@@ -241,7 +241,7 @@ function isPositionOccupied(
  * @returns Bounding box containing all stages
  */
 export function calculateBoundingBox(
-  positions: Map<string, Position>,
+  positions: Map<string, StagePosition>,
   config: LayoutConfig
 ): { x: number; y: number; width: number; height: number } {
   if (positions.size === 0) {
@@ -280,11 +280,11 @@ export function calculateBoundingBox(
  * @returns New map with adjusted positions
  */
 export function fitToCanvas(
-  positions: Map<string, Position>,
+  positions: Map<string, StagePosition>,
   canvasWidth: number,
   canvasHeight: number,
   padding = 50
-): Map<string, Position> {
+): Map<string, StagePosition> {
   if (positions.size === 0) {
     return new Map()
   }
@@ -298,7 +298,7 @@ export function fitToCanvas(
     const offsetX = (canvasWidth - bbox.width) / 2 - bbox.x
     const offsetY = (canvasHeight - bbox.height) / 2 - bbox.y
 
-    const adjusted = new Map<string, Position>()
+    const adjusted = new Map<string, StagePosition>()
     for (const [name, pos] of positions) {
       adjusted.set(name, {
         x: pos.x + offsetX,
@@ -313,7 +313,7 @@ export function fitToCanvas(
   const scaleY = availableHeight / bbox.height
   const scale = Math.min(scaleX, scaleY)
 
-  const adjusted = new Map<string, Position>()
+  const adjusted = new Map<string, StagePosition>()
   for (const [name, pos] of positions) {
     adjusted.set(name, {
       x: padding + (pos.x - bbox.x) * scale,

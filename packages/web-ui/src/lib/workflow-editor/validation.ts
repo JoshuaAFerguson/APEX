@@ -26,13 +26,15 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationError[
   errors.push(...validateWorkflowBasics(workflow))
 
   // 2. Stage validation
-  errors.push(...validateStages(workflow.stages))
+  if (workflow.stages) {
+    errors.push(...validateStages(workflow.stages))
 
-  // 3. Dependency validation
-  errors.push(...validateDependencies(workflow.stages))
+    // 3. Dependency validation
+    errors.push(...validateDependencies(workflow.stages))
+  }
 
   // 4. Gate validation
-  if (workflow.gates) {
+  if (workflow.gates && workflow.stages) {
     errors.push(...validateGates(workflow.gates, workflow.stages))
   }
 
@@ -73,7 +75,7 @@ function validateWorkflowBasics(workflow: WorkflowDefinition): ValidationError[]
   }
 
   // Check stage count limit
-  if (workflow.stages.length > VALIDATION_LIMITS.MAX_STAGES) {
+  if (workflow.stages && workflow.stages.length > VALIDATION_LIMITS.MAX_STAGES) {
     errors.push({
       path: 'stages',
       message: `Too many stages (max ${VALIDATION_LIMITS.MAX_STAGES})`,
@@ -320,7 +322,7 @@ function detectCircularDependencies(stages: WorkflowStage[]): ValidationError[] 
   }
 
   for (const stage of stages) {
-    if (!visited.has(stage.name)) {
+    if (stage.name && !visited.has(stage.name)) {
       dfs(stage.name, [])
     }
   }

@@ -230,7 +230,8 @@ describe('AgentPreview - Edge Cases and Error Handling', () => {
       }
 
       const markdown = serializeAgentToMarkdown(data)
-      expect(markdown).toContain('tools: Read-Write,API:Call,File[System]')
+      // Tools with special characters get quoted according to YAML rules
+      expect(markdown).toContain('tools: "Read-Write,API:Call,File[System]"')
     })
 
     it('handles single item arrays', () => {
@@ -245,7 +246,8 @@ describe('AgentPreview - Edge Cases and Error Handling', () => {
 
       const markdown = serializeAgentToMarkdown(data)
       expect(markdown).toContain('tools: OnlyTool')
-      expect(markdown).toContain('skills: only-skill')
+      // Skills with hyphens get quoted according to YAML rules
+      expect(markdown).toContain('skills: "only-skill"')
     })
 
     it('handles duplicate items in arrays', () => {
@@ -280,7 +282,7 @@ describe('AgentPreview - Edge Cases and Error Handling', () => {
     })
 
     it('handles agent names with only spaces', () => {
-      expect(generateFileName('   ')).toBe('---.md')
+      expect(generateFileName('   ')).toBe('.md')
     })
 
     it('handles agent names with special characters', () => {

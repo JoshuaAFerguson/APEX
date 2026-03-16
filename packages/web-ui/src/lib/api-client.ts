@@ -313,7 +313,39 @@ export class ApexApiClient {
    * Get agent by name
    */
   async getAgent(name: string): Promise<AgentDefinition> {
-    const response = await this.fetch(`/agents/${name}`)
+    const response = await this.fetch(`/agents/${encodeURIComponent(name)}`)
+    return response.json()
+  }
+
+  /**
+   * Create a new agent
+   */
+  async createAgent(agent: AgentDefinition): Promise<AgentDefinition> {
+    const response = await this.fetch('/agents', {
+      method: 'POST',
+      body: JSON.stringify(agent),
+    })
+    return response.json()
+  }
+
+  /**
+   * Update an existing agent
+   */
+  async updateAgent(name: string, agent: AgentDefinition): Promise<AgentDefinition> {
+    const response = await this.fetch(`/agents/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      body: JSON.stringify(agent),
+    })
+    return response.json()
+  }
+
+  /**
+   * Delete an existing agent
+   */
+  async deleteAgent(name: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.fetch(`/agents/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    })
     return response.json()
   }
 

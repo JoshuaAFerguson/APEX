@@ -28,6 +28,7 @@ import {
   safeSerialize,
   truncatePayload,
   serializeMCPError,
+  AgentDefinition,
 } from '@apexcli/core';
 import {
   ApexOrchestrator,
@@ -1359,6 +1360,144 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   app.get('/agents', async () => {
     const agents = await orchestrator.getAgents();
     return { agents };
+  });
+
+  // Create new agent
+  app.post<{ Body: AgentDefinition }>('/agents', async (request, reply) => {
+    const agent = request.body;
+
+    // Validate required fields
+    if (!agent?.name?.trim()) {
+      return reply.status(400).send({ error: 'Agent name is required' });
+    }
+    if (!agent?.description?.trim()) {
+      return reply.status(400).send({ error: 'Agent description is required' });
+    }
+    if (!agent?.prompt?.trim()) {
+      return reply.status(400).send({ error: 'Agent prompt is required' });
+    }
+
+    // Validate agent name format
+    const nameRegex = /^[a-z][a-z0-9-_]*$/;
+    if (!nameRegex.test(agent.name)) {
+      return reply.status(400).send({ error: 'Agent name must start with lowercase letter and contain only lowercase letters, numbers, hyphens, and underscores' });
+    }
+
+    // Check for path traversal attempts
+    if (agent.name.includes('..') || agent.name.includes('/') || agent.name.includes('\\')) {
+      return reply.status(400).send({ error: 'Agent name cannot contain path traversal characters' });
+    }
+
+    // Check for URL encoded path traversal
+    if (agent.name.includes('%2F') || agent.name.includes('%2f') || agent.name.includes('%5C') || agent.name.includes('%5c')) {
+      return reply.status(400).send({ error: 'Agent name cannot contain URL encoded path traversal characters' });
+    }
+
+    // Check for duplicate
+    const existing = await orchestrator.getAgent(agent.name);
+    if (existing) {
+      return reply.status(409).send({ error: `Agent already exists: ${agent.name}` });
+    }
+
+    try {
+      const created = await orchestrator.createAgent(agent);
+      return reply.status(201).send(created);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create agent';
+      return reply.status(400).send({ error: message });
+    }
+  });
+
+  // Get single agent by name
+  app.get<{ Params: { name: string } }>('/agents/:name', async (request, reply) => {
+    const { name } = request.params;
+
+    // Validate agent name
+    if (!name || !name.trim()) {
+      return reply.status(400).send({ error: 'Agent name is required' });
+    }
+
+    const agent = await orchestrator.getAgent(name);
+
+    if (!agent) {
+      return reply.status(404).send({ error: `Agent not found: ${name}` });
+    }
+
+    return agent;
+  });
+
+  // Update agent by name
+  app.put<{ Params: { name: string }; Body: Partial<AgentDefinition> }>(
+    '/agents/:name',
+    async (request, reply) => {
+      const { name } = request.params;
+      const updates = request.body;
+
+      // Validate agent name
+      if (!name || !name.trim()) {
+        return reply.status(400).send({ error: 'Agent name is required' });
+      }
+
+      // Validate update fields if provided
+      if (updates.description !== undefined && (!updates.description || !updates.description.trim())) {
+        return reply.status(400).send({ error: 'Agent description cannot be empty' });
+      }
+      if (updates.prompt !== undefined && (!updates.prompt || !updates.prompt.trim())) {
+        return reply.status(400).send({ error: 'Agent prompt cannot be empty' });
+      }
+
+      // Check if agent exists
+      const existing = await orchestrator.getAgent(name);
+      if (!existing) {
+        return reply.status(404).send({ error: `Agent not found: ${name}` });
+      }
+
+      try {
+        const updated = await orchestrator.updateAgent(name, updates);
+        return updated;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update agent';
+        return reply.status(400).send({ error: message });
+      }
+    }
+  );
+
+  // Delete agent by name
+  app.delete<{ Params: { name: string } }>('/agents/:name', async (request, reply) => {
+    const { name } = request.params;
+
+    // Validate agent name
+    if (!name || !name.trim()) {
+      return reply.status(400).send({ error: 'Agent name is required' });
+    }
+
+    // Validate agent name format
+    const nameRegex = /^[a-z][a-z0-9-_]*$/;
+    if (!nameRegex.test(name)) {
+      return reply.status(400).send({ error: 'Agent name must start with lowercase letter and contain only lowercase letters, numbers, hyphens, and underscores' });
+    }
+
+    // Check for path traversal attempts
+    if (name.includes('..') || name.includes('/') || name.includes('\\')) {
+      return reply.status(400).send({ error: 'Agent name cannot contain path traversal characters' });
+    }
+
+    // Check for URL encoded path traversal
+    if (name.includes('%2F') || name.includes('%2f') || name.includes('%5C') || name.includes('%5c')) {
+      return reply.status(400).send({ error: 'Agent name cannot contain URL encoded path traversal characters' });
+    }
+
+    try {
+      await orchestrator.deleteAgent(name);
+      return reply.status(204).send();
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        return reply.status(404).send({ error: `Agent not found: ${name}` });
+      }
+      return reply.status(500).send({
+        error: 'Failed to delete agent'
+      });
+    }
   });
 
   // ============================================================================
@@ -3076,6 +3215,7 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  GET    /health                   - Basic health check`);
       console.log(`  GET    /daemon/health            - Comprehensive daemon health metrics`);
       console.log(`  GET    /agents                   - List agents`);
+      console.log(`  DELETE /agents/:name             - Delete agent`);
       console.log(`  GET    /config                   - Get configuration`);
       console.log('');
       console.log('WebSocket Streaming:');

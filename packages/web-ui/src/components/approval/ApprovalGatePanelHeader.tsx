@@ -183,7 +183,7 @@ export function ApprovalGatePanelHeader({
           {/* Connection indicator */}
           {showConnectionIndicator && (
             <WebSocketConnectionIndicator
-              status={connectionStatus}
+              healthOverride={{ status: connectionStatus }}
               className={compact ? 'scale-90' : ''}
             />
           )}
@@ -216,7 +216,7 @@ export function ApprovalGatePanelHeader({
             <Filter className="w-4 h-4" />
             {!compact && <span className="ml-2">Filters</span>}
             {hasActiveFilters && (
-              <Badge variant="primary" className="ml-2 px-1 py-0 text-xs">
+              <Badge variant="info" className="ml-2 px-1 py-0 text-xs">
                 {[
                   filterState.searchQuery && 'search',
                   filterState.status !== 'all' && 'status',
@@ -269,15 +269,16 @@ export function ApprovalGatePanelHeader({
               </label>
               <Select
                 value={filterState.status}
-                onValueChange={(value) => handleFilterChange('status', value)}
-              >
-                <option value="all">All statuses</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="timeout">Timed out</option>
-                <option value="skipped">Skipped</option>
-              </Select>
+                onChange={(value) => handleFilterChange('status', value)}
+                options={[
+                  { value: 'all', label: 'All statuses' },
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'approved', label: 'Approved' },
+                  { value: 'rejected', label: 'Rejected' },
+                  { value: 'timeout', label: 'Timed out' },
+                  { value: 'skipped', label: 'Skipped' },
+                ]}
+              />
             </div>
 
             {/* Gate type filter */}
@@ -287,15 +288,17 @@ export function ApprovalGatePanelHeader({
               </label>
               <Select
                 value={filterState.gateType || 'all'}
-                onValueChange={(value) => handleFilterChange('gateType', value)}
-              >
-                <option value="all">All types</option>
-                {Object.values(GATE_TYPE_CONFIG).map(config => (
-                  <option key={config.type} value={config.type}>
-                    {config.label}
-                  </option>
-                ))}
-              </Select>
+                onChange={(value) => handleFilterChange('gateType', value)}
+                options={[
+                  { value: 'all', label: 'All types' },
+                  ...Object.values(GATE_TYPE_CONFIG)
+                    .filter(config => config.type != null)
+                    .map(config => ({
+                      value: config.type as string,
+                      label: config.label,
+                    })),
+                ]}
+              />
             </div>
 
             {/* Resource impact filter */}
@@ -305,15 +308,15 @@ export function ApprovalGatePanelHeader({
               </label>
               <Select
                 value={filterState.resourceImpact || 'all'}
-                onValueChange={(value) => handleFilterChange('resourceImpact', value)}
-              >
-                <option value="all">All impacts</option>
-                {Object.values(RESOURCE_IMPACT_CONFIG).map(config => (
-                  <option key={config.level} value={config.level}>
-                    {config.label}
-                  </option>
-                ))}
-              </Select>
+                onChange={(value) => handleFilterChange('resourceImpact', value)}
+                options={[
+                  { value: 'all', label: 'All impacts' },
+                  ...Object.values(RESOURCE_IMPACT_CONFIG).map(config => ({
+                    value: config.level,
+                    label: config.label,
+                  })),
+                ]}
+              />
             </div>
 
             {/* Task ID filter */}

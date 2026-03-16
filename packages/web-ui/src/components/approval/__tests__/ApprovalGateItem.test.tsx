@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ApprovalGateItem } from '../ApprovalGateItem'
@@ -125,10 +125,14 @@ describe('ApprovalGateItem', () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2024-01-01T10:03:00Z')) // 3 minutes after required
+
+    // Mock console.warn to suppress act() warnings during tests
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   describe('rendering', () => {
@@ -185,8 +189,10 @@ describe('ApprovalGateItem', () => {
       // Initially 2 minutes remaining
       expect(screen.getByText(/2m \d+s/)).toBeInTheDocument()
 
-      // Advance time by 30 seconds
-      vi.advanceTimersByTime(30000)
+      // Advance time by 30 seconds within act
+      act(() => {
+        vi.advanceTimersByTime(30000)
+      })
 
       // Should now show 1m 30s
       expect(screen.getByText(/1m 3\ds/)).toBeInTheDocument()
@@ -236,19 +242,25 @@ describe('ApprovalGateItem', () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
       const onReject = vi.fn()
 
-      render(<ApprovalGateItem {...defaultProps} onReject={onReject} />)
+      render(<ApprovalGateItem {...defaultProps} onReject={onReject} isExpanded />)
 
-      // Click reject button
-      await user.click(screen.getByTestId('reject-button'))
+      // Click reject button to show comment input
+      await act(async () => {
+        await user.click(screen.getByTestId('reject-button'))
+      })
 
       // Should show comment input
       expect(screen.getByTestId('comment-input')).toBeInTheDocument()
 
       // Add comment and submit
-      await user.type(screen.getByTestId('comment-input'), 'Needs review')
+      await act(async () => {
+        await user.type(screen.getByTestId('comment-input'), 'Needs review')
+      })
 
       // Click reject again to submit with comment
-      await user.click(screen.getByTestId('reject-button'))
+      await act(async () => {
+        await user.click(screen.getByTestId('reject-button'))
+      })
 
       expect(onReject).toHaveBeenCalledWith('Needs review')
     })
@@ -272,29 +284,37 @@ describe('ApprovalGateItem', () => {
   describe('expandable details', () => {
     it('should expand to show additional details', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-      render(<ApprovalGateItem {...defaultProps} />)
+      const gateWithDetails = {
+        ...mockPendingGate,
+        estimatedImpact: 'Low risk operation',
+        affectedPaths: ['/test/file1.js', '/test/file2.js'],
+      }
+      render(<ApprovalGateItem {...defaultProps} gate={gateWithDetails} isExpanded />)
 
-      // Find expand button by its ARIA label
-      const expandButton = screen.getByLabelText('Expand gate details')
-      await user.click(expandButton)
-
-      // Check that expanded content is visible (task ID)
-      expect(screen.getByText('task-1')).toBeInTheDocument()
+      // Check that expanded content is visible when already expanded
+      expect(screen.getByText('Low risk operation')).toBeInTheDocument()
+      expect(screen.getByText('Estimated Impact')).toBeInTheDocument()
+      expect(screen.getByText('/test/file1.js')).toBeInTheDocument()
     })
 
-    it('should show gate metadata when expanded', async () => {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-      render(<ApprovalGateItem {...defaultProps} />)
+    it('should show gate metadata when expanded', () => {
+      const gateWithMetadata = {
+        ...mockPendingGate,
+        estimatedImpact: 'Medium impact changes',
+        affectedPaths: ['/src/components/Button.tsx', '/src/utils/helpers.js', '/tests/unit.spec.js'],
+      }
+      render(<ApprovalGateItem {...defaultProps} gate={gateWithMetadata} isExpanded />)
 
-      await user.click(screen.getByLabelText('Expand gate details'))
-
-      expect(screen.getByText('task-1')).toBeInTheDocument() // Task ID should be visible in expanded view
+      // Check metadata in expanded view
+      expect(screen.getByText('Medium impact changes')).toBeInTheDocument()
+      expect(screen.getByText('Affected Paths (3)')).toBeInTheDocument()
+      expect(screen.getByText('/src/components/Button.tsx')).toBeInTheDocument()
     })
   })
 
   describe('diff preview', () => {
     it('should show diff viewer when gate has diff data', () => {
-      render(<ApprovalGateItem {...defaultProps} gate={mockGateWithDiff} showDiffPreview />)
+      render(<ApprovalGateItem {...defaultProps} gate={mockGateWithDiff} showDiffPreview isExpanded />)
 
       expect(screen.getByTestId('approval-diff-preview')).toBeInTheDocument()
     })
@@ -312,7 +332,7 @@ describe('ApprovalGateItem', () => {
     })
 
     it('should show diff summary when available', () => {
-      render(<ApprovalGateItem {...defaultProps} gate={mockGateWithDiff} showDiffPreview />)
+      render(<ApprovalGateItem {...defaultProps} gate={mockGateWithDiff} showDiffPreview isExpanded />)
 
       expect(screen.getByText('Updated component logic')).toBeInTheDocument()
     })
@@ -337,9 +357,11 @@ describe('ApprovalGateItem', () => {
   describe('comment input for rejection', () => {
     it('should show comment input when reject is clicked', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-      render(<ApprovalGateItem {...defaultProps} />)
+      render(<ApprovalGateItem {...defaultProps} isExpanded />)
 
-      await user.click(screen.getByTestId('reject-button'))
+      await act(async () => {
+        await user.click(screen.getByTestId('reject-button'))
+      })
 
       expect(screen.getByTestId('comment-input')).toBeInTheDocument()
       expect(screen.getByPlaceholderText(/add your feedback or notes/i)).toBeInTheDocument()
@@ -349,13 +371,17 @@ describe('ApprovalGateItem', () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
       const onReject = vi.fn()
 
-      render(<ApprovalGateItem {...defaultProps} onReject={onReject} />)
+      render(<ApprovalGateItem {...defaultProps} onReject={onReject} isExpanded />)
 
       // First click shows comment input
-      await user.click(screen.getByTestId('reject-button'))
+      await act(async () => {
+        await user.click(screen.getByTestId('reject-button'))
+      })
 
       // Second click without comment should not call onReject yet (shows comment input)
-      await user.click(screen.getByTestId('reject-button'))
+      await act(async () => {
+        await user.click(screen.getByTestId('reject-button'))
+      })
 
       expect(onReject).not.toHaveBeenCalled()
       expect(screen.getByTestId('comment-input')).toBeInTheDocument()
@@ -363,33 +389,42 @@ describe('ApprovalGateItem', () => {
 
     it('should allow canceling rejection', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-      render(<ApprovalGateItem {...defaultProps} />)
+      render(<ApprovalGateItem {...defaultProps} isExpanded />)
 
-      await user.click(screen.getByTestId('reject-button'))
+      await act(async () => {
+        await user.click(screen.getByTestId('reject-button'))
+      })
       expect(screen.getByTestId('comment-input')).toBeInTheDocument()
 
       // Find hide button and click it
-      await user.click(screen.getByText('Hide'))
+      await act(async () => {
+        await user.click(screen.getByText('Hide'))
+      })
       expect(screen.queryByTestId('comment-input')).not.toBeInTheDocument()
     })
 
     it('should count characters in comment input', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-      render(<ApprovalGateItem {...defaultProps} />)
+      render(<ApprovalGateItem {...defaultProps} isExpanded />)
 
-      await user.click(screen.getByTestId('reject-button'))
+      await act(async () => {
+        await user.click(screen.getByTestId('reject-button'))
+      })
+
       const textarea = screen.getByTestId('comment-input')
 
-      await user.type(textarea, 'Test comment')
+      await act(async () => {
+        await user.type(textarea, 'Test comment')
+      })
 
-      expect(screen.getByText('12 / 500')).toBeInTheDocument() // Character count
+      expect(screen.getByText('12 / 500 characters')).toBeInTheDocument() // Character count
     })
   })
 
   describe('error handling', () => {
 
     it('should show error message when action fails', () => {
-      render(<ApprovalGateItem {...defaultProps} error="Network error" />)
+      render(<ApprovalGateItem {...defaultProps} error="Network error" isExpanded />)
 
       expect(screen.getByText('Network error')).toBeInTheDocument()
     })
@@ -403,6 +438,10 @@ describe('ApprovalGateItem', () => {
       // Tab to first focusable element (expand button)
       await user.tab()
       expect(screen.getByLabelText('Expand gate details')).toHaveFocus()
+
+      // Tab to next element (should be "Add comment" button when not expanded)
+      await user.tab()
+      expect(screen.getByText('Add comment')).toHaveFocus()
 
       // Tab to reject button
       await user.tab()

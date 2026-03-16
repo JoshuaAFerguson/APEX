@@ -26,6 +26,8 @@ export interface AgentFormProps {
   onSubmit: (data: AgentFormData) => void | Promise<void>
   /** Callback when form is cancelled */
   onCancel: () => void
+  /** Callback when form data changes (for live preview) */
+  onChange?: (data: AgentFormData) => void
   /** Available tools for selection */
   availableTools?: MultiSelectOption[]
   /** Available skills for selection */
@@ -64,6 +66,7 @@ export function AgentForm({
   initialData,
   onSubmit,
   onCancel,
+  onChange,
   availableTools = [],
   availableSkills = [],
   isSubmitting = false,
@@ -108,7 +111,11 @@ export function AgentForm({
 
   // Handle field changes with validation
   const handleFieldChange = useCallback((field: keyof AgentFormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+    const updatedData = { ...formData, [field]: value }
+    setFormData(updatedData)
+
+    // Call onChange callback if provided (for live preview)
+    onChange?.(updatedData)
 
     // Clear previous errors for this field
     setErrors(prev => ({ ...prev, [field]: undefined }))
@@ -120,7 +127,7 @@ export function AgentForm({
         setErrors(prev => ({ ...prev, [field]: error }))
       }
     }
-  }, [touchedFields, validateField])
+  }, [formData, onChange, touchedFields, validateField])
 
   // Handle field blur (mark as touched and validate)
   const handleFieldBlur = useCallback((field: keyof AgentFormData) => {

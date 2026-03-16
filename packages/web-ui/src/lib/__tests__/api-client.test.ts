@@ -36,10 +36,10 @@ describe('ApexApiClient', () => {
       delete process.env.NEXT_PUBLIC_APEX_API_URL;
     });
 
-    it('should default to localhost:3000 if no URL provided', () => {
+    it('should default to localhost:4000 if no URL provided', () => {
       delete process.env.NEXT_PUBLIC_APEX_API_URL;
       const defaultClient = new ApexApiClient();
-      expect(defaultClient['baseUrl']).toBe('http://localhost:3000');
+      expect(defaultClient['baseUrl']).toBe('http://localhost:4000');
     });
   });
 
@@ -374,6 +374,103 @@ describe('ApexApiClient', () => {
         expect.any(Object)
       );
       expect(result).toEqual(mockAgent);
+    });
+  });
+
+  describe('createAgent', () => {
+    it('should create a new agent', async () => {
+      const agentData = {
+        name: 'new-agent',
+        description: 'A new agent',
+        prompt: 'You are a new agent',
+        model: 'sonnet' as const,
+      };
+
+      const mockResponse = {
+        ...agentData,
+        id: 'agent_123',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await client.createAgent(agentData);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://test-api.com/agents',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(agentData),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('updateAgent', () => {
+    it('should update an existing agent', async () => {
+      const agentData = {
+        name: 'developer',
+        description: 'Updated development agent',
+        prompt: 'You are an updated developer',
+        model: 'opus' as const,
+      };
+
+      const mockResponse = {
+        ...agentData,
+        updatedAt: '2024-01-01T00:00:00Z',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await client.updateAgent('developer', agentData);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://test-api.com/agents/developer',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify(agentData),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('deleteAgent', () => {
+    it('should delete an existing agent', async () => {
+      const mockResponse = {
+        ok: true,
+        message: 'Agent deleted successfully',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await client.deleteAgent('developer');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://test-api.com/agents/developer',
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+      );
+      expect(result).toEqual(mockResponse);
     });
   });
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -9,6 +10,7 @@ import { apiClient } from '@/lib/api-client'
 import type { AgentDefinition } from '@apexcli/core'
 
 export default function AgentsPage() {
+  const router = useRouter()
   const [agents, setAgents] = useState<AgentDefinition[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +85,14 @@ export default function AgentsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Agents</h1>
-        <Button onClick={loadAgents}>Refresh</Button>
+        <div className="flex items-center space-x-3">
+          <Button variant="secondary" onClick={loadAgents}>
+            Refresh
+          </Button>
+          <Button onClick={() => router.push('/agents/new')}>
+            Create Agent
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -102,7 +111,7 @@ export default function AgentsPage() {
                 {agent.description}
               </p>
               {agent.tools && agent.tools.length > 0 && (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 mb-3">
                   {agent.tools.map((tool) => (
                     <span
                       key={tool}
@@ -113,6 +122,16 @@ export default function AgentsPage() {
                   ))}
                 </div>
               )}
+              <div className="pt-3 border-t border-border-secondary">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => router.push(`/agents/${agent.name}/edit`)}
+                  className="w-full"
+                >
+                  Edit
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}

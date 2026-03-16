@@ -18,7 +18,7 @@ import {
 } from '@xyflow/react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { DependencyEdgeData } from '@/types/workflow-editor'
+import type { WorkflowEdgeData } from '@/types/workflow-editor'
 
 /**
  * Dependency Edge Component
@@ -28,7 +28,7 @@ import type { DependencyEdgeData } from '@/types/workflow-editor'
  */
 export function DependencyEdge(
   props: Omit<EdgeProps, 'data'> & {
-    data: DependencyEdgeData | undefined
+    data: WorkflowEdgeData | undefined
   }
 ) {
   const {

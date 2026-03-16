@@ -158,5 +158,5 @@ export function estimateMarkdownSize(data: AgentFormData): number {
  * @returns Safe filename with .md extension
  */
 export function generateFileName(agentName: string): string {
-  return `${agentName.replace(/\s+/g, '-').toLowerCase()}.md`
+  return `${agentName.trim().replace(/\s+/g, '-').toLowerCase()}.md`
 }

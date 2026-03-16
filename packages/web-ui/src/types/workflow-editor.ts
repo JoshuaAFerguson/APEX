@@ -24,9 +24,9 @@ export interface StageNodeData extends Record<string, unknown> {
 export type WorkflowEditorNode = Node<StageNodeData>
 
 /**
- * Edge data for dependency connections
+ * Edge data for workflow dependency connections
  */
-export interface DependencyEdgeData {
+export interface WorkflowEdgeData extends Record<string, unknown> {
   sourceStage: string
   targetStage: string
   isConditional?: boolean
@@ -35,7 +35,7 @@ export interface DependencyEdgeData {
 /**
  * Edge types for the workflow editor
  */
-export type WorkflowEditorEdge = Edge<DependencyEdgeData>
+export type WorkflowEditorEdge = Edge<WorkflowEdgeData>
 
 /**
  * Editor state interface
@@ -270,7 +270,7 @@ export interface LayoutConfig {
   startY: number
 }
 
-export interface Position {
+export interface StagePosition {
   x: number
   y: number
 }

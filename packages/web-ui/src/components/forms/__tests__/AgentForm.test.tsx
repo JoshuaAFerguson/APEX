@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AgentForm, type AgentFormProps } from '../AgentForm'
 import type { AgentFormData, AgentModelOption } from '@/lib/schemas/agent-schema'
@@ -108,15 +108,29 @@ describe('AgentForm Component', () => {
     it('should show validation errors for required fields when submitting empty form', async () => {
       render(<AgentForm {...defaultProps} onSubmit={mockOnSubmit} onCancel={mockOnCancel} />)
 
-      await user.click(screen.getByTestId('submit-button'))
+      // Submit button should be disabled when form is invalid
+      expect(screen.getByTestId('submit-button')).toBeDisabled()
 
-      expect(mockOnSubmit).not.toHaveBeenCalled()
+      // Trigger validation by interacting with fields and blurring them
+      const nameInput = screen.getByTestId('name-input')
+      const descriptionTextarea = screen.getByTestId('description-textarea')
+      const promptTextarea = screen.getByTestId('prompt-textarea')
 
-      await waitFor(() => {
-        expect(screen.getByText('Agent name is required')).toBeInTheDocument()
-        expect(screen.getByText('Description is required')).toBeInTheDocument()
-        expect(screen.getByText('Prompt is required')).toBeInTheDocument()
+      await act(async () => {
+        await user.click(nameInput)
+        await user.tab()
+        await user.click(descriptionTextarea)
+        await user.tab()
+        await user.click(promptTextarea)
+        await user.tab()
       })
+
+      // Check that validation errors appear
+      await waitFor(() => {
+        expect(screen.getByText('Name must be at least 1 character')).toBeInTheDocument()
+        expect(screen.getByText('Description is required')).toBeInTheDocument()
+        expect(screen.getByText('Prompt must be at least 10 characters')).toBeInTheDocument()
+      }, { timeout: 3000 })
     })
 
     it('should validate agent name format', async () => {
@@ -147,20 +161,24 @@ describe('AgentForm Component', () => {
 
       const nameInput = screen.getByTestId('name-input')
 
-      // Trigger error
-      await user.click(nameInput)
-      await user.tab()
+      // Trigger error by focusing and then blurring empty field
+      await act(async () => {
+        await user.click(nameInput)
+        await user.tab()
+      })
 
       await waitFor(() => {
-        expect(screen.getByText('Agent name is required')).toBeInTheDocument()
-      })
+        expect(screen.getByText('Name must be at least 1 character')).toBeInTheDocument()
+      }, { timeout: 3000 })
 
       // Fix the error
-      await user.type(nameInput, 'valid-name')
+      await act(async () => {
+        await user.type(nameInput, 'valid-name')
+      })
 
       await waitFor(() => {
-        expect(screen.queryByText('Agent name is required')).not.toBeInTheDocument()
-      })
+        expect(screen.queryByText('Name must be at least 1 character')).not.toBeInTheDocument()
+      }, { timeout: 3000 })
     })
 
     it('should disable submit button when form is invalid', () => {
@@ -296,14 +314,16 @@ describe('AgentForm Component', () => {
       expect(nameInput).toBeInTheDocument()
 
       // Check error messages have role="alert" when displayed
-      await user.click(nameInput)
-      await user.tab()
+      await act(async () => {
+        await user.click(nameInput)
+        await user.tab()
+      })
 
       // Wait for error to appear and check it has proper role
       await waitFor(() => {
-        const errorElement = screen.getByText('Agent name is required')
+        const errorElement = screen.getByText('Name must be at least 1 character')
         expect(errorElement).toHaveAttribute('role', 'alert')
-      })
+      }, { timeout: 3000 })
     })
 
     it('should associate labels with form controls', () => {

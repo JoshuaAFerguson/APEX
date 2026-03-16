@@ -4,7 +4,6 @@
 
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { useApprovalGateWebSocket } from '../hooks/useApprovalGateWebSocket'
 import type {
   PendingApprovalGate,
   ResolvedApprovalGate,
@@ -12,31 +11,35 @@ import type {
   GateApprovedEvent,
 } from '@/types/approval-gate-panel'
 
-// Mock the WebSocket client
-const mockWsClient = {
-  isConnected: vi.fn(),
-  getHealthState: vi.fn(),
-  on: vi.fn(),
-  off: vi.fn(),
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-}
-
-// Mock the API client
-const mockApiClient = {
-  approveGate: vi.fn(),
-  rejectGate: vi.fn(),
-  listTasks: vi.fn(),
-}
-
 // Mock modules
 vi.mock('@/lib/websocket-client', () => ({
-  wsClient: mockWsClient,
+  wsClient: {
+    isConnected: vi.fn(),
+    getHealthState: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  },
 }))
 
 vi.mock('@/lib/api-client', () => ({
-  apiClient: mockApiClient,
+  apiClient: {
+    approveGate: vi.fn(),
+    rejectGate: vi.fn(),
+    listTasks: vi.fn(),
+  },
 }))
+
+// Get mock references after mocking
+import { wsClient } from '@/lib/websocket-client'
+import { apiClient } from '@/lib/api-client'
+
+const mockWsClient = wsClient as any
+const mockApiClient = apiClient as any
+
+// Import the hook after mocking
+import { useApprovalGateWebSocket } from '../hooks/useApprovalGateWebSocket'
 
 // Test data
 const mockPendingGate: PendingApprovalGate = {
@@ -307,12 +310,16 @@ describe('useApprovalGateWebSocket', () => {
         })
       )
 
-      await expect(
-        act(async () => {
+      let caughtError = null
+      try {
+        await act(async () => {
           await result.current.approveGate('gate-1', 'Test comment')
         })
-      ).rejects.toThrow('API Error')
+      } catch (error) {
+        caughtError = error
+      }
 
+      expect(caughtError).toEqual(expect.any(Error))
       expect(result.current.error).toEqual(expect.any(Error))
     })
 

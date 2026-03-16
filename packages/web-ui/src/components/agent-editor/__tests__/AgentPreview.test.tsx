@@ -11,46 +11,51 @@ import '@testing-library/jest-dom/vitest'
 import { AgentPreview } from '../AgentPreview'
 import type { AgentFormData } from '@/lib/schemas/agent-schema'
 
-// Mock the clipboard API
-Object.assign(navigator, {
-  clipboard: {
-    writeText: vi.fn(() => Promise.resolve()),
-  },
-})
+// Mock link object for download testing - track calls
+const mockLinkClick = vi.fn()
+let mockLinkDownload = ''
+let mockLinkHref = ''
 
-// Mock the file system APIs
-Object.defineProperty(window, 'URL', {
-  value: {
-    createObjectURL: vi.fn(() => 'blob:mock-url'),
-    revokeObjectURL: vi.fn(),
-  },
-})
+// Mock only specific browser APIs without breaking DOM
+beforeEach(() => {
+  // Reset mocks
+  mockLinkClick.mockClear()
+  mockLinkDownload = ''
+  mockLinkHref = ''
 
-// Mock document.createElement for download functionality
-const mockLink = {
-  href: '',
-  download: '',
-  click: vi.fn(),
-}
+  // Mock clipboard API
+  Object.assign(navigator, {
+    clipboard: {
+      writeText: vi.fn(() => Promise.resolve()),
+    },
+  })
 
-// Store original createElement
-const originalCreateElement = document.createElement.bind(document)
+  // Mock URL API
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url')
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
 
-Object.defineProperty(document, 'createElement', {
-  value: vi.fn((tag: string) => {
-    if (tag === 'a') {
-      return mockLink
+  // Spy on createElement to intercept anchor creation for downloads
+  const originalCreateElement = document.createElement.bind(document)
+  vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+    const element = originalCreateElement(tagName)
+    if (tagName === 'a') {
+      // Track anchor element properties for download testing
+      Object.defineProperty(element, 'download', {
+        get: () => mockLinkDownload,
+        set: (val) => { mockLinkDownload = val },
+      })
+      Object.defineProperty(element, 'href', {
+        get: () => mockLinkHref,
+        set: (val) => { mockLinkHref = val },
+      })
+      element.click = mockLinkClick
     }
-    return originalCreateElement(tag)
-  }),
+    return element
+  })
 })
 
-Object.defineProperty(document.body, 'appendChild', {
-  value: vi.fn(),
-})
-
-Object.defineProperty(document.body, 'removeChild', {
-  value: vi.fn(),
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 const validAgentData: AgentFormData = {
@@ -90,14 +95,18 @@ describe('AgentPreview', () => {
       render(<AgentPreview data={validAgentData} loading />)
 
       expect(screen.queryByTestId('agent-preview')).not.toBeInTheDocument()
-      expect(screen.getByRole('status')).toBeInTheDocument() // Spinner has role="status"
+      // Spinner is rendered inside a container with specific classes
+      const container = document.querySelector('.animate-spin')
+      expect(container).toBeInTheDocument()
     })
 
     it('renders loading state when data is incomplete', () => {
       render(<AgentPreview data={incompleteAgentData as AgentFormData} />)
 
       expect(screen.queryByTestId('agent-preview')).not.toBeInTheDocument()
-      expect(screen.getByRole('status')).toBeInTheDocument()
+      // Spinner is rendered inside a container with specific classes
+      const container = document.querySelector('.animate-spin')
+      expect(container).toBeInTheDocument()
     })
 
     it('shows file name with .md extension', () => {
@@ -235,8 +244,8 @@ describe('AgentPreview', () => {
       const downloadButton = screen.getByTestId('agent-preview-download-button')
       fireEvent.click(downloadButton)
 
-      expect(mockLink.download).toBe('test-agent.md')
-      expect(mockLink.click).toHaveBeenCalled()
+      expect(mockLinkDownload).toBe('test-agent.md')
+      expect(mockLinkClick).toHaveBeenCalled()
     })
 
     it('downloads file with correct content', () => {
@@ -245,7 +254,7 @@ describe('AgentPreview', () => {
       const downloadButton = screen.getByTestId('agent-preview-download-button')
       fireEvent.click(downloadButton)
 
-      expect(window.URL.createObjectURL).toHaveBeenCalledWith(
+      expect(URL.createObjectURL).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'text/markdown'
         })
@@ -263,7 +272,7 @@ describe('AgentPreview', () => {
       const downloadButton = screen.getByTestId('agent-preview-download-button')
       fireEvent.click(downloadButton)
 
-      expect(mockLink.download).toBe('my-test-agent.md')
+      expect(mockLinkDownload).toBe('my-test-agent.md')
     })
 
     it('hides download button when showDownloadButton is false', () => {

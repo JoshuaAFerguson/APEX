@@ -132,8 +132,8 @@ export interface ConfirmationState {
   isOpen: boolean
   /** Type of action being confirmed */
   actionType: 'approve' | 'reject' | null
-  /** Gate being acted upon */
-  gate: Gate | null
+  /** Gate being acted upon (PendingApprovalGate which has the id property) */
+  gate: PendingApprovalGate | null
   /** Comment entered for the action */
   comment: string
   /** Whether the action is being submitted */
@@ -158,7 +158,7 @@ export const INITIAL_CONFIRMATION_STATE: ConfirmationState = {
  * Actions for confirmation state reducer
  */
 export type ConfirmationAction =
-  | { type: 'OPEN_DIALOG'; payload: { actionType: 'approve' | 'reject'; gate: Gate } }
+  | { type: 'OPEN_DIALOG'; payload: { actionType: 'approve' | 'reject'; gate: PendingApprovalGate } }
   | { type: 'CLOSE_DIALOG' }
   | { type: 'SET_COMMENT'; payload: string }
   | { type: 'SUBMIT_START' }
