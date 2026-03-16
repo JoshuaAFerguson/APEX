@@ -310,17 +310,14 @@ describe('useApprovalGateWebSocket', () => {
         })
       )
 
-      let caughtError = null
-      try {
-        await act(async () => {
+      await expect(
+        act(async () => {
           await result.current.approveGate('gate-1', 'Test comment')
         })
-      } catch (error) {
-        caughtError = error
-      }
+      ).rejects.toThrow('API Error')
 
-      expect(caughtError).toEqual(expect.any(Error))
-      expect(result.current.error).toEqual(expect.any(Error))
+      // Ensure loading state is reset after error
+      expect(result.current.isLoading).toBe(false)
     })
 
     it('should throw error for non-existent gate', async () => {
