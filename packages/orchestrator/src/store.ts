@@ -882,6 +882,34 @@ export class TaskStore {
         FOREIGN KEY (webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
       );
 
+      -- v0.7.0 Slack Installations Table
+      CREATE TABLE IF NOT EXISTS slack_installations (
+        id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL UNIQUE,
+        team_name TEXT NOT NULL,
+        enterprise_id TEXT,
+        enterprise_name TEXT,
+        bot_user_id TEXT NOT NULL,
+        bot_token TEXT NOT NULL,            -- Encrypted
+        bot_scopes TEXT NOT NULL,           -- JSON array
+        installed_by_user_id TEXT NOT NULL,
+        user_token TEXT,                    -- Encrypted
+        user_scopes TEXT,                   -- JSON array
+        installed_at TEXT NOT NULL,
+        token_refreshed_at TEXT,
+        token_expires_at TEXT,
+        refresh_token TEXT,                 -- Encrypted
+        is_active INTEGER NOT NULL DEFAULT 1,
+        default_channel_id TEXT,
+        app_token TEXT,                     -- Encrypted
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_slack_installations_team_id ON slack_installations(team_id);
+      CREATE INDEX IF NOT EXISTS idx_slack_installations_is_active ON slack_installations(is_active);
+      CREATE INDEX IF NOT EXISTS idx_slack_installations_enterprise_id ON slack_installations(enterprise_id);
+
       -- v0.7.0 Webhook System Indexes
       CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled);
       CREATE INDEX IF NOT EXISTS idx_webhooks_created_at ON webhooks(created_at);

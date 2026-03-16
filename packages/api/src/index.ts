@@ -43,6 +43,7 @@ import {
 
 import { registerScreenshotRoutes } from './routes/screenshot.js';
 import { SlackService } from './services/slack-service.js';
+import { SlackAppService } from './services/slack-app-service.js';
 import { TeamsService } from './services/teams-service.js';
 import { DiscordService } from './services/discord-service.js';
 import authPlugin from './middleware/auth.js';
@@ -242,11 +243,44 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
 
   // Register screenshot routes
   await registerScreenshotRoutes(app);
+
+  // Initialize Slack App Service with OAuth support
+  const slackAppService = new SlackAppService({
+    orchestrator,
+    config: config.slack,
+    getDatabase: () => orchestrator.getStore().getDatabase(),
+    logger: app.log,
+  });
+
+  try {
+    await slackAppService.start();
+
+    // Mount OAuth routes if enabled
+    if (slackAppService.isOAuthEnabled()) {
+      const slackRouter = slackAppService.getRouter();
+      if (slackRouter) {
+        app.register(async (fastify) => {
+          fastify.all('/slack/*', async (request, reply) => {
+            // Forward to Express receiver
+            slackRouter(request.raw, reply.raw);
+          });
+        });
+
+        app.log.info('Slack OAuth routes registered: /slack/install, /slack/oauth_redirect');
+      }
+    }
+  } catch (error) {
+    app.log.error(`Slack App integration failed to start: ${error instanceof Error ? error.message : error}`);
+  }
+
+  // Legacy Socket Mode service (for backward compatibility)
   const slackService = new SlackService({ orchestrator, config: config.slack, logger: app.log });
   try {
-    await slackService.start();
+    if (!slackAppService.isOAuthEnabled() && slackService.isEnabled()) {
+      await slackService.start();
+    }
   } catch (error) {
-    app.log.error(`Slack integration failed to start: ${error instanceof Error ? error.message : error}`);
+    app.log.error(`Slack Socket Mode failed to start: ${error instanceof Error ? error.message : error}`);
   }
 
   const teamsService = new TeamsService({ orchestrator, config: config.teams, logger: app.log });

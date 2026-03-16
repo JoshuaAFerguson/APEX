@@ -2,25 +2,51 @@ display_information:
   name: APEX
   description: APEX task orchestration via Slack commands
   background_color: "#0D0F12"
+  long_description: |
+    APEX enables AI-powered task management and automation directly from Slack.
+    Create tasks, track progress, and receive real-time notifications.
+
 features:
   bot_user:
     display_name: APEX
     always_online: true
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
   slash_commands:
     - command: /apex
-      url: https://example.com/slack/commands
+      url: https://your-domain.com/slack/events
       description: Manage APEX tasks and status
       usage_hint: 'run "task", think "idea", status, report <taskId>, cancel <taskId>'
       should_escape: false
+
 oauth_config:
+  redirect_urls:
+    - https://your-domain.com/slack/oauth_redirect
+    - http://localhost:3000/slack/oauth_redirect  # Development
   scopes:
     bot:
       - commands
       - chat:write
+      - chat:write.public
       - channels:read
+      - users:read
+      - team:read
+      - app_mentions:read
+      - im:history
+      - im:write
+
 settings:
-  socket_mode_enabled: true
+  event_subscriptions:
+    request_url: https://your-domain.com/slack/events
+    bot_events:
+      - app_home_opened
+      - app_uninstalled
+      - message.im
   interactivity:
-    is_enabled: false
-  org_deploy_enabled: false
-  token_rotation_enabled: false
+    is_enabled: true
+    request_url: https://your-domain.com/slack/events
+  org_deploy_enabled: true
+  socket_mode_enabled: false  # Changed for production OAuth
+  token_rotation_enabled: true

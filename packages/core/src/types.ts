@@ -4548,6 +4548,142 @@ export const SlackIntegrationConfigSchema = z.object({
 export type SlackIntegrationConfig = z.infer<typeof SlackIntegrationConfigSchema>;
 
 /**
+ * Slack workspace installation record (v0.7.0)
+ */
+export interface SlackInstallation {
+  /** Unique installation ID */
+  id: string;
+
+  /** Slack team/workspace ID */
+  teamId: string;
+
+  /** Team/workspace name */
+  teamName: string;
+
+  /** Enterprise ID (for Enterprise Grid) */
+  enterpriseId?: string;
+
+  /** Enterprise name */
+  enterpriseName?: string;
+
+  /** Bot user ID */
+  botUserId: string;
+
+  /** Bot access token (encrypted at rest) */
+  botToken: string;
+
+  /** Bot token scopes */
+  botScopes: string[];
+
+  /** User who installed the app */
+  installedByUserId: string;
+
+  /** User access token (if user-token flow) */
+  userToken?: string;
+
+  /** User token scopes */
+  userScopes?: string[];
+
+  /** Installation timestamp */
+  installedAt: Date;
+
+  /** Last token refresh timestamp */
+  tokenRefreshedAt?: Date;
+
+  /** Token expiration timestamp (if rotation enabled) */
+  tokenExpiresAt?: Date;
+
+  /** Refresh token (if rotation enabled) */
+  refreshToken?: string;
+
+  /** Whether the installation is active */
+  isActive: boolean;
+
+  /** Default channel for notifications */
+  defaultChannelId?: string;
+
+  /** App-level token for Socket Mode (optional) */
+  appToken?: string;
+}
+
+export const SlackInstallationSchema = z.object({
+  id: z.string(),
+  teamId: z.string(),
+  teamName: z.string(),
+  enterpriseId: z.string().optional(),
+  enterpriseName: z.string().optional(),
+  botUserId: z.string(),
+  botToken: z.string(),
+  botScopes: z.array(z.string()),
+  installedByUserId: z.string(),
+  userToken: z.string().optional(),
+  userScopes: z.array(z.string()).optional(),
+  installedAt: z.date(),
+  tokenRefreshedAt: z.date().optional(),
+  tokenExpiresAt: z.date().optional(),
+  refreshToken: z.string().optional(),
+  isActive: z.boolean(),
+  defaultChannelId: z.string().optional(),
+  appToken: z.string().optional(),
+});
+
+/**
+ * Extended Slack configuration for OAuth flow (v0.7.0)
+ */
+export const SlackOAuthConfigSchema = z.object({
+  /** Client ID from Slack App settings */
+  clientId: z.string().optional(),
+
+  /** Client Secret from Slack App settings */
+  clientSecret: z.string().optional(),
+
+  /** Signing secret for request verification */
+  signingSecret: z.string().optional(),
+
+  /** State secret for OAuth CSRF protection */
+  stateSecret: z.string().optional(),
+
+  /** OAuth scopes to request */
+  scopes: z.array(z.string()).optional().default([
+    'commands',
+    'chat:write',
+    'channels:read',
+    'users:read',
+    'team:read',
+  ]),
+
+  /** User scopes (for user token flow) */
+  userScopes: z.array(z.string()).optional().default([]),
+
+  /** Redirect URI for OAuth callback */
+  redirectUri: z.string().optional(),
+
+  /** Enable token rotation */
+  tokenRotation: z.boolean().optional().default(false),
+
+  /** Installation success redirect URL */
+  installSuccessUrl: z.string().optional(),
+
+  /** Installation failure redirect URL */
+  installFailureUrl: z.string().optional(),
+});
+
+export type SlackOAuthConfig = z.infer<typeof SlackOAuthConfigSchema>;
+
+/**
+ * Updated Slack integration config with OAuth support (v0.7.0)
+ */
+export const SlackIntegrationConfigSchemaV2 = SlackIntegrationConfigSchema.extend({
+  /** OAuth configuration for multi-workspace support */
+  oauth: SlackOAuthConfigSchema.optional(),
+
+  /** Connection mode */
+  mode: z.enum(['socket', 'http', 'hybrid']).optional().default('socket'),
+});
+
+export type SlackIntegrationConfigV2 = z.infer<typeof SlackIntegrationConfigSchemaV2>;
+
+/**
  * Microsoft Teams integration configuration (v0.7.0)
  */
 export const TeamsIntegrationConfigSchema = z.object({
