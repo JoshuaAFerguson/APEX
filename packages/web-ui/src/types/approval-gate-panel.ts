@@ -341,16 +341,17 @@ export function isGateRequiredEvent(
 }
 
 /**
- * Type guard for gate resolved events (approved, rejected, timeout, skipped)
+ * Type guard for gate resolved events (approved, rejected, timeout, skipped, approval-resolved)
  */
 export function isGateResolvedEvent(
   event: ApprovalGateWebSocketEvent
-): event is GateApprovedEvent | GateRejectedEvent | GateTimeoutEvent | GateSkippedEvent {
+): event is GateApprovedEvent | GateRejectedEvent | GateTimeoutEvent | GateSkippedEvent | ApprovalResolvedEvent {
   return (
     event.type === 'gate:approved' ||
     event.type === 'gate:rejected' ||
     event.type === 'gate:timeout' ||
-    event.type === 'gate:skipped'
+    event.type === 'gate:skipped' ||
+    event.type === 'approval-resolved'
   )
 }
 

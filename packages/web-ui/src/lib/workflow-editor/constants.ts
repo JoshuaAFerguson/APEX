@@ -149,12 +149,17 @@ export const STAGE_CATEGORY_COLORS = {
 /**
  * Default workflow template for new workflows
  */
-export const DEFAULT_WORKFLOW = {
+export const DEFAULT_WORKFLOW: {
+  name: string
+  description: string
+  stages: []
+  gates: []
+} = {
   name: 'New Workflow',
   description: 'A new workflow created with the visual editor',
   stages: [],
   gates: [],
-} as const
+}
 
 /**
  * Keyboard shortcuts for the editor

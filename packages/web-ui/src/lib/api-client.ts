@@ -11,6 +11,8 @@ import type {
   SubtaskDefinition,
   MCPMarketplaceEntry,
   MCPServerConfig,
+  InjectContextRequest,
+  InjectContextResponse,
 } from '@apexcli/core'
 import { getApiUrl } from './config'
 
@@ -57,6 +59,7 @@ interface IsSubtaskResponse {
   isSubtask: boolean
   parentTaskId: string | null
 }
+
 
 export class ApexApiClient {
   private _baseUrl: string | null = null
@@ -224,6 +227,17 @@ export class ApexApiClient {
       method: 'POST',
       body: JSON.stringify(request),
     })
+  }
+
+  /**
+   * Inject context into a running task
+   */
+  async injectContext(taskId: string, request: InjectContextRequest): Promise<InjectContextResponse> {
+    const response = await this.fetch(`/tasks/${taskId}/context`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+    return response.json()
   }
 
   // ============================================================================

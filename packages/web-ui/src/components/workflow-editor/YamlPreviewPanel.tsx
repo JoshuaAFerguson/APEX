@@ -50,7 +50,7 @@ export function YamlPreviewPanel({
 
     const link = document.createElement('a')
     link.href = url
-    link.download = `${state.workflow.name.replace(/\s+/g, '-').toLowerCase()}.yml`
+    link.download = `${(state.workflow.name || 'workflow').replace(/\s+/g, '-').toLowerCase()}.yml`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

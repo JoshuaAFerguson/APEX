@@ -12,6 +12,9 @@ export type { ThoughtDisplayProps } from './ThoughtDisplay'
 
 export { CreateTaskDialog } from './CreateTaskDialog'
 
+export { ContextInjectionModal } from './ContextInjectionModal'
+export type { ContextInjectionModalProps } from './ContextInjectionModal'
+
 export { GatePanel } from './GatePanel'
 
 export { KanbanBoard } from './KanbanBoard'

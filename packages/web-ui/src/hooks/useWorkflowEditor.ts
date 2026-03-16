@@ -30,6 +30,13 @@ import { calculateStageLayout, calculateNewStagePosition } from '@/lib/workflow-
 import { DEFAULT_WORKFLOW } from '@/lib/workflow-editor/constants'
 
 /**
+ * Helper to safely get stages array from workflow
+ */
+function getStages(wf: WorkflowDefinition): WorkflowStage[] {
+  return wf.stages || []
+}
+
+/**
  * Main workflow editor hook
  *
  * @param options - Configuration options
@@ -58,46 +65,49 @@ export function useWorkflowEditor({
 
   // Generate nodes from workflow stages
   const nodes = useMemo((): WorkflowEditorNode[] => {
-    const stages = workflow.stages || []
+    const stages = getStages(workflow)
     const positions = calculateStageLayout(stages)
 
     return stages.map((stage): WorkflowEditorNode => {
-      const position = positions.get(stage.name) || { x: 0, y: 0 }
+      const stageName = stage.name || ''
+      const position = positions.get(stageName) || { x: 0, y: 0 }
 
       const nodeData: StageNodeData = {
         stage,
-        isSelected: selectedStageId === stage.name,
+        isSelected: selectedStageId === stageName,
         hasError: false, // This would be populated by validation
         errorMessage: undefined,
       }
 
       return {
-        id: stage.name,
+        id: stageName,
         type: 'stageNode',
         position,
         data: nodeData,
-        selected: selectedStageId === stage.name,
+        selected: selectedStageId === stageName,
       }
     })
-  }, [workflow.stages, selectedStageId])
+  }, [workflow, selectedStageId])
 
   // Generate edges from stage dependencies
   const edges = useMemo((): WorkflowEditorEdge[] => {
-    const edges: WorkflowEditorEdge[] = []
+    const stages = getStages(workflow)
+    const result: WorkflowEditorEdge[] = []
 
-    for (const stage of workflow.stages) {
-      if (stage.dependsOn) {
+    for (const stage of stages) {
+      const stageName = stage.name
+      if (stage.dependsOn && stageName) {
         for (const dependency of stage.dependsOn) {
           const edgeData: DependencyEdgeData = {
             sourceStage: dependency,
-            targetStage: stage.name,
+            targetStage: stageName,
             isConditional: Boolean(stage.condition),
           }
 
-          edges.push({
-            id: `${dependency}-${stage.name}`,
+          result.push({
+            id: `${dependency}-${stageName}`,
             source: dependency,
-            target: stage.name,
+            target: stageName,
             type: 'dependencyEdge',
             data: edgeData,
           })
@@ -105,8 +115,8 @@ export function useWorkflowEditor({
       }
     }
 
-    return edges
-  }, [workflow.stages])
+    return result
+  }, [workflow])
 
   // Mark as dirty when workflow changes
   useEffect(() => {
@@ -123,128 +133,6 @@ export function useWorkflowEditor({
   }, [workflow, onChange])
 
   /**
-   * Handle React Flow node changes
-   */
-  const onNodesChange: OnNodesChange = useCallback((changes) => {
-    // Handle position changes by updating stage positions
-    // For now, we'll let React Flow handle the visual updates
-    // and sync positions when needed
-  }, [])
-
-  /**
-   * Handle React Flow edge changes
-   */
-  const onEdgesChange: OnEdgesChange = useCallback((changes) => {
-    // Handle edge removal by updating stage dependencies
-    for (const change of changes) {
-      if (change.type === 'remove') {
-        const edge = edges.find(e => e.id === change.id)
-        if (edge) {
-          removeDependency(edge.source, edge.target)
-        }
-      }
-    }
-  }, [edges, removeDependency])
-
-  /**
-   * Handle new connections between nodes
-   */
-  const onConnect: OnConnect = useCallback((connection) => {
-    if (connection.source && connection.target) {
-      addDependency(connection.source, connection.target)
-    }
-  }, [addDependency])
-
-  /**
-   * Handle node clicks
-   */
-  const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
-    setSelectedStageId(node.id)
-  }, [])
-
-  /**
-   * Handle edge clicks
-   */
-  const onEdgeClick: EdgeMouseHandler = useCallback((event, edge) => {
-    // For now, just deselect stages when clicking edges
-    setSelectedStageId(null)
-  }, [])
-
-  /**
-   * Add a new stage from template
-   */
-  const addStage = useCallback(
-    (template: StageTemplate, position?: Position) => {
-      const existingPositions = new Map(
-        workflow.stages.map(s => [s.name, { x: 0, y: 0 }]) // We'd need actual positions
-      )
-
-      const stagePosition = position || calculateNewStagePosition(existingPositions)
-
-      // Generate unique stage name if conflicts exist
-      let stageName = template.name.toLowerCase().replace(/\s+/g, '-')
-      let counter = 1
-      const existingNames = new Set(workflow.stages.map(s => s.name))
-
-      while (existingNames.has(stageName)) {
-        stageName = `${template.name.toLowerCase().replace(/\s+/g, '-')}-${counter}`
-        counter++
-      }
-
-      const newStage: WorkflowStage = {
-        name: stageName,
-        agent: template.agent,
-        description: template.description,
-      }
-
-      setWorkflow(prev => ({
-        ...prev,
-        stages: [...prev.stages, newStage],
-      }))
-
-      setSelectedStageId(stageName)
-    },
-    [workflow.stages, setWorkflow]
-  )
-
-  /**
-   * Remove a stage and its dependencies
-   */
-  const removeStage = useCallback(
-    (stageId: string) => {
-      setWorkflow(prev => ({
-        ...prev,
-        stages: prev.stages
-          .filter(stage => stage.name !== stageId)
-          .map(stage => ({
-            ...stage,
-            dependsOn: stage.dependsOn?.filter(dep => dep !== stageId),
-          })),
-      }))
-
-      if (selectedStageId === stageId) {
-        setSelectedStageId(null)
-      }
-    },
-    [setWorkflow, selectedStageId]
-  )
-
-  /**
-   * Update a stage
-   */
-  const updateStage = useCallback(
-    (stageId: string, updates: Partial<WorkflowStage>) => {
-      setWorkflow(prev => ({
-        ...prev,
-        stages: prev.stages.map(stage =>
-          stage.name === stageId ? { ...stage, ...updates } : stage
-        ),
-      }))
-    },
-    [setWorkflow]
-  )
-
-  /**
    * Add dependency between stages
    */
   const addDependency = useCallback(
@@ -253,7 +141,7 @@ export function useWorkflowEditor({
 
       setWorkflow(prev => ({
         ...prev,
-        stages: prev.stages.map(stage => {
+        stages: getStages(prev).map(stage => {
           if (stage.name === targetStageId) {
             const existingDeps = stage.dependsOn || []
             if (!existingDeps.includes(sourceStageId)) {
@@ -277,7 +165,7 @@ export function useWorkflowEditor({
     (sourceStageId: string, targetStageId: string) => {
       setWorkflow(prev => ({
         ...prev,
-        stages: prev.stages.map(stage => {
+        stages: getStages(prev).map(stage => {
           if (stage.name === targetStageId && stage.dependsOn) {
             return {
               ...stage,
@@ -286,6 +174,137 @@ export function useWorkflowEditor({
           }
           return stage
         }),
+      }))
+    },
+    [setWorkflow]
+  )
+
+  /**
+   * Handle React Flow node changes
+   */
+  const onNodesChange: OnNodesChange = useCallback(() => {
+    // Handle position changes by updating stage positions
+    // For now, we'll let React Flow handle the visual updates
+    // and sync positions when needed
+  }, [])
+
+  /**
+   * Handle React Flow edge changes
+   */
+  const onEdgesChange: OnEdgesChange = useCallback(
+    (changes) => {
+      // Handle edge removal by updating stage dependencies
+      for (const change of changes) {
+        if (change.type === 'remove') {
+          const edge = edges.find(e => e.id === change.id)
+          if (edge) {
+            removeDependency(edge.source, edge.target)
+          }
+        }
+      }
+    },
+    [edges, removeDependency]
+  )
+
+  /**
+   * Handle new connections between nodes
+   */
+  const onConnect: OnConnect = useCallback(
+    (connection) => {
+      if (connection.source && connection.target) {
+        addDependency(connection.source, connection.target)
+      }
+    },
+    [addDependency]
+  )
+
+  /**
+   * Handle node clicks
+   */
+  const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
+    setSelectedStageId(node.id)
+  }, [])
+
+  /**
+   * Handle edge clicks
+   */
+  const onEdgeClick: EdgeMouseHandler = useCallback(() => {
+    // For now, just deselect stages when clicking edges
+    setSelectedStageId(null)
+  }, [])
+
+  /**
+   * Add a new stage from template
+   */
+  const addStage = useCallback(
+    (template: StageTemplate, position?: Position) => {
+      const stages = getStages(workflow)
+      const existingPositions = new Map<string, Position>(
+        stages
+          .filter((s): s is WorkflowStage & { name: string } => typeof s.name === 'string')
+          .map(s => [s.name, { x: 0, y: 0 }]) // We'd need actual positions
+      )
+
+      const stagePosition = position || calculateNewStagePosition(existingPositions)
+
+      // Generate unique stage name if conflicts exist
+      let stageName = template.name.toLowerCase().replace(/\s+/g, '-')
+      let counter = 1
+      const existingNames = new Set(stages.map(s => s.name).filter((n): n is string => typeof n === 'string'))
+
+      while (existingNames.has(stageName)) {
+        stageName = `${template.name.toLowerCase().replace(/\s+/g, '-')}-${counter}`
+        counter++
+      }
+
+      const newStage: WorkflowStage = {
+        name: stageName,
+        agent: template.agent,
+        description: template.description,
+      }
+
+      setWorkflow(prev => ({
+        ...prev,
+        stages: [...getStages(prev), newStage],
+      }))
+
+      setSelectedStageId(stageName)
+    },
+    [workflow, setWorkflow]
+  )
+
+  /**
+   * Remove a stage and its dependencies
+   */
+  const removeStage = useCallback(
+    (stageId: string) => {
+      setWorkflow(prev => ({
+        ...prev,
+        stages: getStages(prev)
+          .filter(stage => stage.name !== stageId)
+          .map(stage => ({
+            ...stage,
+            dependsOn: stage.dependsOn?.filter(dep => dep !== stageId),
+          })),
+      }))
+
+      if (selectedStageId === stageId) {
+        setSelectedStageId(null)
+      }
+    },
+    [setWorkflow, selectedStageId]
+  )
+
+  /**
+   * Update a stage
+   */
+  const updateStage = useCallback(
+    (stageId: string, updates: Partial<WorkflowStage>) => {
+      setWorkflow(prev => ({
+        ...prev,
+        stages: getStages(prev).map(stage =>
+          stage.name === stageId ? { ...stage, ...updates } : stage
+        ),
       }))
     },
     [setWorkflow]

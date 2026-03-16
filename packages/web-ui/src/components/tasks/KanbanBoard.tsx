@@ -26,11 +26,13 @@ import {
   ChevronDown,
   ChevronRight,
   Layers,
-  Undo2
+  Undo2,
+  MessageSquarePlus
 } from 'lucide-react'
 import { DraggableKanbanCard } from './DraggableKanbanCard'
 import { DroppableKanbanColumn } from './DroppableKanbanColumn'
 import { useKanbanDragDrop } from './hooks/useKanbanDragDrop'
+import { ContextInjectionModal } from './ContextInjectionModal'
 
 const COLUMN_PAGE_SIZE = 20
 
@@ -347,15 +349,40 @@ interface KanbanCardProps {
 }
 
 function KanbanCard({ task, onCancel, onRetry, actionLoading }: KanbanCardProps) {
+  const [contextModalOpen, setContextModalOpen] = useState(false)
+  const [contextLoading, setContextLoading] = useState(false)
+
   const isRunning = task.status === 'in-progress' || task.status === 'planning'
   const isPending = task.status === 'pending' || task.status === 'queued'
+  const isWaitingApproval = task.status === 'waiting-approval'
+  const isPaused = task.status === 'paused'
   const isFailed = task.status === 'failed'
   const isCancelled = task.status === 'cancelled'
   const canCancel = isRunning || isPending
   const canRetry = isFailed || isCancelled || isRunning
   const hasSubtasks = task.subtaskIds && task.subtaskIds.length > 0
 
-  return (
+  // Context injection is available for actionable tasks (not terminal states)
+  const canInjectContext = isRunning || isPending || task.status === 'planning' || isWaitingApproval || isPaused
+
+  const handleContextInjection = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextModalOpen(true)
+  }
+
+  const handleContextInjected = () => {
+    setContextLoading(false)
+    setContextModalOpen(false)
+    // Optionally refresh task data or show success message
+  }
+
+  const handleContextModalClose = () => {
+    setContextModalOpen(false)
+    setContextLoading(false)
+  }
+
+  const cardContent = (
     <Link href={`/tasks/${task.id}`}>
       <div className={cn(
         "bg-background rounded-md border border-border p-3 cursor-pointer",
@@ -447,6 +474,20 @@ function KanbanCard({ task, onCancel, onRetry, actionLoading }: KanbanCardProps)
                 )}
               </button>
             )}
+            {canInjectContext && (
+              <button
+                onClick={handleContextInjection}
+                disabled={contextLoading}
+                className="p-1 rounded hover:bg-blue-500/10 text-foreground-secondary hover:text-blue-500 transition-colors"
+                title="Inject context"
+              >
+                {contextLoading ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <MessageSquarePlus className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -458,5 +499,17 @@ function KanbanCard({ task, onCancel, onRetry, actionLoading }: KanbanCardProps)
         )}
       </div>
     </Link>
+  )
+
+  return (
+    <>
+      {cardContent}
+      <ContextInjectionModal
+        isOpen={contextModalOpen}
+        taskId={task.id}
+        onClose={handleContextModalClose}
+        onInjected={handleContextInjected}
+      />
+    </>
   )
 }

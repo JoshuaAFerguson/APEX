@@ -1,0 +1,232 @@
+================================================================================
+CODE REVIEW FINDINGS - ApprovalGatePanel Integration Tests
+================================================================================
+
+PROJECT: APEX
+COMPONENT: ApprovalGatePanel with WebSocket Integration
+REVIEW DATE: 2026-03-16
+REVIEWER: Code Review Agent
+
+================================================================================
+CRITICAL FINDINGS (BLOCKING)
+================================================================================
+
+[HIGH] ApprovalGateItem.tsx:197 - Invalid Badge Variant "outline"
+  - Badge component only accepts: 'default', 'success', 'warning', 'error', 'info'
+  - Code uses: "outline"
+  - FIX: Change to "default"
+  - IMPACT: TypeScript compilation error, build fails
+
+[HIGH] ApprovalGateItem.tsx:206 - Invalid Badge Variant "danger"
+  - Badge component only accepts: 'default', 'success', 'warning', 'error', 'info'
+  - Code uses: "danger" (conditional)
+  - FIX: Change to "error"
+  - IMPACT: TypeScript compilation error, build fails
+
+[HIGH] ApprovalGateItem.tsx:217 - Invalid Badge Variant "danger" and "primary"
+  - Badge component only accepts: 'default', 'success', 'warning', 'error', 'info'
+  - Code uses: "danger", "primary"
+  - FIX: Change "danger" to "error", "primary" to "success"
+  - IMPACT: TypeScript compilation error, build fails
+
+[HIGH] ApprovalGateItem.tsx:228 - Invalid Badge Variant "danger" and "outline"
+  - Badge component only accepts: 'default', 'success', 'warning', 'error', 'info'
+  - Code uses: "danger", "outline"
+  - FIX: Change "danger" to "error", "outline" to "default"
+  - IMPACT: TypeScript compilation error, build fails
+
+================================================================================
+HIGH PRIORITY FINDINGS (FEATURE/SECURITY)
+================================================================================
+
+[MEDIUM] useApprovalGateWebSocket.ts:256-290 - No-op refresh() Function
+  - refresh() function never updates gates
+  - Fetches tasks but doesn't extract gates from response
+  - Loop body is empty (lines 273-276)
+  - Only updates state if newPendingGates.length > 0, always false
+  - FIX: Implement actual gate extraction or call dedicated API
+  - IMPACT: refresh() feature doesn't work at all
+
+[MEDIUM] ApprovalGatePanel.tsx:127-132 - Callback Handler Memory Leak
+  - registerGateReceived() and registerGateResolved() called without cleanup
+  - Handlers accumulate on every render
+  - No tracking of registered handlers
+  - FIX: Return unsubscribe functions or use Set to track registered handlers
+  - IMPACT: Memory leak, duplicate handler invocations, performance degradation
+
+[MEDIUM] useApprovalGateWebSocket.ts:209,239 - Hardcoded 'user' Approver
+  - Always sends 'user' as approver regardless of authenticated user
+  - Audit logs show all approvals from 'user'
+  - No way to trace who actually approved
+  - FIX: Inject authenticated user identity from auth context
+  - IMPACT: Security/audit trail integrity compromised
+
+[MEDIUM] Integration Test Duplication
+  - ApprovalGatePanel.integration.test.tsx (mocks useApprovalGateRealtime)
+  - ApprovalGatePanel.integration-fixed.test.tsx (mocks useApprovalGateWebSocket)
+  - Conflicting mock strategies
+  - FIX: Keep only one test file with correct mocks
+  - IMPACT: Test reliability, unclear which is correct
+
+[MEDIUM] ApprovalGatePanel.tsx:318 - XSS in Error Display
+  - Error messages displayed without proper escaping
+  - Could display unescaped HTML from error objects
+  - FIX: Use React components or sanitize error messages
+  - IMPACT: Potential XSS vulnerability in error display
+
+================================================================================
+MEDIUM PRIORITY FINDINGS (QUALITY)
+================================================================================
+
+[LOW] useApprovalGateWebSocket.ts:106 - Unsafe Type Casting
+  - event as unknown as ApprovalGateWebSocketEvent
+  - Bypasses TypeScript type checking
+  - No validation of event structure
+  - FIX: Add proper type guards before casting
+  - IMPACT: Could crash at runtime with malformed events
+
+[LOW] useApprovalGateWebSocket.ts:170-191 - Race Condition in Connection Status
+  - Status polling every 1 second
+  - Can miss state changes between polls
+  - Unsafe (wsClient as any).reconnector access
+  - FIX: Use WebSocket state change events instead of polling
+  - IMPACT: Connection status can be out of sync
+
+[LOW] ApprovalGatePanel.tsx - Missing Error Boundaries
+  - No error boundary components
+  - If child component fails, entire panel crashes
+  - FIX: Wrap sections with error boundaries
+  - IMPACT: Reduced resilience
+
+[LOW] Test Coverage Gaps
+  - No reconnection error handling tests
+  - No callback cleanup/accumulation tests
+  - No concurrent operation tests
+  - No network timeout tests
+  - No large dataset performance tests
+  - FIX: Add tests for these scenarios
+  - IMPACT: Incomplete test coverage
+
+================================================================================
+SPECIFIC LINE FINDINGS
+================================================================================
+
+FILE: packages/web-ui/src/components/approval/ApprovalGateItem.tsx
+  Line 197: variant="outline" ❌ Change to variant="default"
+  Line 206: variant={... ? 'danger' : 'warning'} ❌ Change 'danger' to 'error'
+  Line 217: variant={... ? 'danger' : 'primary'} ❌ Change 'danger' to 'error', 'primary' to 'success'
+  Line 228: variant={... ? 'danger' : ... ? 'warning' : 'outline'} ❌ Change 'danger' to 'error', 'outline' to 'default'
+
+FILE: packages/web-ui/src/components/approval/hooks/useApprovalGateWebSocket.ts
+  Line 106: event as unknown as ApprovalGateWebSocketEvent ⚠️ Unsafe cast
+  Line 209: approver: 'user' ❌ Use authenticated user
+  Line 239: approver: 'user' ❌ Use authenticated user
+  Line 256-290: refresh() function ❌ No-op implementation
+  Line 181: (wsClient as any).reconnector?.getStats() ⚠️ Unsafe any cast
+
+FILE: packages/web-ui/src/components/approval/ApprovalGatePanel.tsx
+  Line 127-132: Callback registration ❌ No cleanup
+  Line 318: displayError display ⚠️ XSS risk
+
+================================================================================
+TEST FILES ANALYSIS
+================================================================================
+
+ApprovalGatePanel.integration.test.tsx
+  ✓ Comprehensive test scenarios
+  ✓ Error scenarios covered
+  ✓ Performance scenarios included
+  ✓ Mock utilities well-structured
+  ✓ Tests WebSocket events and API interactions
+  ❌ Conflicts with integration-fixed.test.tsx
+  ❌ Uses different mock pattern
+
+ApprovalGatePanel.integration-fixed.test.tsx
+  ✓ Tests core functionality
+  ✓ Good mock organization
+  ❌ Duplicate of integration.test.tsx
+  ❌ Different mock strategy
+
+ApprovalGatePanel.accessibility.test.tsx
+  ✓ Accessibility scenarios covered
+  ✓ Good WCAG compliance checking
+
+ApprovalGatePanel.test.tsx
+  ✓ Unit tests for component
+
+useApprovalGateWebSocket.test.tsx
+  ✓ Hook tests
+  ❌ Doesn't test refresh() implementation
+  ❌ Doesn't test callback cleanup
+
+================================================================================
+SUMMARY STATISTICS
+================================================================================
+
+Total Issues Found: 12
+  - HIGH (Blocking): 4
+  - MEDIUM (High Priority): 5
+  - LOW (Medium Priority): 3
+
+Issue Types:
+  - Type Errors: 4
+  - Logic Bugs: 3
+  - Memory Leaks: 1
+  - Security Issues: 2
+  - Test Issues: 2
+
+Files with Issues:
+  - ApprovalGateItem.tsx: 4 issues
+  - useApprovalGateWebSocket.ts: 4 issues
+  - ApprovalGatePanel.tsx: 2 issues
+  - Test Files: 2 issues
+
+Severity Distribution:
+  - Blocking Build: 4 issues (Badge variants)
+  - Feature Broken: 1 issue (refresh)
+  - Security Risk: 2 issues (hardcoded user, XSS)
+  - Quality Issues: 5 issues
+
+================================================================================
+RECOMMENDATIONS
+================================================================================
+
+MUST DO:
+1. Fix all Badge variant types (4 locations) - BLOCKING BUILD
+2. Implement refresh() function properly
+3. Fix callback handler memory leak
+4. Consolidate integration test files
+5. Use authenticated user instead of hardcoded 'user'
+
+SHOULD DO:
+6. Add error boundaries
+7. Fix type casting safety
+8. Improve connection status monitoring
+9. Add missing edge case tests
+10. Fix XSS in error display
+
+NICE TO HAVE:
+11. Optimize list filtering/sorting
+12. Add retry logic for API failures
+13. Improve WebSocket reconnection handling
+
+================================================================================
+MERGE DECISION
+================================================================================
+
+STATUS: ❌ DO NOT MERGE
+
+REASON: Build errors (HIGH severity) block deployment
+
+NEXT STEPS:
+1. Fix Badge variant types (4 issues)
+2. Fix refresh() implementation
+3. Fix callback memory leak
+4. Consolidate test files
+5. Address hardcoded user approver
+6. Rerun tests
+7. Resubmit for review
+
+ESTIMATED FIX TIME: 2-3 hours for all issues
+
+================================================================================

@@ -12,6 +12,8 @@ describe('Config Function Coverage - JSDoc Documentation', () => {
         'saveConfig',
         'loadAgents',
         'parseAgentMarkdown',
+        'saveAgent',
+        'deleteAgent',
         'loadWorkflows',
         'loadWorkflow',
         'loadToolAliases',
@@ -61,6 +63,14 @@ describe('Config Function Coverage - JSDoc Documentation', () => {
       expect(config.parseAgentMarkdown).toBeDefined();
       expect(config.parseAgentMarkdown.length).toBe(1);
 
+      // saveAgent(projectPath: string, agent: AgentDefinition): Promise<void>
+      expect(config.saveAgent).toBeDefined();
+      expect(config.saveAgent.length).toBe(2);
+
+      // deleteAgent(projectPath: string, agentName: string): Promise<void>
+      expect(config.deleteAgent).toBeDefined();
+      expect(config.deleteAgent.length).toBe(2);
+
       // loadWorkflows(projectPath: string): Promise<Record<string, WorkflowDefinition>>
       expect(config.loadWorkflows).toBeDefined();
       expect(config.loadWorkflows.length).toBe(1);
@@ -75,7 +85,7 @@ describe('Config Function Coverage - JSDoc Documentation', () => {
 
       // getMergedAliases(projectPath: string, configAliases?: ToolAlias[]): Promise<Record<string, ToolAlias>>
       expect(config.getMergedAliases).toBeDefined();
-      expect(config.getMergedAliases.length).toBe(2);
+      expect(config.getMergedAliases.length).toBe(1); // Only counts required parameters (second has default)
 
       // getSkillPath(projectPath: string, skillName: string): string
       expect(config.getSkillPath).toBeDefined();
@@ -142,6 +152,8 @@ describe('Config Function Coverage - JSDoc Documentation', () => {
         'saveConfig - Save APEX configuration to project config file',
         'loadAgents - Load all agent definitions from project',
         'parseAgentMarkdown - Parse agent definition from markdown content',
+        'saveAgent - Save agent definition to markdown file',
+        'deleteAgent - Delete agent definition file',
         'loadWorkflows - Load all workflow definitions from project',
         'loadWorkflow - Load specific workflow by name',
         'loadToolAliases - Load tool aliases from project tools directory',
@@ -164,7 +176,7 @@ describe('Config Function Coverage - JSDoc Documentation', () => {
         expect(typeof (config as any)[functionName]).toBe('function');
       });
 
-      expect(functionsRequiringJSDoc).toHaveLength(19);
+      expect(functionsRequiringJSDoc).toHaveLength(21);
     });
   });
 

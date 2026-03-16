@@ -167,4 +167,77 @@
   .light .diff-tag {
     color: #dc2626; /* Red */
   }
+
+  /* Agent Preview Syntax Highlighting */
+  .yaml-delimiter {
+    color: #546e7a;
+    font-weight: 500;
+  }
+
+  .yaml-key {
+    color: #89ddff;
+  }
+
+  .yaml-separator {
+    color: #89ddff;
+  }
+
+  .yaml-value {
+    color: #c3e88d;
+  }
+
+  .md-header {
+    color: #82aaff;
+    font-weight: 600;
+  }
+
+  .md-bold {
+    color: #c792ea;
+    font-weight: 600;
+  }
+
+  .md-code {
+    color: #f78c6c;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.125rem;
+  }
+
+  .md-list {
+    color: #ffcb6b;
+  }
+
+  /* Light theme overrides for agent preview */
+  .light .yaml-delimiter {
+    color: #6b7280;
+  }
+
+  .light .yaml-key {
+    color: #0891b2;
+  }
+
+  .light .yaml-separator {
+    color: #0891b2;
+  }
+
+  .light .yaml-value {
+    color: #16a34a;
+  }
+
+  .light .md-header {
+    color: #2563eb;
+  }
+
+  .light .md-bold {
+    color: #7c3aed;
+  }
+
+  .light .md-code {
+    color: #ea580c;
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .light .md-list {
+    color: #ca8a04;
+  }
 }

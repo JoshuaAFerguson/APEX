@@ -1,0 +1,289 @@
+================================================================================
+STAGE SUMMARY: REVIEW
+================================================================================
+
+Status: FAILED - CRITICAL ISSUES IDENTIFIED
+
+Date: 2024-03-16
+Reviewer: Code Review Agent
+Task: Review injectContext API client implementation
+
+================================================================================
+EXECUTIVE FINDINGS
+================================================================================
+
+The injectContext API client method is CORRECTLY implemented with comprehensive
+unit test coverage (24/24 passing). However, CRITICAL issues exist in companion
+components and integration tests that BLOCK completion of this stage.
+
+OVERALL STATUS: CANNOT PASS REVIEW UNTIL FIXES APPLIED
+
+================================================================================
+CRITICAL BLOCKERS (3)
+================================================================================
+
+1. TYPESCRIPT COMPILATION ERROR
+   File: packages/web-ui/src/components/approval/ApprovalGateHistoryItem.tsx
+   Lines: 129, 160
+   Issue: Invalid Badge variant values ('danger', 'outline')
+   Impact: Prevents entire @apexcli/web-ui package from building
+   Fix: Replace 'danger' with 'error', 'outline' with 'default'
+
+2. ACCESSIBILITY VIOLATION
+   File: packages/web-ui/src/components/tasks/TaskCard.tsx
+   Line: 129
+   Issue: Button element missing type="button" attribute
+   Impact: Breaks accessibility tests, potential form submission issues
+   Fix: Add type="button" to button element
+
+3. INTEGRATION TEST FAILURES
+   Count: 8 failing tests
+   Files: KanbanCard-context-injection.test.tsx (6), TaskCard.context-injection.test.tsx (2)
+   Impact: Cannot verify component integration works correctly
+   Root Causes:
+     - Multiple buttons with same title rendering
+     - Modal not closing on backdrop click
+     - Test selectors too ambiguous
+     - Component visibility not properly controlled
+
+================================================================================
+ACCEPTANCE CRITERIA STATUS
+================================================================================
+
+[✓] apiClient.injectContext() method exists
+    Evidence: packages/web-ui/src/lib/api-client.ts:235-241
+
+[✓] Calls POST /tasks/:id/context endpoint
+    Evidence: All 24 unit tests confirm correct endpoint
+
+[✓] Handles errors properly
+    Evidence: Error handling tested for 400, 401, 403, 404, 500, 503 responses
+
+[✓] Unit tests pass
+    Evidence: 24/24 tests in api-client.context-injection.test.ts PASS
+
+[✗] Integration tests pass
+    Evidence: 8 failures in component integration tests
+
+[✗] Build succeeds
+    Evidence: npm run build fails with TypeScript error in ApprovalGateHistoryItem.tsx
+
+RESULT: 4/6 criteria met - CANNOT PROCEED
+
+================================================================================
+DETAILED ISSUE BREAKDOWN
+================================================================================
+
+HIGH SEVERITY (2 issues)
+
+Issue #1: Invalid Badge Variant
+  Location: ApprovalGateHistoryItem.tsx:129
+  Current Code: variant={gate.status === 'rejected' ? 'danger' : 'outline'}
+  Problem: 'danger' and 'outline' not valid Badge variants
+  Valid Values: 'default' | 'success' | 'warning' | 'error' | 'info'
+  Fix: variant={gate.status === 'rejected' ? 'error' : 'default'}
+  Build Impact: BLOCKING
+
+Issue #2: Missing Button Type Attribute
+  Location: TaskCard.tsx:129
+  Current Code: <button onClick={...} className="..." title="Inject context">
+  Problem: No explicit type attribute defaults to 'submit' in forms
+  Fix: <button type="button" onClick={...} className="..." title="Inject context">
+  Test Impact: Fails accessibility test for type="button"
+
+MEDIUM SEVERITY (6 issues)
+
+Issue #3: Multiple Context Injection Buttons
+  Test: KanbanCard-context-injection.test.tsx:158
+  Error: Expected length 1, got 2
+  Root Cause: Buttons rendering in multiple places
+  Status: NEEDS INVESTIGATION
+
+Issue #4: Modal Not Closing on Backdrop
+  Test: KanbanCard-context-injection.test.tsx:318
+  Error: Modal remains in document after backdrop click
+  Root Cause: onClose callback not firing
+  Status: NEEDS DEBUG
+
+Issue #5: Form Submission Not Called
+  Test: KanbanCard-context-injection.test.tsx:350
+  Error: apiClient.injectContext() never called
+  Root Cause: Form integration issue or mock setup
+  Status: NEEDS DEBUG
+
+Issue #6: Test Selector Ambiguity
+  Test: KanbanCard-context-injection.test.tsx:246
+  Error: Multiple elements matching /context/i pattern
+  Root Cause: Label text matching ambiguous
+  Status: NEEDS TEST REFACTOR
+
+Issue #7: Button Visibility Logic
+  Test: TaskCard.context-injection.test.tsx:221
+  Error: Button visible initially when should be hidden
+  Root Cause: Hover state not properly controlling visibility
+  Status: NEEDS DEBUG
+
+Issue #8: Keyboard Accessibility
+  Test: TaskCard.context-injection.test.tsx:643
+  Error: Button click not triggered by Enter key
+  Root Cause: Button may not be properly focusable
+  Status: NEEDS INVESTIGATION
+
+================================================================================
+CODE QUALITY ASSESSMENT
+================================================================================
+
+API CLIENT IMPLEMENTATION
+Rating: EXCELLENT ✓
+- Correct HTTP method (POST)
+- Proper endpoint structure (/tasks/{id}/context)
+- Type-safe with proper imports
+- Good error handling
+- Comprehensive unit tests (24 tests, all pass)
+
+COMPONENT IMPLEMENTATION
+Rating: GOOD with ISSUES
+Strengths:
+- Clean form validation logic
+- Proper accessibility attributes in modal
+- Character limit enforcement
+- Good error state handling
+- Loading states properly managed
+Weaknesses:
+- Missing type attributes on buttons
+- Visibility logic issues
+- Integration not fully working
+
+TEST COVERAGE
+Unit Tests: EXCELLENT ✓
+- 24 tests, all passing
+- Good coverage of error scenarios
+- Edge cases covered (Unicode, large payloads)
+- Concurrent request testing
+
+Integration Tests: POOR ✗
+- 8 failures out of ~160 total tests
+- Component hierarchy issues
+- Test setup problems
+- Selector ambiguity
+
+================================================================================
+WHAT'S WORKING WELL
+================================================================================
+
+✓ API Client Method Implementation
+  - Correct signature and behavior
+  - Proper request/response handling
+  - Error handling through fetch wrapper
+  - Type-safe implementation
+
+✓ Unit Test Suite
+  - Comprehensive coverage
+  - All 24 tests passing
+  - Good edge case handling
+  - Tests validate error scenarios
+
+✓ Modal Component Logic
+  - Form validation working
+  - Character limit enforcement
+  - Proper error handling
+  - Loading states
+  - Priority selection
+
+✓ Request Type Safety
+  - InjectContextRequest properly typed
+  - InjectContextResponse validation
+  - No any types
+  - Proper error classes
+
+================================================================================
+WHAT NEEDS FIXING
+================================================================================
+
+IMMEDIATE (HIGH PRIORITY)
+1. ApprovalGateHistoryItem.tsx - Fix Badge variants (lines 129, 160)
+2. TaskCard.tsx - Add type="button" (line 129)
+3. Run full build to verify no remaining TypeScript errors
+
+SHORT-TERM (MEDIUM PRIORITY)
+4. Investigate multiple button rendering in KanbanBoard
+5. Debug modal close on backdrop behavior
+6. Fix component visibility control
+7. Update test selectors to be more specific
+8. Fix integration test setup
+
+================================================================================
+VERIFICATION CHECKLIST
+================================================================================
+
+Before marking review as COMPLETE, ensure:
+
+[ ] ApprovalGateHistoryItem.tsx fixed (2 lines)
+[ ] TaskCard.tsx fixed (1 line)
+[ ] npm run build succeeds with no errors
+[ ] npm run test passes 100% of tests
+[ ] No TypeScript errors
+[ ] All integration tests pass
+[ ] Code review approved by team
+[ ] No regressions in other tests
+
+CURRENT STATUS: [ ] - NOT MET
+
+================================================================================
+RECOMMENDATIONS
+================================================================================
+
+SHORT TERM (This Sprint):
+1. Apply fixes to ApprovalGateHistoryItem.tsx and TaskCard.tsx
+2. Debug integration test failures
+3. Update test selectors and setup
+4. Re-run full test suite
+
+MEDIUM TERM (Before Merge):
+5. Code review of all fixes
+6. Verify no side effects in other components
+7. Add data-testid attributes to components for better testing
+8. Consider extracting context injection button to separate component
+
+LONG TERM (Best Practices):
+9. Add pre-commit hooks to catch TypeScript errors
+10. Improve integration test patterns
+11. Use testing library best practices consistently
+12. Document component API contracts
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+THIS STAGE IS BLOCKED. Do not proceed until:
+
+1. CRITICAL: Fix ApprovalGateHistoryItem Badge variant issue
+2. CRITICAL: Add type="button" to TaskCard button
+3. CRITICAL: All integration tests pass
+4. CRITICAL: Build succeeds with no TypeScript errors
+
+THEN:
+
+5. Run full regression test suite
+6. Verify no side effects in other components
+7. Get code review approval
+8. Mark stage as COMPLETE
+
+ESTIMATED TIME TO FIX: 30-60 minutes for critical issues
+ESTIMATED TIME FOR INTEGRATION TEST DEBUG: 1-2 hours
+
+================================================================================
+CONCLUSION
+================================================================================
+
+The injectContext API client implementation is CORRECT and WELL-TESTED at the
+unit level. The method itself is production-ready. However, the supporting UI
+components have critical issues that must be fixed.
+
+These are straightforward fixes but MUST be completed before proceeding to
+merge or deployment.
+
+STAGE STATUS: FAILED - AWAITING FIXES
+DO NOT MERGE UNTIL ALL ISSUES RESOLVED
+
+================================================================================

@@ -471,6 +471,104 @@ export function parseAgentMarkdown(content: string): AgentDefinition | null {
 }
 
 /**
+ * Saves an agent definition to a markdown file in the .apex/agents directory.
+ * The agent is serialized with YAML frontmatter containing metadata and markdown body containing the prompt.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @param agent - The agent definition to save
+ * @returns Promise that resolves when the agent is successfully saved
+ * @throws {Error} When the agent directory cannot be created or the file cannot be written
+ * @example
+ * ```typescript
+ * const agent: AgentDefinition = {
+ *   name: 'custom-developer',
+ *   description: 'A specialized developer for React components',
+ *   prompt: 'You are an expert React developer...',
+ *   tools: ['Read', 'Write', 'Bash'],
+ *   model: 'sonnet'
+ * };
+ *
+ * await saveAgent('/path/to/project', agent);
+ * console.log('Agent saved successfully');
+ * ```
+ */
+export async function saveAgent(projectPath: string, agent: AgentDefinition): Promise<void> {
+  // Validate the agent definition
+  const result = AgentDefinitionSchema.safeParse(agent);
+  if (!result.success) {
+    throw new Error(`Invalid agent definition: ${result.error.message}`);
+  }
+
+  const validatedAgent = result.data;
+  const agentsDir = normalizePath(path.join(projectPath, APEX_DIR, AGENTS_DIR));
+
+  // Ensure the agents directory exists
+  await fs.mkdir(agentsDir, { recursive: true });
+
+  // Create the file path - use agent name with .md extension
+  const fileName = `${validatedAgent.name}.md`;
+  const filePath = normalizePath(path.join(agentsDir, fileName));
+
+  // Build YAML frontmatter
+  const frontmatter: Record<string, any> = {
+    name: validatedAgent.name,
+    description: validatedAgent.description,
+  };
+
+  if (validatedAgent.tools && validatedAgent.tools.length > 0) {
+    frontmatter.tools = validatedAgent.tools.join(',');
+  }
+
+  if (validatedAgent.model) {
+    frontmatter.model = validatedAgent.model;
+  }
+
+  if (validatedAgent.skills && validatedAgent.skills.length > 0) {
+    frontmatter.skills = validatedAgent.skills.join(',');
+  }
+
+  // Create markdown content with frontmatter
+  const yamlContent = yaml.stringify(frontmatter, { indent: 2 });
+  const markdownContent = `---\n${yamlContent}---\n\n${validatedAgent.prompt}`;
+
+  // Write the file
+  await fs.writeFile(filePath, markdownContent, 'utf-8');
+}
+
+/**
+ * Deletes an agent definition file from the .apex/agents directory.
+ * Removes the markdown file corresponding to the specified agent name.
+ *
+ * @param projectPath - The absolute path to the project directory
+ * @param agentName - The name of the agent to delete
+ * @returns Promise that resolves when the agent is successfully deleted
+ * @throws {Error} When the agent file cannot be found or deleted
+ * @example
+ * ```typescript
+ * await deleteAgent('/path/to/project', 'custom-developer');
+ * console.log('Agent deleted successfully');
+ * ```
+ */
+export async function deleteAgent(projectPath: string, agentName: string): Promise<void> {
+  if (!agentName || typeof agentName !== 'string' || agentName.trim() === '') {
+    throw new Error('Agent name must be a non-empty string');
+  }
+
+  const agentsDir = normalizePath(path.join(projectPath, APEX_DIR, AGENTS_DIR));
+  const fileName = `${agentName.trim()}.md`;
+  const filePath = normalizePath(path.join(agentsDir, fileName));
+
+  try {
+    await fs.unlink(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Agent '${agentName}' not found`);
+    }
+    throw new Error(`Failed to delete agent '${agentName}': ${(error as Error).message}`);
+  }
+}
+
+/**
  * Loads all workflow definitions from the project's .apex/workflows directory.
  * Scans for .yaml and .yml files containing workflow definitions.
  *

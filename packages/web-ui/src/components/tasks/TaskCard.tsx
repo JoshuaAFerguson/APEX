@@ -19,6 +19,7 @@ import {
   Play,
   XCircle,
   RotateCcw,
+  MessageSquare,
 } from 'lucide-react'
 
 export interface TaskCardProps {
@@ -36,6 +37,8 @@ export interface TaskCardProps {
   onRetry?: (taskId: string) => Promise<void>
   /** Whether an action is currently loading for this task */
   isActionLoading?: boolean
+  /** Optional callback to inject context into the task */
+  onInjectContext?: (taskId: string) => void
 }
 
 /**
@@ -54,6 +57,7 @@ export function TaskCard({
   onCancel,
   onRetry,
   isActionLoading = false,
+  onInjectContext,
 }: TaskCardProps) {
   const isRunning = isTaskRunning(task.status)
   const hasSubtasks = task.subtaskIds && task.subtaskIds.length > 0
@@ -92,6 +96,14 @@ export function TaskCard({
   // Determine which actions are available for the task
   const canCancel = (task.status === 'pending' || task.status === 'queued' || isRunning) && onCancel
   const canRetry = (task.status === 'failed' || task.status === 'cancelled') && onRetry
+  const canInjectContext = (
+    task.status === 'in-progress' ||
+    task.status === 'planning' ||
+    task.status === 'pending' ||
+    task.status === 'queued' ||
+    task.status === 'waiting-approval' ||
+    task.status === 'paused'
+  ) && onInjectContext
 
   return (
     <Card
@@ -111,8 +123,18 @@ export function TaskCard({
     >
       <CardContent className={cn('p-0', compact && 'space-y-2')}>
         {/* Action overlay - shows on hover */}
-        {(canCancel || canRetry) && (
+        {(canCancel || canRetry || canInjectContext) && (
           <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            {canInjectContext && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onInjectContext!(task.id); }}
+                className="p-1.5 rounded hover:bg-apex-500/10 text-foreground-secondary hover:text-apex-500 disabled:opacity-50"
+                title="Inject context"
+                disabled={isActionLoading}
+              >
+                <MessageSquare className="w-4 h-4" />
+              </button>
+            )}
             {canCancel && (
               <button
                 onClick={(e) => { e.stopPropagation(); onCancel!(task.id); }}

@@ -116,7 +116,7 @@ export interface WorkflowEditorContextValue {
   updateWorkflowMetadata: (updates: Partial<WorkflowDefinition>) => void
 
   // Import/Export
-  importYaml: (yaml: string) => ValidationError[]
+  importYaml: (yaml: string) => { success: boolean; errors: ValidationError[] }
   exportYaml: () => string
 
   // History
