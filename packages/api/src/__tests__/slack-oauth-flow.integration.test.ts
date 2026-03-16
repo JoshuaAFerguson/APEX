@@ -19,8 +19,12 @@ const mockExpressReceiver = {
 };
 
 vi.mock('@slack/bolt', () => ({
-  App: vi.fn().mockImplementation(() => mockBoltApp),
-  ExpressReceiver: vi.fn().mockImplementation(() => mockExpressReceiver),
+  App: vi.fn().mockImplementation(function() {
+    return mockBoltApp;
+  }),
+  ExpressReceiver: vi.fn().mockImplementation(function() {
+    return mockExpressReceiver;
+  }),
   LogLevel: { INFO: 'info' }
 }));
 
@@ -38,7 +42,9 @@ const mockWebClient = {
 };
 
 vi.mock('@slack/web-api', () => ({
-  WebClient: vi.fn().mockImplementation(() => mockWebClient)
+  WebClient: vi.fn().mockImplementation(function() {
+    return mockWebClient;
+  })
 }));
 
 // Mock SlackInstallationStore

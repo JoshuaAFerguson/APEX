@@ -71,7 +71,7 @@ export class SlackInstallationStore implements InstallationStore {
       record.enterpriseId,
       record.enterpriseName,
       record.botUserId,
-      this.encrypt(record.botToken),
+      record.botToken ? this.encrypt(record.botToken) : '',
       JSON.stringify(record.botScopes),
       record.installedByUserId,
       record.userToken ? this.encrypt(record.userToken) : null,
@@ -92,7 +92,7 @@ export class SlackInstallationStore implements InstallationStore {
   /**
    * Fetch installation by query
    */
-  async fetchInstallation(query: InstallationQuery): Promise<Installation> {
+  async fetchInstallation(query: InstallationQuery<boolean>): Promise<Installation> {
     const db = this.db();
 
     let sql = 'SELECT * FROM slack_installations WHERE is_active = 1';
@@ -124,7 +124,7 @@ export class SlackInstallationStore implements InstallationStore {
   /**
    * Delete an installation (mark as inactive)
    */
-  async deleteInstallation(query: InstallationQuery): Promise<void> {
+  async deleteInstallation(query: InstallationQuery<boolean>): Promise<void> {
     const db = this.db();
 
     let sql = 'UPDATE slack_installations SET is_active = 0, updated_at = ? WHERE 1=1';
@@ -228,10 +228,10 @@ export class SlackInstallationStore implements InstallationStore {
       installedByUserId: installation.user?.id ?? '',
       userToken: installation.user?.token,
       userScopes: installation.user?.scopes,
-      installedAt: new Date().toISOString(),
+      installedAt: new Date(),
       refreshToken: installation.bot?.refreshToken,
       tokenExpiresAt: installation.bot?.expiresAt
-        ? new Date(installation.bot.expiresAt * 1000).toISOString()
+        ? new Date(installation.bot.expiresAt * 1000)
         : undefined,
     };
   }

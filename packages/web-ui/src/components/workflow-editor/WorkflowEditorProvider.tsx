@@ -139,7 +139,8 @@ export function WorkflowEditorProvider({
 
       // Workflow operations
       updateWorkflowMetadata: (updates: Partial<WorkflowDefinition>) => {
-        editor.setWorkflow(prev => ({ ...prev, ...updates }))
+        const currentWorkflow = editor.getWorkflow()
+        editor.setWorkflow({ ...currentWorkflow, ...updates })
       },
 
       // Import/Export

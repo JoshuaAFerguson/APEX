@@ -555,9 +555,8 @@ export class HttpTestUtils {
 }
 
 /**
- * Export all utilities for easy access
+ * All utilities are already exported above
  */
-export { WebSocketTestClient, TestDataGenerators, DatabaseTestUtils, FileSystemTestUtils, HttpTestUtils };
 
 /**
  * Convenience function to setup a complete test environment

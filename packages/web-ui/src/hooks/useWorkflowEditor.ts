@@ -144,7 +144,7 @@ export function useWorkflowEditor({
         }
       }
     }
-  }, [edges])
+  }, [edges, removeDependency])
 
   /**
    * Handle new connections between nodes
@@ -153,7 +153,7 @@ export function useWorkflowEditor({
     if (connection.source && connection.target) {
       addDependency(connection.source, connection.target)
     }
-  }, [])
+  }, [addDependency])
 
   /**
    * Handle node clicks

@@ -14,6 +14,7 @@ import {
   EdgeLabelRenderer,
   getBezierPath,
   type EdgeProps,
+  type Edge,
 } from '@xyflow/react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -25,17 +26,22 @@ import type { DependencyEdgeData } from '@/types/workflow-editor'
  * Renders a connection between two workflow stages with
  * visual indicators for dependency type and removal capability.
  */
-export function DependencyEdge({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  data,
-  selected,
-}: EdgeProps<DependencyEdgeData>) {
+export function DependencyEdge(
+  props: Omit<EdgeProps, 'data'> & {
+    data: DependencyEdgeData | undefined
+  }
+) {
+  const {
+    id,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    data,
+    selected,
+  } = props
   // Generate the SVG path for the edge
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,

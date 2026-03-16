@@ -26,7 +26,7 @@ export type WorkflowEditorNode = Node<StageNodeData>
 /**
  * Edge data for dependency connections
  */
-export interface DependencyEdgeData extends Record<string, unknown> {
+export interface DependencyEdgeData {
   sourceStage: string
   targetStage: string
   isConditional?: boolean
@@ -235,7 +235,7 @@ export interface StageNodeProps {
 
 // StagePalette component props
 export interface StagePaletteProps {
-  templates: StageTemplate[]
+  templates?: StageTemplate[]
   className?: string
 }
 

@@ -33,7 +33,7 @@ export function PropertiesPanel({
 
   // Find selected stage if any
   const selectedStage = selectedStageId
-    ? state.workflow.stages.find(s => s.name === selectedStageId)
+    ? state.workflow.stages?.find(s => s.name === selectedStageId)
     : null
 
   // Find selected gate if any
@@ -80,7 +80,7 @@ export function PropertiesPanel({
           <StagePropertiesForm
             stage={selectedStage}
             onUpdate={(updates) => onStageUpdate(selectedStageId!, updates)}
-            allStageNames={state.workflow.stages.map(s => s.name)}
+            allStageNames={(state.workflow.stages ?? []).map(s => s.name).filter((name): name is string => !!name)}
           />
         )}
 

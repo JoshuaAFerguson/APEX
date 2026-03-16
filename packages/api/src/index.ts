@@ -12,6 +12,9 @@ import {
   ApproveGateRequest,
   ApprovalDecisionRequest,
   ApprovalDecisionResponse,
+  InjectContextRequest,
+  InjectContextResponse,
+  ContextInjectedEventData,
   ApexEvent,
   SubtaskStrategy,
   SubtaskDefinition,
@@ -674,6 +677,78 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       return reply.status(400).send({
         error: `Task cannot be resumed (current status: ${task.status}, no pending subtasks). Use /retry for failed/cancelled tasks.`
       });
+    }
+  );
+
+  // Inject context into a running task
+  app.post<{ Params: { id: string }; Body: InjectContextRequest }>(
+    '/tasks/:id/context',
+    async (request, reply) => {
+      const { id } = request.params;
+      const { context, source, priority } = request.body;
+
+      // Input validation
+      if (!context || typeof context !== 'string' || context.trim().length === 0) {
+        return reply.status(400).send({ error: 'Context string is required' });
+      }
+
+      if (context.length > 100000) {
+        return reply.status(400).send({ error: 'Context exceeds maximum length (100,000 characters)' });
+      }
+
+      if (source && source.length > 50) {
+        return reply.status(400).send({ error: 'Source identifier exceeds maximum length (50 characters)' });
+      }
+
+      if (priority && !['low', 'normal', 'high'].includes(priority)) {
+        return reply.status(400).send({ error: 'Invalid priority value. Must be low, normal, or high' });
+      }
+
+      // Check if task exists
+      const task = await orchestrator.getTask(id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      // Check if task is in a valid state for context injection
+      if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+        return reply.status(400).send({
+          error: 'Cannot inject context into completed/cancelled task'
+        });
+      }
+
+      try {
+        // Broadcast WebSocket event for context injection
+        const eventData: ContextInjectedEventData = {
+          context: context.trim(),
+          source,
+          priority: priority || 'normal',
+          timestamp: new Date()
+        };
+
+        const event: ApexEvent = {
+          type: 'context:injected',
+          taskId: id,
+          timestamp: new Date(),
+          data: eventData as unknown as Record<string, unknown>
+        };
+
+        broadcast(id, event);
+
+        const response: InjectContextResponse = {
+          ok: true,
+          taskId: id,
+          contextInjected: true,
+          timestamp: new Date()
+        };
+
+        return response;
+      } catch (error) {
+        app.log.error(`Failed to inject context for task ${id}: ${error}`);
+        return reply.status(500).send({
+          error: 'Failed to inject context due to internal error'
+        });
+      }
     }
   );
 
@@ -2944,6 +3019,7 @@ export async function startServer(options: ServerOptions): Promise<void> {
       console.log(`  POST   /tasks/:id/cancel         - Cancel a task`);
       console.log(`  POST   /tasks/:id/retry          - Retry a failed task`);
       console.log(`  POST   /tasks/:id/resume         - Resume a paused task`);
+      console.log(`  POST   /tasks/:id/context        - Inject context into task`);
       console.log(`  GET    /tasks/paused             - List paused tasks`);
       console.log(`  POST   /tasks/:id/trash          - Move task to trash`);
       console.log(`  POST   /tasks/:id/restore        - Restore task from trash`);

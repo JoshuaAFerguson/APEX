@@ -294,6 +294,42 @@ describe('Task Management Unauthorized Access Tests', () => {
       expect(response.statusCode).not.toBe(401);
       expect(response.statusCode).not.toBe(403);
     });
+
+    it('should return 401 for POST /tasks/:id/context without authentication', async () => {
+      const response = await context.app.inject({
+        method: 'POST',
+        url: '/tasks/test-task-id/context',
+        headers: { 'Content-Type': 'application/json' },
+        payload: {
+          context: 'Test context injection'
+        }
+      });
+
+      expect(response.statusCode).toBe(401);
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('error');
+      expect(body).toHaveProperty('statusCode', 401);
+      expect(body.error).toBe('Unauthorized');
+    });
+
+    it('should allow context injection with valid authentication', async () => {
+      const response = await context.app.inject({
+        method: 'POST',
+        url: '/tasks/test-task-id/context',
+        headers: {
+          'Authorization': 'Bearer test-api-key-123',
+          'Content-Type': 'application/json'
+        },
+        payload: {
+          context: 'Authenticated context injection'
+        }
+      });
+
+      // Should not return 401/403 with valid auth
+      expect(response.statusCode).not.toBe(401);
+      expect(response.statusCode).not.toBe(403);
+    });
   });
 
   describe('Invalid Authentication', () => {
@@ -382,7 +418,8 @@ describe('Task Management Unauthorized Access Tests', () => {
         'POST /tasks/:id/status',
         'POST /tasks/:id/cancel',
         'POST /tasks/:id/retry',
-        'POST /tasks/:id/resume'
+        'POST /tasks/:id/resume',
+        'POST /tasks/:id/context'
       ];
 
       const publicEndpoints = [
@@ -392,13 +429,13 @@ describe('Task Management Unauthorized Access Tests', () => {
         'GET /ws'
       ];
 
-      expect(protectedTaskEndpoints).toHaveLength(7);
+      expect(protectedTaskEndpoints).toHaveLength(8);
       expect(publicEndpoints).toHaveLength(4);
 
       // This test documents that we've covered all required task endpoints
       expect(protectedTaskEndpoints.filter(endpoint =>
         endpoint.includes('/tasks')
-      )).toHaveLength(7);
+      )).toHaveLength(8);
     });
 
     it('should verify test coverage meets acceptance criteria', () => {
@@ -410,6 +447,7 @@ describe('Task Management Unauthorized Access Tests', () => {
         tasks_cancel_post: true,           // POST /tasks/:id/cancel without auth returns 401
         tasks_retry_post: true,            // POST /tasks/:id/retry without auth returns 401
         tasks_resume_post: true,           // POST /tasks/:id/resume without auth returns 401
+        tasks_context_post: true,          // POST /tasks/:id/context without auth returns 401
         invalid_bearer_token: true,       // Requests with invalid Bearer token return 403
         invalid_api_key: true,             // Requests with invalid API key return 403
         all_tests_pass: true               // All tests pass
@@ -420,7 +458,7 @@ describe('Task Management Unauthorized Access Tests', () => {
         expect(criterion).toBe(true);
       });
 
-      expect(Object.keys(acceptanceCriteria)).toHaveLength(10);
+      expect(Object.keys(acceptanceCriteria)).toHaveLength(11);
     });
   });
 });

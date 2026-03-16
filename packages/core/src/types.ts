@@ -6302,6 +6302,22 @@ export interface ApproveGateRequest {
   comment?: string;
 }
 
+export interface InjectContextRequest {
+  /** Required: The context string to inject */
+  context: string;
+  /** Optional: Source identifier (e.g., "user", "slack", "api") */
+  source?: string;
+  /** Optional: Priority for context handling */
+  priority?: 'low' | 'normal' | 'high';
+}
+
+export interface InjectContextResponse {
+  ok: true;
+  taskId: string;
+  contextInjected: boolean;
+  timestamp: Date;
+}
+
 // ============================================================================
 // Event Types (for WebSocket streaming)
 // ============================================================================
@@ -6317,6 +6333,7 @@ export type ApexEventType =
   | 'task:decomposed'
   | 'task:iteration-started'
   | 'task:iteration-completed'
+  | 'context:injected'
   | 'task:trashed'
   | 'task:restored'
   | 'task:archived'
@@ -6435,6 +6452,21 @@ export interface ApexEvent {
       truncatedSize: number;
     }>;
   };
+}
+
+/**
+ * Event data for 'context:injected' event
+ * Emitted when additional context is injected into a running task
+ */
+export interface ContextInjectedEventData {
+  /** The context string that was injected */
+  context: string;
+  /** Optional source identifier (e.g., "user", "slack", "api") */
+  source?: string;
+  /** Optional priority for context handling */
+  priority?: 'low' | 'normal' | 'high';
+  /** Timestamp when the context was injected */
+  timestamp: Date;
 }
 
 // ============================================================================

@@ -106,7 +106,7 @@ export function EditorCanvas({ className }: EditorCanvasProps) {
           maxZoom={2}
           snapToGrid
           snapGrid={[20, 20]}
-          connectionMode="strict"
+          connectionMode={'strict' as any}
           attributionPosition="bottom-left"
         >
           {/* Background pattern */}
@@ -131,7 +131,7 @@ export function EditorCanvas({ className }: EditorCanvasProps) {
             position="top-right"
             className="bg-white shadow-lg rounded-lg border"
             nodeClassName="fill-gray-200 stroke-gray-300"
-            maskClassName="fill-gray-100"
+            maskColor="rgb(240, 240, 240)"
             pannable
             zoomable
           />
