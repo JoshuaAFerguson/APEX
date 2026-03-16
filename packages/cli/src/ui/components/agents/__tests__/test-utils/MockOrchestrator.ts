@@ -27,6 +27,13 @@ export class MockOrchestrator extends EventEmitter {
   listTasks = vi.fn().mockResolvedValue([]);
   updateTaskStatus = vi.fn().mockResolvedValue(undefined);
 
+  // Additional properties for budget status testing
+  private _connectionState: 'connecting' | 'connected' | 'disconnected' | 'error' = 'connected';
+  private _error: Error | null = null;
+  private _refreshError: Error | null = null;
+  private _refreshDelay: number = 0;
+  public refreshCalled: boolean = false;
+
   constructor() {
     super();
     this.setMaxListeners(20); // Increase for complex test scenarios
@@ -458,11 +465,98 @@ export class MockOrchestrator extends EventEmitter {
   }
 
   /**
+   * Set the mock connection state for budget status testing
+   */
+  setConnectionState(state: 'connecting' | 'connected' | 'disconnected' | 'error') {
+    this._connectionState = state;
+    this.emit('connection:state-changed', state);
+  }
+
+  /**
+   * Get the current connection state
+   */
+  getConnectionState() {
+    return this._connectionState;
+  }
+
+  /**
+   * Simulate an error for budget status testing
+   */
+  simulateError(error: Error) {
+    this._error = error;
+    this.emit('error', error);
+  }
+
+  /**
+   * Clear the error state
+   */
+  clearError() {
+    this._error = null;
+  }
+
+  /**
+   * Get the current error
+   */
+  getCurrentError() {
+    return this._error;
+  }
+
+  /**
+   * Set an error to be thrown during refresh operations
+   */
+  setRefreshError(error: Error) {
+    this._refreshError = error;
+  }
+
+  /**
+   * Set a delay for refresh operations (in milliseconds)
+   */
+  setRefreshDelay(delay: number) {
+    this._refreshDelay = delay;
+  }
+
+  /**
+   * Mock refresh method that tracks calls and handles errors/delays
+   */
+  refresh = vi.fn().mockImplementation(async () => {
+    this.refreshCalled = true;
+
+    if (this._refreshError) {
+      throw this._refreshError;
+    }
+
+    if (this._refreshDelay > 0) {
+      await new Promise(resolve => setTimeout(resolve, this._refreshDelay));
+    }
+
+    return Promise.resolve();
+  });
+
+  /**
+   * Override listenerCount to support budget status testing
+   */
+  get listenerCount() {
+    return (event?: string) => {
+      if (event) {
+        return super.listenerCount(event);
+      }
+      return this.eventNames().reduce((count, eventName) => {
+        return count + super.listenerCount(eventName);
+      }, 0);
+    };
+  }
+
+  /**
    * Helper method to clean up all listeners
    * Should be called in test cleanup
    */
   cleanup() {
     this.removeAllListeners();
+    this._connectionState = 'connected';
+    this._error = null;
+    this._refreshError = null;
+    this._refreshDelay = 0;
+    this.refreshCalled = false;
   }
 }
 

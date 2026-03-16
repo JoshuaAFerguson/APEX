@@ -12,6 +12,16 @@ import { exec } from 'child_process';
 // Mock the claude-agent-sdk
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
+  tool: vi.fn().mockReturnValue({
+    name: 'mock-tool',
+    description: 'mock tool description',
+    inputSchema: {},
+    handler: vi.fn(),
+  }),
+  createSdkMcpServer: vi.fn().mockReturnValue({
+    name: 'mock-server',
+    config: {},
+  }),
 }));
 
 // Mock child_process using simple automocking

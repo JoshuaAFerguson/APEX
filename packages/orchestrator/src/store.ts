@@ -2877,7 +2877,7 @@ export class TaskStore {
    * Add an iteration entry to a task's history
    */
   async addIterationEntry(taskId: string, entry: Omit<IterationEntry, 'id'> & { id?: string }): Promise<void> {
-    const iterationId = entry.id || `${taskId}-iter-${Date.now()}`;
+    const iterationId = entry.id || `${taskId}-iter-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const stmt = this.db.prepare(`
       INSERT INTO task_iterations (id, task_id, feedback, timestamp, diff_summary, stage, modified_files, agent, before_state, after_state)
       VALUES (@id, @taskId, @feedback, @timestamp, @diffSummary, @stage, @modifiedFiles, @agent, @beforeState, @afterState)
