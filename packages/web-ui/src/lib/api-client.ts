@@ -14,6 +14,14 @@ import type {
   InjectContextRequest,
   InjectContextResponse,
 } from '@apexcli/core'
+import type {
+  TaskTemplate,
+  CreateTemplateRequest,
+  UpdateTemplateRequest,
+  TemplateListResponse,
+  CreateTaskFromTemplateRequest,
+  TemplateFilters,
+} from '@/types/task-template'
 import { getApiUrl } from './config'
 
 /**
@@ -366,6 +374,170 @@ export class ApexApiClient {
       body: JSON.stringify(config),
     })
     return response.json()
+  }
+
+  // ============================================================================
+  // Template API Methods
+  // ============================================================================
+
+  /**
+   * List task templates with optional filters
+   */
+  async getTemplates(filters?: TemplateFilters): Promise<TemplateListResponse> {
+    const params = new URLSearchParams()
+    if (filters?.category) {
+      const categories = Array.isArray(filters.category) ? filters.category : [filters.category]
+      categories.forEach(cat => params.append('category', cat))
+    }
+    if (filters?.workflow) {
+      const workflows = Array.isArray(filters.workflow) ? filters.workflow : [filters.workflow]
+      workflows.forEach(wf => params.append('workflow', wf))
+    }
+    if (filters?.tags?.length) {
+      filters.tags.forEach(tag => params.append('tags', tag))
+    }
+    if (filters?.isQuickAction !== undefined) {
+      params.set('isQuickAction', filters.isQuickAction.toString())
+    }
+    if (filters?.includeArchived !== undefined) {
+      params.set('includeArchived', filters.includeArchived.toString())
+    }
+    if (filters?.search) {
+      params.set('search', filters.search)
+    }
+
+    const url = `/templates${params.toString() ? `?${params.toString()}` : ''}`
+    const response = await this.fetch(url)
+    const data = await response.json()
+
+    // Transform API response to match TemplateListResponse format
+    return {
+      templates: data.templates || data,
+      total: data.count || data.length || 0,
+      page: 1,
+      pageSize: data.count || data.length || 0,
+    }
+  }
+
+  /**
+   * Get quick action templates (templates with isQuickAction=true)
+   */
+  async getQuickActionTemplates(): Promise<TaskTemplate[]> {
+    const response = await this.getTemplates({ isQuickAction: true })
+    return response.templates
+  }
+
+  /**
+   * Get a single template by ID
+   */
+  async getTemplate(templateId: string): Promise<TaskTemplate> {
+    const response = await this.fetch(`/templates/${templateId}`)
+    return response.json()
+  }
+
+  /**
+   * Create a new template
+   */
+  async createTemplate(request: CreateTemplateRequest): Promise<TaskTemplate> {
+    const response = await this.fetch('/templates', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+    return response.json()
+  }
+
+  /**
+   * Update an existing template
+   */
+  async updateTemplate(request: UpdateTemplateRequest): Promise<TaskTemplate> {
+    const { id, ...updateData } = request
+    const response = await this.fetch(`/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updateData),
+    })
+    return response.json()
+  }
+
+  /**
+   * Delete a template
+   */
+  async deleteTemplate(templateId: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.fetch(`/templates/${templateId}`, {
+      method: 'DELETE',
+    })
+    return response.json()
+  }
+
+  /**
+   * Create a task from a template
+   */
+  async createTaskFromTemplate(request: CreateTaskFromTemplateRequest): Promise<CreateTaskResponse> {
+    // First get the template to interpolate its values
+    const template = await this.getTemplate(request.templateId)
+
+    // Import interpolation helper
+    const { interpolateTemplateString } = await import('@/types/task-template')
+
+    // Interpolate template values
+    const description = interpolateTemplateString(template.descriptionTemplate, request.variables)
+    const acceptanceCriteria = template.acceptanceCriteriaTemplate
+      ? interpolateTemplateString(template.acceptanceCriteriaTemplate, request.variables)
+      : undefined
+
+    // Create task using regular createTask method
+    return this.createTask({
+      description,
+      acceptanceCriteria,
+      workflow: template.workflow,
+      autonomy: request.autonomy || template.autonomy,
+      priority: request.priority || template.priority,
+      effort: request.effort || template.effort,
+      projectPath: request.projectPath,
+    })
+  }
+
+  // ============================================================================
+  // Template API Alias Methods (for backward compatibility)
+  // ============================================================================
+
+  /**
+   * Create a new task template
+   * @deprecated Use createTemplate instead
+   */
+  async createTaskTemplate(request: CreateTemplateRequest): Promise<TaskTemplate> {
+    return this.createTemplate(request)
+  }
+
+  /**
+   * List task templates with optional filters
+   * @deprecated Use getTemplates instead
+   */
+  async listTaskTemplates(filters?: TemplateFilters): Promise<TemplateListResponse> {
+    return this.getTemplates(filters)
+  }
+
+  /**
+   * Get a single task template by ID
+   * @deprecated Use getTemplate instead
+   */
+  async getTaskTemplate(templateId: string): Promise<TaskTemplate> {
+    return this.getTemplate(templateId)
+  }
+
+  /**
+   * Update an existing task template
+   * @deprecated Use updateTemplate instead
+   */
+  async updateTaskTemplate(request: UpdateTemplateRequest): Promise<TaskTemplate> {
+    return this.updateTemplate(request)
+  }
+
+  /**
+   * Delete a task template
+   * @deprecated Use deleteTemplate instead
+   */
+  async deleteTaskTemplate(templateId: string): Promise<{ ok: boolean; message: string }> {
+    return this.deleteTemplate(templateId)
   }
 
   // ============================================================================
