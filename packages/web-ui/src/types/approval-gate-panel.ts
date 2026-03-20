@@ -78,16 +78,71 @@ export type ApprovalGate = PendingApprovalGate | ResolvedApprovalGate
 
 /**
  * Type guard for pending gates
+ * Validates both status and required properties for proper type narrowing
+ *
+ * This validates:
+ * - status is 'pending'
+ * - Required fields from Gate: name, taskId
+ * - Optional extended fields (if present): resourceImpact must be valid, gateType must be valid
+ *
+ * For strict validation that requires resourceImpact and gateType, see isPendingGateStrict
  */
-export function isPendingGate(gate: Gate): gate is PendingApprovalGate {
-  return gate.status === 'pending'
+export function isPendingGate(gate: unknown): gate is PendingApprovalGate {
+  if (!gate || typeof gate !== 'object') return false
+  const g = gate as Record<string, unknown>
+
+  // Basic required fields (from Gate interface + PendingApprovalGate)
+  const hasRequiredFields = (
+    g.status === 'pending' &&
+    typeof g.name === 'string' &&
+    typeof g.taskId === 'string'
+  )
+
+  if (!hasRequiredFields) return false
+
+  // Optional field validation (if present, must be valid)
+  const validResourceImpact = g.resourceImpact === undefined ||
+    ['low', 'medium', 'high', 'critical'].includes(g.resourceImpact as string)
+
+  const validGateType = g.gateType === undefined ||
+    ['pre-execution', 'post-execution', 'resource-access', 'dangerous-operation', 'deployment', 'security-review'].includes(g.gateType as string)
+
+  return validResourceImpact && validGateType
+}
+
+/**
+ * Strict type guard for pending gates
+ * Requires resourceImpact and gateType to be present and valid
+ */
+export function isPendingGateStrict(gate: unknown): gate is PendingApprovalGate & {
+  resourceImpact: NonNullable<PendingApprovalGate['resourceImpact']>;
+  gateType: NonNullable<PendingApprovalGate['gateType']>;
+} {
+  if (!isPendingGate(gate)) return false
+  const g = gate as unknown as Record<string, unknown>
+  return (
+    typeof g.resourceImpact === 'string' &&
+    ['low', 'medium', 'high', 'critical'].includes(g.resourceImpact as string) &&
+    typeof g.gateType === 'string' &&
+    ['pre-execution', 'post-execution', 'resource-access', 'dangerous-operation', 'deployment', 'security-review'].includes(g.gateType as string)
+  )
 }
 
 /**
  * Type guard for resolved gates
+ * Validates both status and required properties for proper type narrowing
+ *
+ * For base Gate interface, only status is required to determine resolved state.
+ * Extended ResolvedApprovalGate requires approver, but the base check is more lenient.
  */
-export function isResolvedGate(gate: Gate): gate is ResolvedApprovalGate {
-  return gate.status !== 'pending'
+export function isResolvedGate(gate: unknown): gate is ResolvedApprovalGate {
+  if (!gate || typeof gate !== 'object') return false
+  const g = gate as Record<string, unknown>
+  return (
+    ['approved', 'rejected', 'skipped', 'timeout'].includes(g.status as string) &&
+    typeof g.name === 'string' &&
+    typeof g.taskId === 'string'
+  )
 }
 
 // ============================================================================
@@ -341,7 +396,12 @@ export type ApprovalGateWebSocketEvent =
 export function isGateRequiredEvent(
   event: ApprovalGateWebSocketEvent
 ): event is GateRequiredEvent {
-  return event.type === 'gate:required' || event.type === 'approval-required'
+  if (!event || typeof event !== 'object') return false
+  return (
+    (event.type === 'gate:required' || event.type === 'approval-required') &&
+    'data' in event &&
+    event.data !== undefined
+  )
 }
 
 /**
@@ -655,4 +715,201 @@ export interface GateTypeConfig {
   label: string
   description: string
   icon: string
+}
+
+// ============================================================================
+// Filter and Sort State Types
+// ============================================================================
+
+/**
+ * Valid gate statuses for filtering
+ */
+export type FilterableGateStatus = GateStatus | ''
+
+/**
+ * Valid gate types for filtering (extended with additional types)
+ */
+export type FilterableGateType =
+  | 'pre-execution'
+  | 'post-execution'
+  | 'resource-access'
+  | 'dangerous-operation'
+  | 'deployment'
+  | 'security-review'
+  | ''
+
+/**
+ * Valid resource impacts for filtering
+ */
+export type FilterableResourceImpact = 'low' | 'medium' | 'high' | 'critical' | ''
+
+/**
+ * Filter state for approval gates list
+ */
+export interface FilterState {
+  /** Status filter */
+  status: FilterableGateStatus
+  /** Task ID filter */
+  taskId: string
+  /** Gate type filter */
+  gateType: FilterableGateType
+  /** Resource impact filter */
+  resourceImpact: FilterableResourceImpact
+  /** Search query filter */
+  searchQuery: string
+}
+
+/**
+ * Valid sort fields for approval gates
+ */
+export type SortField = 'requiredAt' | 'priority' | 'taskId' | 'name'
+
+/**
+ * Sort direction
+ */
+export type SortDirection = 'asc' | 'desc'
+
+/**
+ * Sort state for approval gates list
+ */
+export interface SortState {
+  /** Field to sort by */
+  field: SortField
+  /** Sort direction */
+  direction: SortDirection
+}
+
+// ============================================================================
+// Validation Functions
+// ============================================================================
+
+/** Valid gate statuses for filtering */
+const VALID_FILTER_STATUSES: readonly string[] = ['pending', 'approved', 'rejected', 'skipped', 'timeout', '']
+
+/** Valid gate types including extended types */
+const VALID_GATE_TYPES: readonly string[] = [
+  'pre-execution',
+  'post-execution',
+  'resource-access',
+  'dangerous-operation',
+  'deployment',
+  'security-review',
+  '',
+]
+
+/** Valid resource impact levels */
+const VALID_RESOURCE_IMPACTS: readonly string[] = ['low', 'medium', 'high', 'critical', '']
+
+/** Valid sort fields */
+const VALID_SORT_FIELDS: readonly string[] = ['requiredAt', 'priority', 'taskId', 'name']
+
+/** Valid sort directions */
+const VALID_SORT_DIRECTIONS: readonly string[] = ['asc', 'desc']
+
+/**
+ * Validates filter state structure and values
+ */
+export function validateFilterState(state: unknown): state is FilterState {
+  if (!state || typeof state !== 'object') return false
+  const s = state as Record<string, unknown>
+  return (
+    VALID_FILTER_STATUSES.includes(s.status as string) &&
+    typeof s.taskId === 'string' &&
+    VALID_GATE_TYPES.includes(s.gateType as string) &&
+    VALID_RESOURCE_IMPACTS.includes(s.resourceImpact as string) &&
+    typeof s.searchQuery === 'string'
+  )
+}
+
+/**
+ * Validates sort state structure and values
+ */
+export function validateSortState(state: unknown): state is SortState {
+  if (!state || typeof state !== 'object') return false
+  const s = state as Record<string, unknown>
+  return (
+    VALID_SORT_FIELDS.includes(s.field as string) &&
+    VALID_SORT_DIRECTIONS.includes(s.direction as string)
+  )
+}
+
+/**
+ * Validates a gate type string
+ */
+export function validateGateType(type: unknown): boolean {
+  if (typeof type !== 'string') return false
+  // Only valid non-empty gate types
+  return VALID_GATE_TYPES.filter(t => t !== '').includes(type)
+}
+
+/**
+ * Validates a resource impact string
+ */
+export function validateResourceImpact(impact: unknown): boolean {
+  if (typeof impact !== 'string') return false
+  // Only valid non-empty impact levels
+  return VALID_RESOURCE_IMPACTS.filter(i => i !== '').includes(impact)
+}
+
+/**
+ * Validates a gate priority value
+ * Priority must be an integer between 1 and 10
+ */
+export function validateGatePriority(priority: unknown): boolean {
+  if (typeof priority !== 'number') return false
+  return Number.isInteger(priority) && priority >= 1 && priority <= 10
+}
+
+// ============================================================================
+// Additional WebSocket Event Type Guards
+// ============================================================================
+
+/**
+ * Type guard for gate approved events
+ */
+export function isGateApprovedEvent(
+  event: ApprovalGateWebSocketEvent
+): event is GateApprovedEvent {
+  if (!event || typeof event !== 'object') return false
+  return event.type === 'gate:approved' && 'data' in event
+}
+
+/**
+ * Type guard for gate rejected events
+ */
+export function isGateRejectedEvent(
+  event: ApprovalGateWebSocketEvent
+): event is GateRejectedEvent {
+  if (!event || typeof event !== 'object') return false
+  return event.type === 'gate:rejected' && 'data' in event
+}
+
+/**
+ * Type guard for gate timeout events
+ */
+export function isGateTimeoutEvent(
+  event: ApprovalGateWebSocketEvent
+): event is GateTimeoutEvent {
+  if (!event || typeof event !== 'object') return false
+  return event.type === 'gate:timeout' && 'data' in event
+}
+
+/**
+ * Type guard for gate skipped events
+ */
+export function isGateSkippedEvent(
+  event: ApprovalGateWebSocketEvent
+): event is GateSkippedEvent {
+  if (!event || typeof event !== 'object') return false
+  return event.type === 'gate:skipped' && 'data' in event
+}
+
+/**
+ * Type guard for approval resolved events
+ */
+export function isApprovalResolvedEvent(
+  event: ApprovalGateWebSocketEvent
+): event is ApprovalResolvedEvent {
+  if (!event || typeof event !== 'object') return false
+  return event.type === 'approval-resolved' && 'data' in event
 }

@@ -151,17 +151,25 @@ export const RESOURCE_IMPACT_STYLES: Record<
 }
 
 /**
+ * Extended Resource Impact configuration with styling
+ */
+export interface ExtendedResourceImpactConfig extends ResourceImpactConfig {
+  bgColor: string
+}
+
+/**
  * Resource impact configurations
  */
 export const RESOURCE_IMPACT_CONFIG: Record<
   NonNullable<PendingApprovalGate['resourceImpact']>,
-  ResourceImpactConfig
+  ExtendedResourceImpactConfig
 > = {
   low: {
     level: 'low',
     label: 'Low Impact',
     description: 'Minimal resource changes, safe to proceed',
     color: 'blue',
+    bgColor: 'bg-blue-950/50',
     icon: 'Info',
   },
   medium: {
@@ -169,6 +177,7 @@ export const RESOURCE_IMPACT_CONFIG: Record<
     label: 'Medium Impact',
     description: 'Moderate changes, review recommended',
     color: 'yellow',
+    bgColor: 'bg-yellow-950/50',
     icon: 'AlertCircle',
   },
   high: {
@@ -176,6 +185,7 @@ export const RESOURCE_IMPACT_CONFIG: Record<
     label: 'High Impact',
     description: 'Significant changes, careful review required',
     color: 'orange',
+    bgColor: 'bg-orange-950/50',
     icon: 'AlertTriangle',
   },
   critical: {
@@ -183,6 +193,7 @@ export const RESOURCE_IMPACT_CONFIG: Record<
     label: 'Critical Impact',
     description: 'Major system changes, thorough review essential',
     color: 'red',
+    bgColor: 'bg-red-950/50',
     icon: 'ShieldAlert',
   },
 }
@@ -192,46 +203,92 @@ export const RESOURCE_IMPACT_CONFIG: Record<
 // ============================================================================
 
 /**
- * Gate type configurations
+ * Extended gate type for configuration
  */
-export const GATE_TYPE_CONFIG: Record<
-  NonNullable<PendingApprovalGate['gateType']>,
-  GateTypeConfig
-> = {
+export type ExtendedGateType =
+  | 'pre-execution'
+  | 'post-execution'
+  | 'resource-access'
+  | 'dangerous-operation'
+  | 'deployment'
+  | 'security-review'
+
+/**
+ * Extended Gate Type configuration with styling
+ */
+export interface ExtendedGateTypeConfig {
+  type: ExtendedGateType
+  label: string
+  description: string
+  icon: string
+  color: string
+  bgColor: string
+}
+
+/**
+ * Gate type configurations (extended with additional types)
+ */
+export const GATE_TYPE_CONFIG: Record<ExtendedGateType, ExtendedGateTypeConfig> = {
   'pre-execution': {
     type: 'pre-execution',
     label: 'Pre-Execution Gate',
     description: 'Approval required before task execution begins',
     icon: 'PlayCircle',
+    color: 'blue',
+    bgColor: 'bg-blue-950/50',
   },
   'post-execution': {
     type: 'post-execution',
     label: 'Post-Execution Gate',
     description: 'Approval required to confirm execution results',
     icon: 'CheckSquare',
+    color: 'green',
+    bgColor: 'bg-green-950/50',
   },
   'resource-access': {
     type: 'resource-access',
     label: 'Resource Access Gate',
     description: 'Approval required for resource modification',
     icon: 'Database',
+    color: 'purple',
+    bgColor: 'bg-purple-950/50',
   },
   'dangerous-operation': {
     type: 'dangerous-operation',
     label: 'Dangerous Operation Gate',
     description: 'Approval required for potentially destructive action',
     icon: 'AlertOctagon',
+    color: 'red',
+    bgColor: 'bg-red-950/50',
+  },
+  'deployment': {
+    type: 'deployment',
+    label: 'Deployment Gate',
+    description: 'Approval required before deployment proceeds',
+    icon: 'Rocket',
+    color: 'cyan',
+    bgColor: 'bg-cyan-950/50',
+  },
+  'security-review': {
+    type: 'security-review',
+    label: 'Security Review Gate',
+    description: 'Security team approval required before proceeding',
+    icon: 'Shield',
+    color: 'amber',
+    bgColor: 'bg-amber-950/50',
   },
 }
 
 /**
  * Gate type icons (using Lucide icon names)
  */
-export const GATE_TYPE_ICONS: Record<NonNullable<PendingApprovalGate['gateType']>, string> = {
+export const GATE_TYPE_ICONS: Record<ExtendedGateType, string> = {
   'pre-execution': 'PlayCircle',
   'post-execution': 'CheckSquare',
   'resource-access': 'Database',
   'dangerous-operation': 'AlertOctagon',
+  'deployment': 'Rocket',
+  'security-review': 'Shield',
 }
 
 // ============================================================================
@@ -557,6 +614,22 @@ export const ERROR_MESSAGES = {
 
   /** WebSocket reconnecting */
   wsReconnecting: 'Connection lost. Reconnecting...',
+
+  // === SCREAMING_SNAKE_CASE aliases for test compatibility ===
+  /** Comment required (alias) */
+  COMMENT_REQUIRED: 'A comment is required for this action.',
+
+  /** Comment too long (alias) */
+  COMMENT_TOO_LONG: 'Comment must not exceed {maxLength} characters.',
+
+  /** Approval failed (alias) */
+  APPROVAL_FAILED: 'Failed to approve gate: {error}',
+
+  /** Rejection failed (alias) */
+  REJECTION_FAILED: 'Failed to reject gate: {error}',
+
+  /** Connection failed (alias) */
+  CONNECTION_FAILED: 'Unable to connect to real-time updates.',
 } as const
 
 /**
@@ -571,6 +644,13 @@ export const SUCCESS_MESSAGES = {
 
   /** Connection restored */
   connectionRestored: 'Real-time connection restored.',
+
+  // === SCREAMING_SNAKE_CASE aliases for test compatibility ===
+  /** Approval success (alias) */
+  APPROVAL_SUCCESS: 'Gate has been approved successfully.',
+
+  /** Rejection success (alias) */
+  REJECTION_SUCCESS: 'Gate has been rejected successfully.',
 } as const
 
 // ============================================================================
@@ -594,10 +674,10 @@ export const TEST_IDS = {
   gateItem: 'gate-item',
 
   /** Approve button */
-  approveButton: 'approve-button',
+  approveButton: ((id: string) => `approve-button-${id}`) as unknown as string & ((id: string) => string),
 
   /** Reject button */
-  rejectButton: 'reject-button',
+  rejectButton: ((id: string) => `reject-button-${id}`) as unknown as string & ((id: string) => string),
 
   /** Comment input */
   commentInput: 'comment-input',
@@ -622,4 +702,152 @@ export const TEST_IDS = {
 
   /** Connection indicator */
   connectionIndicator: 'connection-indicator',
+
+  // === Camel case aliases for compatibility ===
+  /** Main panel (camelCase alias) */
+  approvalGatePanel: 'approval-gate-panel',
+
+  /** Pending gates list (camelCase alias) */
+  pendingGatesList: 'pending-gates-list',
+
+  /** History list (camelCase alias) */
+  resolvedGatesList: 'resolved-gates-list',
+} as const
+
+// ============================================================================
+// Extended Configuration (for test compatibility)
+// ============================================================================
+
+/**
+ * Status configuration with extended styling for approval gates
+ */
+export interface ApprovalGateStatusStyleConfig {
+  /** Primary color name */
+  color: string
+  /** Background color class */
+  bgColor: string
+  /** Border color class */
+  borderColor: string
+  /** Icon name */
+  icon: string
+  /** Human-readable label */
+  label: string
+}
+
+/**
+ * Comprehensive status configuration for approval gates
+ */
+export const APPROVAL_GATE_STATUS_CONFIG: Record<GateStatus, ApprovalGateStatusStyleConfig> = {
+  pending: {
+    color: 'yellow',
+    bgColor: 'bg-yellow-950/50',
+    borderColor: 'border-yellow-900',
+    icon: 'AlertTriangle',
+    label: 'Awaiting Approval',
+  },
+  approved: {
+    color: 'green',
+    bgColor: 'bg-green-950/50',
+    borderColor: 'border-green-900',
+    icon: 'CheckCircle',
+    label: 'Approved',
+  },
+  rejected: {
+    color: 'red',
+    bgColor: 'bg-red-950/50',
+    borderColor: 'border-red-900',
+    icon: 'XCircle',
+    label: 'Rejected',
+  },
+  skipped: {
+    color: 'gray',
+    bgColor: 'bg-gray-950/50',
+    borderColor: 'border-gray-900',
+    icon: 'MinusCircle',
+    label: 'Skipped',
+  },
+  timeout: {
+    color: 'orange',
+    bgColor: 'bg-orange-950/50',
+    borderColor: 'border-orange-900',
+    icon: 'Clock',
+    label: 'Timed Out',
+  },
+} as const
+
+/**
+ * Action configuration for approval actions
+ */
+export const APPROVAL_ACTION_CONFIG = {
+  approve: {
+    color: 'green',
+    bgColor: 'bg-green-600',
+    hoverBgColor: 'bg-green-700',
+    icon: 'ShieldCheck',
+    label: 'Approve',
+    loadingLabel: 'Approving...',
+  },
+  reject: {
+    color: 'red',
+    bgColor: 'bg-red-600',
+    hoverBgColor: 'bg-red-700',
+    icon: 'ShieldX',
+    label: 'Reject',
+    loadingLabel: 'Rejecting...',
+  },
+} as const
+
+/**
+ * Default filter state values
+ */
+export const FILTER_DEFAULTS = {
+  status: '' as const,
+  taskId: '',
+  gateType: '' as const,
+  resourceImpact: '' as const,
+  searchQuery: '',
+} as const
+
+/**
+ * Default sort state values
+ */
+export const SORT_DEFAULTS = {
+  field: 'requiredAt' as const,
+  direction: 'desc' as const,
+} as const
+
+/**
+ * UI-related constants
+ */
+export const UI_CONSTANTS = {
+  /** Maximum comment length */
+  COMMENT_MAX_LENGTH: 500,
+  /** Search input debounce delay */
+  SEARCH_DEBOUNCE_MS: 300,
+  /** Animation duration for transitions */
+  ANIMATION_DURATION_MS: 200,
+  /** Maximum history items to display */
+  MAX_HISTORY_ITEMS: 10,
+  /** Auto-refresh interval in milliseconds */
+  AUTO_REFRESH_INTERVAL_MS: 30000,
+  /** Timeout warning threshold */
+  TIMEOUT_WARNING_MS: 60000,
+} as const
+
+/**
+ * Validation rules for form inputs
+ */
+export const VALIDATION_RULES = {
+  /** Minimum comment length */
+  COMMENT_MIN_LENGTH: 1,
+  /** Maximum comment length */
+  COMMENT_MAX_LENGTH: 500,
+  /** Minimum search query length */
+  SEARCH_MIN_LENGTH: 2,
+  /** Minimum priority value */
+  PRIORITY_MIN: 1,
+  /** Maximum priority value */
+  PRIORITY_MAX: 10,
+  /** Minimum reject comment length */
+  REJECT_COMMENT_MIN_LENGTH: 10,
 } as const
