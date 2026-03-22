@@ -10,6 +10,7 @@ import type {
 import { TaskStore, ToolActionStore } from './store';
 import { DangerousOperationDetector, type RiskSeverity } from './dangerous-operation-detector';
 import { PermissionPresetManager } from './permission-preset-manager';
+import { createVeriSwarmHooks, mergeHooks, resolveVeriSwarmConfig, type VeriSwarmConfig } from './veriswarm-hook';
 import { AliasResolver } from './alias-resolver';
 import {
   createStructuredError,
@@ -67,6 +68,7 @@ export interface HookContext {
     diffPreview?: boolean;
   };
   aliasResolver?: AliasResolver;
+  veriswarm?: Partial<VeriSwarmConfig>;
 }
 
 /**
@@ -472,7 +474,11 @@ async function resolveToolAlias(
  * ```
  */
 export function createHooks(context: HookContext): HooksConfig {
-  return {
+  // Resolve VeriSwarm integration (auto-detects from env vars or config)
+  const vsConfig = resolveVeriSwarmConfig(context.veriswarm);
+  const veriswarmHooks = createVeriSwarmHooks(context, vsConfig);
+
+  const baseHooks: HooksConfig = {
     PreToolUse: [
       // Check tool permissions via preset manager (runs first to enforce permission policies)
       {
@@ -578,6 +584,9 @@ export function createHooks(context: HookContext): HooksConfig {
       },
     ],
   };
+
+  // Merge VeriSwarm hooks if enabled
+  return mergeHooks(baseHooks, veriswarmHooks);
 }
 
 /**
