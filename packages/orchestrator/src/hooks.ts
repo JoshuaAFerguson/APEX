@@ -10,7 +10,7 @@ import type {
 import { TaskStore, ToolActionStore } from './store';
 import { DangerousOperationDetector, type RiskSeverity } from './dangerous-operation-detector';
 import { PermissionPresetManager } from './permission-preset-manager';
-import { createVeriSwarmHooks, mergeHooks, resolveVeriSwarmConfig, type VeriSwarmConfig } from './veriswarm-hook';
+import { createVeriSwarmHooks, mergeHooks, resolveVeriSwarmConfig, autoRegisterAgent, type VeriSwarmConfig } from './veriswarm-hook';
 import { AliasResolver } from './alias-resolver';
 import {
   createStructuredError,

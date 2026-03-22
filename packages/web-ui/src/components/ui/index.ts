@@ -22,11 +22,26 @@ export type { MultiSelectProps, MultiSelectOption } from './MultiSelect'
 export { Checkbox } from './Checkbox'
 export type { CheckboxProps } from './Checkbox'
 
+export { Textarea } from './Textarea'
+export type { TextareaProps } from './Textarea'
+
+export { Label } from './Label'
+
+export { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from './Dialog'
+
+export { Alert, AlertDescription } from './Alert'
+
 export { RadioGroup, Radio } from './RadioGroup'
 export type { RadioGroupProps, RadioProps, RadioOption } from './RadioGroup'
 
 export { BudgetGauge, BudgetGaugeMini } from './BudgetGauge'
 export type { BudgetGaugeProps, BudgetGaugeMiniProps, BudgetGaugeThresholds, ColorState } from './BudgetGauge'
+
+export { Progress } from './Progress'
+export type { ProgressProps } from './Progress'
+
+export { ProgressIndicator } from './ProgressIndicator'
+export type { ProgressIndicatorProps } from './ProgressIndicator'
 
 export { WebSocketConnectionIndicator, WebSocketConnectionTooltip, useWebSocketConnection } from '../connection'
 export type { WebSocketConnectionIndicatorProps, WebSocketConnectionTooltipProps, WebSocketConnectionStatus, WebSocketConnectionHealth } from '../connection'

@@ -7,6 +7,10 @@ import {
   getStatusVariant,
   formatStatus,
   getRelativeTime,
+  getElapsedTime,
+  isTaskRunning,
+  getProgressVariant,
+  formatPercentage,
 } from '../utils';
 import type { TaskStatus } from '@apexcli/core';
 
@@ -339,5 +343,241 @@ describe('getRelativeTime', () => {
   it('should handle very recent times', () => {
     const date = new Date(now.getTime() - 1000); // 1 second ago
     expect(getRelativeTime(date)).toBe('just now');
+  });
+});
+
+describe('getElapsedTime', () => {
+  let now: Date;
+
+  beforeEach(() => {
+    // Fix the current time for consistent testing
+    now = new Date('2025-01-15T12:00:00Z');
+    vi.setSystemTime(now);
+  });
+
+  it('should return elapsed time in seconds for short durations', () => {
+    const startDate = new Date(now.getTime() - 30 * 1000); // 30 seconds ago
+    expect(getElapsedTime(startDate)).toBe('30s');
+  });
+
+  it('should return elapsed time in minutes and seconds for medium durations', () => {
+    const startDate = new Date(now.getTime() - 5 * 60 * 1000 - 30 * 1000); // 5 minutes 30 seconds ago
+    expect(getElapsedTime(startDate)).toBe('5m 30s');
+  });
+
+  it('should return elapsed time in minutes only when seconds are 0', () => {
+    const startDate = new Date(now.getTime() - 5 * 60 * 1000); // 5 minutes ago exactly
+    expect(getElapsedTime(startDate)).toBe('5m');
+  });
+
+  it('should return elapsed time in hours and minutes for long durations', () => {
+    const startDate = new Date(now.getTime() - 2 * 60 * 60 * 1000 - 30 * 60 * 1000); // 2 hours 30 minutes ago
+    expect(getElapsedTime(startDate)).toBe('2h 30m');
+  });
+
+  it('should return elapsed time in hours only when minutes are 0', () => {
+    const startDate = new Date(now.getTime() - 3 * 60 * 60 * 1000); // 3 hours ago exactly
+    expect(getElapsedTime(startDate)).toBe('3h');
+  });
+
+  it('should return elapsed time in days and hours for very long durations', () => {
+    const startDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000 - 5 * 60 * 60 * 1000); // 2 days 5 hours ago
+    expect(getElapsedTime(startDate)).toBe('2d 5h');
+  });
+
+  it('should return elapsed time in days only when hours are 0', () => {
+    const startDate = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000); // 3 days ago exactly
+    expect(getElapsedTime(startDate)).toBe('3d');
+  });
+
+  it('should handle date strings', () => {
+    const startDateString = new Date(now.getTime() - 2 * 60 * 1000).toISOString(); // 2 minutes ago
+    expect(getElapsedTime(startDateString)).toBe('2m');
+  });
+
+  it('should return "0s" for future dates (edge case)', () => {
+    const futureDate = new Date(now.getTime() + 60 * 1000); // 1 minute in the future
+    expect(getElapsedTime(futureDate)).toBe('0s');
+  });
+
+  it('should handle edge case of exactly 1 second', () => {
+    const startDate = new Date(now.getTime() - 1000); // 1 second ago
+    expect(getElapsedTime(startDate)).toBe('1s');
+  });
+
+  it('should handle edge case of exactly 1 minute', () => {
+    const startDate = new Date(now.getTime() - 60 * 1000); // 1 minute ago
+    expect(getElapsedTime(startDate)).toBe('1m');
+  });
+
+  it('should handle edge case of exactly 1 hour', () => {
+    const startDate = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
+    expect(getElapsedTime(startDate)).toBe('1h');
+  });
+
+  it('should handle edge case of exactly 1 day', () => {
+    const startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 1 day ago
+    expect(getElapsedTime(startDate)).toBe('1d');
+  });
+
+  it('should round down for partial seconds', () => {
+    const startDate = new Date(now.getTime() - 1500); // 1.5 seconds ago
+    expect(getElapsedTime(startDate)).toBe('1s');
+  });
+
+  it('should handle milliseconds less than 1 second', () => {
+    const startDate = new Date(now.getTime() - 500); // 0.5 seconds ago
+    expect(getElapsedTime(startDate)).toBe('0s');
+  });
+
+  it('should handle very long durations', () => {
+    const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000 - 12 * 60 * 60 * 1000); // 30 days 12 hours ago
+    expect(getElapsedTime(startDate)).toBe('30d 12h');
+  });
+});
+
+describe('isTaskRunning', () => {
+  it('should return true for in-progress status', () => {
+    expect(isTaskRunning('in-progress')).toBe(true);
+  });
+
+  it('should return true for planning status', () => {
+    expect(isTaskRunning('planning')).toBe(true);
+  });
+
+  it('should return false for completed status', () => {
+    expect(isTaskRunning('completed')).toBe(false);
+  });
+
+  it('should return false for pending status', () => {
+    expect(isTaskRunning('pending')).toBe(false);
+  });
+
+  it('should return false for failed status', () => {
+    expect(isTaskRunning('failed')).toBe(false);
+  });
+
+  it('should return false for cancelled status', () => {
+    expect(isTaskRunning('cancelled')).toBe(false);
+  });
+
+  it('should return false for queued status', () => {
+    expect(isTaskRunning('queued')).toBe(false);
+  });
+
+  it('should return false for paused status', () => {
+    expect(isTaskRunning('paused')).toBe(false);
+  });
+
+  it('should return false for waiting-approval status', () => {
+    expect(isTaskRunning('waiting-approval')).toBe(false);
+  });
+
+  it('should return false for awaiting-approval status', () => {
+    expect(isTaskRunning('awaiting-approval')).toBe(false);
+  });
+});
+
+describe('getProgressVariant', () => {
+  it('should return "success" for completed status', () => {
+    expect(getProgressVariant('completed')).toBe('success');
+  });
+
+  it('should return "error" for failed status', () => {
+    expect(getProgressVariant('failed')).toBe('error');
+  });
+
+  it('should return "error" for cancelled status', () => {
+    expect(getProgressVariant('cancelled')).toBe('error');
+  });
+
+  it('should return "warning" for awaiting-approval status', () => {
+    expect(getProgressVariant('awaiting-approval')).toBe('warning');
+  });
+
+  it('should return "warning" for waiting-approval status', () => {
+    expect(getProgressVariant('waiting-approval')).toBe('warning');
+  });
+
+  it('should return "warning" for paused status', () => {
+    expect(getProgressVariant('paused')).toBe('warning');
+  });
+
+  it('should return "info" for planning status', () => {
+    expect(getProgressVariant('planning')).toBe('info');
+  });
+
+  it('should return "info" for in-progress status', () => {
+    expect(getProgressVariant('in-progress')).toBe('info');
+  });
+
+  it('should return "default" for pending status', () => {
+    expect(getProgressVariant('pending')).toBe('default');
+  });
+
+  it('should return "default" for queued status', () => {
+    expect(getProgressVariant('queued')).toBe('default');
+  });
+
+  it('should handle all valid task statuses', () => {
+    const statuses: TaskStatus[] = [
+      'pending',
+      'queued',
+      'planning',
+      'in-progress',
+      'waiting-approval',
+      'awaiting-approval',
+      'paused',
+      'completed',
+      'failed',
+      'cancelled',
+    ];
+
+    statuses.forEach((status) => {
+      const variant = getProgressVariant(status);
+      expect(['default', 'success', 'warning', 'error', 'info']).toContain(variant);
+    });
+  });
+});
+
+describe('formatPercentage', () => {
+  it('should format percentage with default precision (1 decimal)', () => {
+    expect(formatPercentage(0.5)).toBe('50.0%');
+  });
+
+  it('should format percentage with custom precision', () => {
+    expect(formatPercentage(0.1234, 2)).toBe('12.34%');
+  });
+
+  it('should format percentage with zero precision', () => {
+    expect(formatPercentage(0.678, 0)).toBe('68%');
+  });
+
+  it('should handle 0%', () => {
+    expect(formatPercentage(0)).toBe('0.0%');
+  });
+
+  it('should handle 100%', () => {
+    expect(formatPercentage(1)).toBe('100.0%');
+  });
+
+  it('should handle values greater than 1', () => {
+    expect(formatPercentage(1.5)).toBe('150.0%');
+  });
+
+  it('should handle very small percentages', () => {
+    expect(formatPercentage(0.001, 3)).toBe('0.100%');
+  });
+
+  it('should handle negative values', () => {
+    expect(formatPercentage(-0.25)).toBe('-25.0%');
+  });
+
+  it('should round correctly', () => {
+    expect(formatPercentage(0.12345, 2)).toBe('12.35%'); // Should round 12.345 to 12.35
+  });
+
+  it('should handle high precision values', () => {
+    expect(formatPercentage(0.123456789, 5)).toBe('12.34568%');
   });
 });

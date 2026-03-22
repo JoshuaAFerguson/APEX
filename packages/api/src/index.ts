@@ -252,7 +252,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   const slackAppService = new SlackAppService({
     orchestrator,
     config: config.slack,
-    getDatabase: () => orchestrator.getStore().getDatabase(),
+    getDatabase: () => (orchestrator as any).store.getDatabase(),
     logger: app.log,
   });
 
@@ -1922,12 +1922,12 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
 
     // Validate priority if provided
-    if (priority && !['low', 'normal', 'high', 'urgent'].includes(priority)) {
+    if (priority !== undefined && !['low', 'normal', 'high', 'urgent'].includes(priority)) {
       return reply.status(400).send({ error: 'Priority must be one of: low, normal, high, urgent' });
     }
 
     // Validate effort if provided
-    if (effort && !['xs', 'small', 'medium', 'large', 'xl'].includes(effort)) {
+    if (effort !== undefined && !['xs', 'small', 'medium', 'large', 'xl'].includes(effort)) {
       return reply.status(400).send({ error: 'Effort must be one of: xs, small, medium, large, xl' });
     }
 
@@ -2078,6 +2078,31 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     }
   });
 
+  // Create task from template
+  app.post<{
+    Params: { id: string };
+    Body: Partial<CreateTaskRequest>
+  }>('/templates/:id/create-task', async (request, reply) => {
+    const { id } = request.params;
+    const overrides = request.body;
+
+    if (!id || !id.trim()) {
+      return reply.status(400).send({ error: 'Template ID is required' });
+    }
+
+    try {
+      const task = await orchestrator.useTemplate(id, overrides);
+      return reply.status(201).send(task);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        return reply.status(404).send({ error: 'Template not found' });
+      }
+      return reply.status(500).send({
+        error: error instanceof Error ? error.message : 'Failed to create task from template'
+      });
+    }
+  });
+
   // ============================================================================
   // WebSocket for real-time streaming
   // ============================================================================
@@ -2210,6 +2235,9 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     await teamsService.stop();
     await discordService.stop();
   });
+
+  // Attach orchestrator to server for testing purposes
+  (app as any).orchestrator = orchestrator;
 
   return app;
 }

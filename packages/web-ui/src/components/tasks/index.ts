@@ -31,3 +31,6 @@ export type { SubtaskTreeProps, SubtaskTreeNode } from './SubtaskTree'
 
 export { TaskDependencyGraph } from './TaskDependencyGraph'
 export type { TaskDependencyGraphProps } from './TaskDependencyGraph'
+
+export { ExecutionTimeline } from './ExecutionTimeline'
+export type { ExecutionTimelineProps, ExecutionStage, ExecutionStageStatus } from './ExecutionTimeline'

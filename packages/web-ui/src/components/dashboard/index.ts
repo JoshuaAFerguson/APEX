@@ -24,6 +24,15 @@ export type { BudgetWidgetProps } from './BudgetWidget'
 export { AgentUtilizationWidget } from './AgentUtilizationWidget'
 export type { AgentUtilizationWidgetProps } from './AgentUtilizationWidget'
 
+export { QuickActionsBar } from './QuickActionsBar'
+export { QuickActionButton } from './QuickActionButton'
+export { QuickActionVariableModal } from './QuickActionVariableModal'
+export type {
+  QuickActionsBarProps,
+  QuickActionButtonProps,
+  QuickActionVariableModalProps,
+} from '@/types/task-template'
+
 // Re-export types and utilities for convenience
 export type {
   ProjectHealthStatus,

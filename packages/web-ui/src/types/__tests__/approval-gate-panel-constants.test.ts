@@ -520,8 +520,11 @@ describe('Test IDs', () => {
     })
 
     it('should have IDs for interactive elements', () => {
-      expect(TEST_IDS.approveButton).toBe('approve-button')
-      expect(TEST_IDS.rejectButton).toBe('reject-button')
+      // approveButton and rejectButton are now functions that generate IDs
+      expect(typeof TEST_IDS.approveButton).toBe('function')
+      expect(typeof TEST_IDS.rejectButton).toBe('function')
+      expect(TEST_IDS.approveButton('test')).toBe('approve-button-test')
+      expect(TEST_IDS.rejectButton('test')).toBe('reject-button-test')
       expect(TEST_IDS.commentInput).toBe('comment-input')
       expect(TEST_IDS.confirmButton).toBe('confirm-button')
       expect(TEST_IDS.cancelButton).toBe('cancel-button')
@@ -535,6 +538,8 @@ describe('Test IDs', () => {
 
     it('should use kebab-case naming convention', () => {
       Object.values(TEST_IDS).forEach(id => {
+        // Skip function values (dynamic ID generators)
+        if (typeof id === 'function') return
         expect(id).toMatch(/^[a-z]+(-[a-z]+)*$/)
       })
     })
@@ -654,7 +659,7 @@ describe('Edge Cases', () => {
       const iconKeys = Object.keys(GATE_TYPE_ICONS)
 
       expect(configKeys).toEqual(iconKeys)
-      expect(configKeys).toHaveLength(4) // pre-execution, post-execution, resource-access, dangerous-operation
+      expect(configKeys).toHaveLength(6) // pre-execution, post-execution, resource-access, dangerous-operation, deployment, security-review
     })
   })
 

@@ -3,7 +3,7 @@ import { cn, getStatusVariant, formatStatus } from '@/lib/utils'
 import type { TaskStatus } from '@apexcli/core'
 
 export interface BadgeProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info'
+  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'secondary' | 'apex' | 'danger'
   status?: TaskStatus
 }
 
@@ -14,10 +14,13 @@ const Badge = forwardRef<HTMLDivElement, BadgeProps>(
 
     const variantStyles = {
       default: 'bg-background-tertiary text-foreground-secondary border-border-secondary',
+      secondary: 'bg-background-tertiary text-foreground-secondary border-border-secondary',
       success: 'bg-green-950/50 text-green-400 border-green-900',
       warning: 'bg-yellow-950/50 text-yellow-400 border-yellow-900',
       error: 'bg-red-950/50 text-red-400 border-red-900',
+      danger: 'bg-red-950/50 text-red-400 border-red-900',
       info: 'bg-apex-950/50 text-apex-400 border-apex-900',
+      apex: 'bg-apex-950/50 text-apex-400 border-apex-900',
     }
 
     return (

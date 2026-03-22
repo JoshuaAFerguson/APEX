@@ -37,7 +37,15 @@ import {
   isTaskTemplate,
   DEFAULT_TEMPLATE_VALUES,
   TEMPLATE_CATEGORY_CONFIG,
-  VARIABLE_TYPE_CONFIG
+  VARIABLE_TYPE_CONFIG,
+  templateHasRequiredVariables,
+  interpolateTemplateString
+} from '../task-template'
+import type {
+  QuickActionsBarProps,
+  QuickActionButtonProps,
+  QuickActionVariableModalProps,
+  UseQuickActionTemplatesReturn
 } from '../task-template'
 
 // ============================================================================
@@ -1136,6 +1144,298 @@ describe('Edge Cases and Error Handling', () => {
         const variable = createMockTemplateVariable({ type })
         expect(variable.type).toBe(type)
       })
+    })
+  })
+})
+
+// ============================================================================
+// QuickActionsBar Component Props Tests
+// ============================================================================
+
+describe('QuickActionsBar Component Props', () => {
+  describe('QuickActionsBarProps', () => {
+    it('should support minimal props (all optional)', () => {
+      const props: QuickActionsBarProps = {}
+      expect(props.onTaskCreated).toBeUndefined()
+      expect(props.maxActions).toBeUndefined()
+    })
+
+    it('should support all optional props', () => {
+      const props: QuickActionsBarProps = {
+        onTaskCreated: (taskId, templateId) => console.log(`Task ${taskId} from template ${templateId}`),
+        onError: (error, templateId) => console.error(`Error in template ${templateId}:`, error),
+        maxActions: 6,
+        showIcons: true,
+        compact: false,
+        className: 'custom-bar'
+      }
+
+      expect(typeof props.onTaskCreated).toBe('function')
+      expect(typeof props.onError).toBe('function')
+      expect(props.maxActions).toBe(6)
+      expect(props.showIcons).toBe(true)
+      expect(props.compact).toBe(false)
+      expect(props.className).toBe('custom-bar')
+    })
+  })
+
+  describe('QuickActionButtonProps', () => {
+    it('should require template and onClick', () => {
+      const props: QuickActionButtonProps = {
+        template: createMockTaskTemplate(),
+        onClick: (template) => console.log('Clicked:', template.id)
+      }
+
+      expect(props.template).toBeDefined()
+      expect(typeof props.onClick).toBe('function')
+    })
+
+    it('should support all optional props', () => {
+      const props: QuickActionButtonProps = {
+        template: createMockTaskTemplate(),
+        onClick: (template) => console.log('Clicked:', template.id),
+        loading: true,
+        showIcon: false,
+        compact: true,
+        className: 'custom-button'
+      }
+
+      expect(props.loading).toBe(true)
+      expect(props.showIcon).toBe(false)
+      expect(props.compact).toBe(true)
+      expect(props.className).toBe('custom-button')
+    })
+  })
+
+  describe('QuickActionVariableModalProps', () => {
+    it('should require all props', () => {
+      const props: QuickActionVariableModalProps = {
+        isOpen: true,
+        template: createMockTaskTemplate(),
+        onClose: () => console.log('Closed'),
+        onTaskCreated: (taskId) => console.log('Created:', taskId)
+      }
+
+      expect(props.isOpen).toBe(true)
+      expect(props.template).toBeDefined()
+      expect(typeof props.onClose).toBe('function')
+      expect(typeof props.onTaskCreated).toBe('function')
+    })
+
+    it('should support optional error handler', () => {
+      const props: QuickActionVariableModalProps = {
+        isOpen: false,
+        template: createMockTaskTemplate(),
+        onClose: () => {},
+        onTaskCreated: (taskId) => {},
+        onError: (error) => console.error('Error:', error)
+      }
+
+      expect(typeof props.onError).toBe('function')
+    })
+  })
+
+  describe('UseQuickActionTemplatesReturn', () => {
+    it('should define all required properties and methods', () => {
+      const mockReturn: UseQuickActionTemplatesReturn = {
+        templates: [createMockTaskTemplate({ isQuickAction: true })],
+        isLoading: false,
+        error: null,
+        refresh: async () => {},
+        createTaskFromTemplate: async (template, variables) => 'task_123',
+        hasRequiredVariables: (template) => false
+      }
+
+      expect(Array.isArray(mockReturn.templates)).toBe(true)
+      expect(typeof mockReturn.isLoading).toBe('boolean')
+      expect(mockReturn.error).toBeNull()
+      expect(typeof mockReturn.refresh).toBe('function')
+      expect(typeof mockReturn.createTaskFromTemplate).toBe('function')
+      expect(typeof mockReturn.hasRequiredVariables).toBe('function')
+    })
+
+    it('should handle loading and error states', () => {
+      const loadingState: UseQuickActionTemplatesReturn = {
+        templates: [],
+        isLoading: true,
+        error: null,
+        refresh: async () => {},
+        createTaskFromTemplate: async () => '',
+        hasRequiredVariables: () => false
+      }
+
+      const errorState: UseQuickActionTemplatesReturn = {
+        templates: [],
+        isLoading: false,
+        error: 'Failed to fetch templates',
+        refresh: async () => {},
+        createTaskFromTemplate: async () => '',
+        hasRequiredVariables: () => false
+      }
+
+      expect(loadingState.isLoading).toBe(true)
+      expect(loadingState.templates).toHaveLength(0)
+      expect(errorState.error).toBe('Failed to fetch templates')
+      expect(errorState.isLoading).toBe(false)
+    })
+  })
+})
+
+// ============================================================================
+// QuickActionsBar Helper Function Tests
+// ============================================================================
+
+describe('QuickActionsBar Helper Functions', () => {
+  describe('templateHasRequiredVariables', () => {
+    it('should return false for template with no variables', () => {
+      const template = createMockTaskTemplate({ variables: undefined })
+      expect(templateHasRequiredVariables(template)).toBe(false)
+    })
+
+    it('should return false for template with empty variables array', () => {
+      const template = createMockTaskTemplate({ variables: [] })
+      expect(templateHasRequiredVariables(template)).toBe(false)
+    })
+
+    it('should return false for template with only optional variables', () => {
+      const template = createMockTaskTemplate({
+        variables: [
+          createMockTemplateVariable({ required: false }),
+          createMockTemplateVariable({ name: 'optional2', required: false })
+        ]
+      })
+      expect(templateHasRequiredVariables(template)).toBe(false)
+    })
+
+    it('should return true for template with required variables', () => {
+      const template = createMockTaskTemplate({
+        variables: [
+          createMockTemplateVariable({ required: true }),
+        ]
+      })
+      expect(templateHasRequiredVariables(template)).toBe(true)
+    })
+
+    it('should return true for template with mixed required/optional variables', () => {
+      const template = createMockTaskTemplate({
+        variables: [
+          createMockTemplateVariable({ name: 'required1', required: true }),
+          createMockTemplateVariable({ name: 'optional1', required: false }),
+          createMockTemplateVariable({ name: 'required2', required: true })
+        ]
+      })
+      expect(templateHasRequiredVariables(template)).toBe(true)
+    })
+  })
+
+  describe('interpolateTemplateString', () => {
+    it('should replace simple placeholders', () => {
+      const result = interpolateTemplateString(
+        'Create {{componentName}} component',
+        { componentName: 'UserProfile' }
+      )
+      expect(result).toBe('Create UserProfile component')
+    })
+
+    it('should replace multiple placeholders', () => {
+      const result = interpolateTemplateString(
+        'Fix bug in {{component}}: {{bugTitle}}',
+        { component: 'AuthService', bugTitle: 'Login fails' }
+      )
+      expect(result).toBe('Fix bug in AuthService: Login fails')
+    })
+
+    it('should leave unmatched placeholders as-is', () => {
+      const result = interpolateTemplateString(
+        'Create {{componentName}} with {{feature}}',
+        { componentName: 'UserProfile' }
+      )
+      expect(result).toBe('Create UserProfile with {{feature}}')
+    })
+
+    it('should handle empty values object', () => {
+      const result = interpolateTemplateString(
+        'Create {{componentName}} component',
+        {}
+      )
+      expect(result).toBe('Create {{componentName}} component')
+    })
+
+    it('should handle numeric values', () => {
+      const result = interpolateTemplateString(
+        'Process {{count}} items with priority {{priority}}',
+        { count: 42, priority: 1 }
+      )
+      expect(result).toBe('Process 42 items with priority 1')
+    })
+
+    it('should handle boolean values', () => {
+      const result = interpolateTemplateString(
+        'Feature enabled: {{enabled}}',
+        { enabled: true }
+      )
+      expect(result).toBe('Feature enabled: true')
+    })
+
+    it('should handle array values by joining with comma', () => {
+      const result = interpolateTemplateString(
+        'Tags: {{tags}}',
+        { tags: ['react', 'typescript', 'ui'] }
+      )
+      expect(result).toBe('Tags: react, typescript, ui')
+    })
+
+    it('should handle empty array values', () => {
+      const result = interpolateTemplateString(
+        'Tags: {{tags}}',
+        { tags: [] }
+      )
+      expect(result).toBe('Tags: ')
+    })
+
+    it('should handle template with no placeholders', () => {
+      const result = interpolateTemplateString(
+        'This is a plain string with no placeholders',
+        { someValue: 'ignored' }
+      )
+      expect(result).toBe('This is a plain string with no placeholders')
+    })
+
+    it('should handle multiline templates', () => {
+      const template = `Create {{componentName}} component
+
+Features:
+- {{feature1}}
+- {{feature2}}
+
+Priority: {{priority}}`
+      const result = interpolateTemplateString(template, {
+        componentName: 'UserProfile',
+        feature1: 'User avatar display',
+        feature2: 'Edit profile button',
+        priority: 'high'
+      })
+
+      expect(result).toContain('Create UserProfile component')
+      expect(result).toContain('- User avatar display')
+      expect(result).toContain('- Edit profile button')
+      expect(result).toContain('Priority: high')
+    })
+
+    it('should not replace partial matches', () => {
+      const result = interpolateTemplateString(
+        '{{name}} {{nameSuffix}} {{prefix_name}}',
+        { name: 'Test' }
+      )
+      expect(result).toBe('Test {{nameSuffix}} {{prefix_name}}')
+    })
+
+    it('should handle special characters in values', () => {
+      const result = interpolateTemplateString(
+        'Bug: {{bugTitle}}',
+        { bugTitle: 'Error: "undefined" is not a function' }
+      )
+      expect(result).toBe('Bug: Error: "undefined" is not a function')
     })
   })
 })

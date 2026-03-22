@@ -12,8 +12,11 @@ import { BudgetWidget } from '@/components/dashboard/BudgetWidget'
 import { AgentUtilizationWidget } from '@/components/dashboard/AgentUtilizationWidget'
 import { ProjectHealthPanel } from '@/components/dashboard/ProjectHealthPanel'
 import { PerformanceMetricsPanel } from '@/components/dashboard/PerformanceMetricsPanel'
+import { QuickActionsBar } from '@/components/dashboard/QuickActionsBar'
+import { ParallelAgentView } from '@/components/agents/ParallelAgentView'
 import { apiClient } from '@/lib/api-client'
 import { useRealtimeUpdates } from '@/lib/useRealtimeUpdates'
+import { useParallelAgentView } from '@/hooks/useParallelAgentView'
 import { formatCost, getStatusVariant, formatStatus, getRelativeTime, truncateId } from '@/lib/utils'
 import type { Task } from '@apexcli/core'
 import type { ProjectHealthMetrics } from '@/types/project-health'
@@ -45,6 +48,19 @@ export default function DashboardPage() {
       includePerformance: true,
       performanceUpdateInterval: 5000,
     },
+  })
+
+  // Parallel agent view with real-time updates
+  const {
+    data: parallelAgentData,
+    loading: parallelLoading,
+    error: parallelError,
+    isConnected: parallelConnected,
+    refresh: refreshParallelAgents,
+  } = useParallelAgentView({
+    autoRefresh: true,
+    refreshInterval: 3000,
+    enableRealtime: true,
   })
 
   useEffect(() => {
@@ -218,8 +234,9 @@ export default function DashboardPage() {
       loadDashboard(),
       refreshPerformance(),
       checkHealth(),
+      refreshParallelAgents(),
     ])
-  }, [refreshPerformance, checkHealth])
+  }, [refreshPerformance, checkHealth, refreshParallelAgents])
 
   // Note: Task actions (cancel/retry) are now handled by the real-time panel component itself
   // through WebSocket events and direct API calls, eliminating the need for manual refresh
@@ -276,8 +293,26 @@ export default function DashboardPage() {
         actions={<Button onClick={handleRefresh}>Refresh</Button>}
       />
 
-      {/* Responsive 5-row dashboard grid layout */}
+      {/* Responsive dashboard layout with Quick Actions */}
       <div className="mt-8 space-y-8">
+        {/* Row 0: Quick Actions Bar */}
+        <QuickActionsBar
+          onTaskCreated={(taskId, templateId) => {
+            console.log(`Task ${taskId} created from template ${templateId}`)
+            // Refresh dashboard data to show the new task
+            handleRefresh()
+            // Navigate to the task detail page
+            router.push(`/tasks/${taskId}`)
+          }}
+          onError={(error, templateId) => {
+            console.error(`Failed to create task from template ${templateId}:`, error)
+            // In a real app, you might want to show a toast notification here
+          }}
+          maxActions={6}
+          showIcons={true}
+          compact={false}
+        />
+
         {/* Row 1: Task Status Overview - 6 column metrics */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <Card>
@@ -384,6 +419,66 @@ export default function DashboardPage() {
             autoRefresh={true}
             autoRefreshInterval={5000}
           />
+        </div>
+
+        {/* Row 3.5: Parallel Agent Execution View - Full width */}
+        <div className="grid gap-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Parallel Agent Execution</h2>
+                {parallelConnected && (
+                  <Badge variant="success" className="text-xs">
+                    Live
+                  </Badge>
+                )}
+                {parallelAgentData.runningCount > 0 && (
+                  <Badge variant="apex" className="text-xs">
+                    {parallelAgentData.runningCount} active
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ParallelAgentView
+                data={parallelAgentData}
+                config={{
+                  layout: 'lanes',
+                  size: 'md',
+                  showProgress: true,
+                  showElapsedTime: true,
+                  showTokenUsage: false,
+                  showCost: false,
+                  showStages: true,
+                  animated: true,
+                  maxLanes: 4,
+                  maxAgentsPerLane: 6,
+                }}
+                onAgentClick={(execution) => {
+                  // Navigate to task detail if task ID is available
+                  if (execution.taskId) {
+                    router.push(`/tasks/${execution.taskId}`)
+                  }
+                }}
+                onAgentPause={async (executionId) => {
+                  // In a real implementation, this would call an API
+                  console.log('Pausing execution:', executionId)
+                }}
+                onAgentResume={async (executionId) => {
+                  console.log('Resuming execution:', executionId)
+                }}
+                onAgentCancel={async (executionId) => {
+                  console.log('Cancelling execution:', executionId)
+                }}
+                onAgentRetry={async (executionId) => {
+                  console.log('Retrying execution:', executionId)
+                }}
+                loading={parallelLoading}
+                error={parallelError}
+                testId="dashboard-parallel-agent-view"
+              />
+            </CardContent>
+          </Card>
         </div>
 
         {/* Row 4: Budget and Agent Utilization Widgets - 2 columns */}

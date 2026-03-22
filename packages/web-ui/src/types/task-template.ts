@@ -444,6 +444,15 @@ export interface TemplateFilters {
 
   /** Search query for name/description */
   search?: string
+
+  /** Filter by autonomy level (for local filtering) */
+  autonomy?: AutonomyLevel
+
+  /** Filter by priority (for local filtering) */
+  priority?: TaskPriority
+
+  /** Filter by effort (for local filtering) */
+  effort?: TaskEffort
 }
 
 /**
@@ -845,4 +854,175 @@ export const VARIABLE_TYPE_CONFIG: Record<TemplateVariableType, { label: string;
   multiselect: { label: 'Multi-select', icon: 'check-square' },
   file: { label: 'File Path', icon: 'file' },
   directory: { label: 'Directory', icon: 'folder' },
+}
+
+// ============================================================================
+// QuickActionsBar Component Props
+// ============================================================================
+
+/**
+ * Props for QuickActionsBar component
+ *
+ * The QuickActionsBar displays templates marked as isQuickAction=true
+ * as buttons for rapid task creation.
+ *
+ * @example
+ * ```tsx
+ * <QuickActionsBar
+ *   onTaskCreated={(taskId, templateId) => {
+ *     console.log(`Task ${taskId} created from template ${templateId}`)
+ *   }}
+ *   maxActions={6}
+ *   compact={false}
+ * />
+ * ```
+ */
+export interface QuickActionsBarProps {
+  /** Callback when a task is created successfully */
+  onTaskCreated?: (taskId: string, templateId: string) => void
+
+  /** Callback when task creation fails */
+  onError?: (error: Error, templateId: string) => void
+
+  /** Maximum number of quick actions to display (default: 8) */
+  maxActions?: number
+
+  /** Whether to show action icons (default: true) */
+  showIcons?: boolean
+
+  /** Whether component is in compact mode (default: false) */
+  compact?: boolean
+
+  /** Custom className */
+  className?: string
+}
+
+/**
+ * Props for QuickActionButton component
+ *
+ * Represents a single quick action button within the QuickActionsBar.
+ */
+export interface QuickActionButtonProps {
+  /** The template to render as a button */
+  template: TaskTemplate
+
+  /** Callback when button is clicked */
+  onClick: (template: TaskTemplate) => void
+
+  /** Whether the button is in loading state */
+  loading?: boolean
+
+  /** Whether to show the template icon (default: true) */
+  showIcon?: boolean
+
+  /** Whether in compact mode (default: false) */
+  compact?: boolean
+
+  /** Custom className */
+  className?: string
+}
+
+/**
+ * Props for QuickActionVariableModal component
+ *
+ * Modal for collecting variable values when creating a task
+ * from a template that has required variables.
+ */
+export interface QuickActionVariableModalProps {
+  /** Whether the modal is open */
+  isOpen: boolean
+
+  /** The template to create task from */
+  template: TaskTemplate
+
+  /** Callback when modal is closed */
+  onClose: () => void
+
+  /** Callback when task is created successfully */
+  onTaskCreated: (taskId: string) => void
+
+  /** Callback when task creation fails */
+  onError?: (error: Error) => void
+
+  /**
+   * Alternative callback for returning interpolated values
+   * instead of creating task directly.
+   * Used when modal is opened from CreateTaskDialog.
+   */
+  onVariablesSubmitted?: (interpolatedValues: {
+    description: string
+    acceptanceCriteria?: string
+    workflow: string
+    autonomy: AutonomyLevel
+  }) => void
+}
+
+/**
+ * Return type for useQuickActionTemplates hook
+ *
+ * Provides quick action templates and utilities for creating tasks.
+ */
+export interface UseQuickActionTemplatesReturn {
+  /** Quick action templates (filtered by isQuickAction=true) */
+  templates: TaskTemplate[]
+
+  /** Loading state */
+  isLoading: boolean
+
+  /** Error state */
+  error: string | null
+
+  /** Refresh templates */
+  refresh: () => Promise<void>
+
+  /**
+   * Create task from template
+   * For templates without variables, creates immediately.
+   * For templates with variables, returns false to indicate modal should open.
+   */
+  createTaskFromTemplate: (
+    template: TaskTemplate,
+    variables?: TemplateVariableValues
+  ) => Promise<string>
+
+  /** Check if template requires variable input */
+  hasRequiredVariables: (template: TaskTemplate) => boolean
+}
+
+/**
+ * Helper function to check if a template has required variables
+ */
+export function templateHasRequiredVariables(template: TaskTemplate): boolean {
+  return (
+    Array.isArray(template.variables) &&
+    template.variables.some((v) => v.required)
+  )
+}
+
+/**
+ * Interpolates a template string with variable values
+ *
+ * @param template - Template string with {{variableName}} placeholders
+ * @param values - Object mapping variable names to their values
+ * @returns Interpolated string with placeholders replaced
+ *
+ * @example
+ * ```typescript
+ * const result = interpolateTemplateString(
+ *   'Fix bug: {{bugTitle}} in {{component}}',
+ *   { bugTitle: 'Login fails', component: 'AuthService' }
+ * )
+ * // result: 'Fix bug: Login fails in AuthService'
+ * ```
+ */
+export function interpolateTemplateString(
+  template: string,
+  values: TemplateVariableValues
+): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+    const value = values[varName]
+    if (value === undefined) return match
+    if (Array.isArray(value)) return value.join(', ')
+    return String(value)
+  })
 }

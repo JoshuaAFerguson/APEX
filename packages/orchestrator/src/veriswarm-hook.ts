@@ -2,21 +2,29 @@
  * VeriSwarm Integration Hook for APEX
  *
  * Integrates VeriSwarm trust scoring into APEX's tool execution lifecycle.
- * Pre-tool-use: optionally checks VeriSwarm decision API before allowing tool execution.
- * Post-tool-use: reports tool calls to VeriSwarm using the standardized event taxonomy.
+ *
+ * Workflow:
+ *   1. User sets VERISWARM_API_KEY (or configures in apex.yaml)
+ *   2. On first run, APEX auto-registers as an agent on VeriSwarm
+ *   3. Credentials stored locally in .apex/veriswarm.json
+ *   4. User gets a claim URL to connect the agent to their VeriSwarm account
+ *   5. All tool calls are automatically reported to VeriSwarm
+ *   6. Optionally, VeriSwarm can enforce allow/deny on tool calls
  *
  * Configuration in apex.yaml:
  *   veriswarm:
  *     enabled: true
  *     apiUrl: "https://api.veriswarm.ai"
  *     apiKey: "vs_..."
- *     agentId: "agt_..."
  *     enforce: false          # If true, denied tools are blocked
  *     onDeny: "log"           # "block" | "log" | "skip"
  *     reportEvents: true      # Report tool calls to VeriSwarm
+ *     ownerEmail: ""          # Optional: your email for ownership claim notification
  *
  * Or via environment variables:
- *   VERISWARM_API_URL, VERISWARM_API_KEY, VERISWARM_AGENT_ID
+ *   VERISWARM_API_KEY, VERISWARM_API_URL, VERISWARM_OWNER_EMAIL
+ *
+ * Agent ID is auto-generated and stored — you do NOT need to set it manually.
  */
 
 import type {
@@ -26,6 +34,9 @@ import type {
   HookJSONOutput,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { HookContext, HooksConfig } from './hooks';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
 
 // ── Configuration ─────────────────────────────────────────────
 
@@ -34,20 +45,85 @@ export interface VeriSwarmConfig {
   apiUrl: string;
   apiKey: string;
   agentId: string;
+  agentApiKey: string;
   enforce: boolean;
   onDeny: 'block' | 'log' | 'skip';
   reportEvents: boolean;
+  ownerEmail: string;
+  projectPath: string;
+  registered: boolean;
 }
 
-export function resolveVeriSwarmConfig(config?: Partial<VeriSwarmConfig>): VeriSwarmConfig {
+interface StoredCredentials {
+  agentId: string;
+  agentApiKey: string;
+  agentSlug: string;
+  registeredAt: string;
+  claimUrl?: string;
+}
+
+const CREDENTIALS_DIR = '.apex';
+const CREDENTIALS_FILE = 'veriswarm.json';
+
+function getCredentialsPath(projectPath: string): string {
+  return path.join(projectPath, CREDENTIALS_DIR, CREDENTIALS_FILE);
+}
+
+function loadStoredCredentials(projectPath: string): StoredCredentials | null {
+  try {
+    const credPath = getCredentialsPath(projectPath);
+    if (fs.existsSync(credPath)) {
+      return JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+    }
+  } catch {
+    // Corrupted file — will re-register
+  }
+  return null;
+}
+
+function saveCredentials(projectPath: string, creds: StoredCredentials): void {
+  try {
+    const dir = path.join(projectPath, CREDENTIALS_DIR);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(getCredentialsPath(projectPath), JSON.stringify(creds, null, 2));
+
+    // Add to .gitignore if not already there
+    const gitignorePath = path.join(projectPath, '.gitignore');
+    const gitignoreEntry = `\n# VeriSwarm agent credentials (do not commit)\n${CREDENTIALS_DIR}/${CREDENTIALS_FILE}\n`;
+    if (fs.existsSync(gitignorePath)) {
+      const content = fs.readFileSync(gitignorePath, 'utf-8');
+      if (!content.includes(CREDENTIALS_FILE)) {
+        fs.appendFileSync(gitignorePath, gitignoreEntry);
+      }
+    }
+  } catch {
+    // Non-fatal — credentials just won't persist
+  }
+}
+
+export function resolveVeriSwarmConfig(
+  config?: Partial<VeriSwarmConfig>,
+  projectPath?: string,
+): VeriSwarmConfig {
+  const resolvedProjectPath = projectPath ?? config?.projectPath ?? process.cwd();
+
+  // Try to load stored credentials
+  const stored = loadStoredCredentials(resolvedProjectPath);
+
   return {
     enabled: config?.enabled ?? (!!process.env.VERISWARM_API_KEY),
     apiUrl: config?.apiUrl ?? process.env.VERISWARM_API_URL ?? 'https://api.veriswarm.ai',
     apiKey: config?.apiKey ?? process.env.VERISWARM_API_KEY ?? '',
-    agentId: config?.agentId ?? process.env.VERISWARM_AGENT_ID ?? '',
+    agentId: config?.agentId ?? stored?.agentId ?? '',
+    agentApiKey: config?.agentApiKey ?? stored?.agentApiKey ?? '',
     enforce: config?.enforce ?? false,
     onDeny: config?.onDeny ?? 'log',
     reportEvents: config?.reportEvents ?? true,
+    ownerEmail: config?.ownerEmail ?? process.env.VERISWARM_OWNER_EMAIL ?? '',
+    projectPath: resolvedProjectPath,
+    registered: !!stored,
   };
 }
 
@@ -56,21 +132,27 @@ export function resolveVeriSwarmConfig(config?: Partial<VeriSwarmConfig>): VeriS
 async function veriswarmRequest(
   vsConfig: VeriSwarmConfig,
   method: string,
-  path: string,
+  apiPath: string,
   body?: Record<string, unknown>,
+  useAgentKey: boolean = false,
 ): Promise<Record<string, unknown> | null> {
   try {
-    const url = `${vsConfig.apiUrl}${path}`;
+    const url = `${vsConfig.apiUrl}${apiPath}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'x-api-key': vsConfig.apiKey,
     };
+
+    if (useAgentKey && vsConfig.agentApiKey) {
+      headers['x-agent-api-key'] = vsConfig.agentApiKey;
+    } else if (vsConfig.apiKey) {
+      headers['x-api-key'] = vsConfig.apiKey;
+    }
 
     const response = await fetch(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(5000), // 5 second timeout
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
@@ -83,35 +165,88 @@ async function veriswarmRequest(
     }
     return null;
   } catch {
-    // VeriSwarm integration should never break APEX — swallow errors
     return null;
   }
 }
 
+// ── Auto-Registration ─────────────────────────────────────────
+
+/**
+ * Automatically register this APEX instance as an agent on VeriSwarm.
+ * Called on first run when API key is set but no agent ID exists.
+ * Returns the updated config with agent credentials, or the original if registration fails.
+ */
+export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<VeriSwarmConfig> {
+  if (vsConfig.registered || vsConfig.agentId) {
+    return vsConfig; // Already registered
+  }
+
+  if (!vsConfig.apiKey) {
+    return vsConfig; // No API key — can't register
+  }
+
+  // Derive agent slug from project directory name
+  const projectName = path.basename(vsConfig.projectPath);
+  const slug = `apex-${projectName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 60);
+
+  const registrationBody: Record<string, unknown> = {
+    slug,
+    display_name: `APEX: ${projectName}`,
+    description: `APEX autonomous development agent for ${projectName}. Auto-registered by APEX orchestrator.`,
+    runtime_name: 'apex',
+    runtime_version: '0.7.0',
+  };
+
+  if (vsConfig.ownerEmail) {
+    registrationBody.owner_email = vsConfig.ownerEmail;
+  }
+
+  console.log(`\n🐝 VeriSwarm: Registering agent "${slug}" ...`);
+
+  const result = await veriswarmRequest(vsConfig, 'POST', '/api/veriswarm/v1/public/agents/register', registrationBody);
+
+  if (!result || !result.agent_id) {
+    console.log('🐝 VeriSwarm: Registration failed (non-fatal). Will retry next run.\n');
+    return vsConfig;
+  }
+
+  const agentId = result.agent_id as string;
+  const agentApiKey = result.agent_api_key as string ?? '';
+  const claimUrl = result.owner_claim_url as string ?? '';
+
+  // Store credentials locally
+  const storedCreds: StoredCredentials = {
+    agentId,
+    agentApiKey,
+    agentSlug: slug,
+    registeredAt: new Date().toISOString(),
+    claimUrl: claimUrl || undefined,
+  };
+  saveCredentials(vsConfig.projectPath, storedCreds);
+
+  // Print registration success with claim instructions
+  console.log(`🐝 VeriSwarm: Agent registered successfully!`);
+  console.log(`   Agent ID:  ${agentId}`);
+  console.log(`   Slug:      ${slug}`);
+  console.log(`   Dashboard: ${vsConfig.apiUrl.replace('api.', '')}/agents/${agentId}`);
+  if (claimUrl) {
+    console.log(`   Claim URL: ${claimUrl}`);
+    console.log(`   ℹ  Claim this agent to boost its identity score and manage it from your VeriSwarm account.`);
+  }
+  console.log(`   Credentials stored in ${CREDENTIALS_DIR}/${CREDENTIALS_FILE}\n`);
+
+  return {
+    ...vsConfig,
+    agentId,
+    agentApiKey,
+    registered: true,
+  };
+}
+
 // ── Tool Name to Event Type Mapping ───────────────────────────
 
-function mapToolToEventType(toolName: string, success: boolean): string {
-  if (!success) return 'tool.call.failure';
-
-  // Map APEX tool names to VeriSwarm taxonomy
-  switch (toolName) {
-    case 'Bash':
-    case 'bash':
-      return 'tool.call.success';
-    case 'Read':
-    case 'Write':
-    case 'Edit':
-    case 'MultiEdit':
-      return 'tool.call.success';
-    case 'WebFetch':
-      return 'tool.call.success';
-    case 'Grep':
-    case 'Glob':
-    case 'LS':
-      return 'tool.call.success';
-    default:
-      return 'tool.call.success';
-  }
+function mapToolToEventType(_toolName: string, success: boolean): string {
+  return success ? 'tool.call.success' : 'tool.call.failure';
 }
 
 function getToolCategory(toolName: string): string {
@@ -156,8 +291,7 @@ async function veriswarmPreToolCheck(
   });
 
   if (!result) {
-    // VeriSwarm unreachable — fail open (allow)
-    return { decision: 'approve' };
+    return { decision: 'approve' }; // Fail open
   }
 
   const decision = result.decision as string;
@@ -173,7 +307,6 @@ async function veriswarmPreToolCheck(
     }
 
     if (vsConfig.onDeny === 'log') {
-      // Log but allow
       context.eventEmitter?.emit('veriswarm:denied', {
         toolName,
         toolUseId,
@@ -181,8 +314,6 @@ async function veriswarmPreToolCheck(
         decision: 'allowed (onDeny=log)',
       });
     }
-
-    // 'skip' or 'log' — allow execution
   }
 
   return { decision: 'approve' };
@@ -205,7 +336,6 @@ async function veriswarmPostToolReport(
   const error = inputRecord.error as string | undefined;
   const success = !error;
 
-  // Calculate duration if we have start times
   let durationMs: number | undefined;
   if (context.toolStartTimes && toolUseId) {
     const startTime = context.toolStartTimes.get(toolUseId);
@@ -223,24 +353,16 @@ async function veriswarmPostToolReport(
     apex_task_id: context.taskId,
   };
 
-  if (durationMs !== undefined) {
-    payload.duration_ms = durationMs;
-  }
-
-  if (context.currentAgent) {
-    payload.apex_agent = context.currentAgent;
-  }
-
-  if (context.currentStage) {
-    payload.apex_stage = context.currentStage;
-  }
+  if (durationMs !== undefined) payload.duration_ms = durationMs;
+  if (context.currentAgent) payload.apex_agent = context.currentAgent;
+  if (context.currentStage) payload.apex_stage = context.currentStage;
 
   if (error) {
     payload.error_type = 'tool_error';
     payload.error_summary = String(error).slice(0, 200);
   }
 
-  // Fire and forget — don't block APEX on VeriSwarm reporting
+  // Fire and forget
   veriswarmRequest(vsConfig, 'POST', '/api/veriswarm/v1/events', {
     event_id: eventId,
     agent_id: vsConfig.agentId,
@@ -248,9 +370,7 @@ async function veriswarmPostToolReport(
     event_type: eventType,
     occurred_at: new Date().toISOString(),
     payload,
-  }).catch(() => {
-    // Swallow — never break APEX
-  });
+  }).catch(() => {});
 
   return {};
 }
@@ -296,18 +416,52 @@ export async function reportTaskFailed(vsConfig: VeriSwarmConfig, taskId: string
   }).catch(() => {});
 }
 
+// ── Trust Score Check ─────────────────────────────────────────
+
+/**
+ * Check the agent's current trust score on VeriSwarm.
+ * Returns the score data or null if unavailable.
+ */
+export async function checkMyTrustScore(vsConfig: VeriSwarmConfig): Promise<Record<string, unknown> | null> {
+  if (!vsConfig.agentId || !vsConfig.agentApiKey) return null;
+
+  return veriswarmRequest(vsConfig, 'GET', '/api/veriswarm/v1/agents/me/scores', undefined, true);
+}
+
 // ── Hook Registration ─────────────────────────────────────────
 
 /**
- * Creates VeriSwarm hooks that integrate into APEX's existing hook system.
- * Returns PreToolUse and PostToolUse hook matchers that can be merged
- * into the hooks config returned by createHooks().
+ * Initialize VeriSwarm integration. Auto-registers if needed, then creates hooks.
+ * This should be called during APEX initialization, before the first task runs.
+ */
+export async function initializeVeriSwarm(
+  context: HookContext,
+  config?: Partial<VeriSwarmConfig>,
+): Promise<{ hooks: HooksConfig; config: VeriSwarmConfig }> {
+  let vsConfig = resolveVeriSwarmConfig(config, context.projectPath);
+
+  if (!vsConfig.enabled || !vsConfig.apiKey) {
+    return { hooks: {}, config: vsConfig };
+  }
+
+  // Auto-register if no agent ID stored
+  if (!vsConfig.agentId) {
+    vsConfig = await autoRegisterAgent(vsConfig);
+  }
+
+  const hooks = createVeriSwarmHooks(context, vsConfig);
+  return { hooks, config: vsConfig };
+}
+
+/**
+ * Creates VeriSwarm hooks for an already-configured integration.
+ * Use initializeVeriSwarm() for the full flow including auto-registration.
  */
 export function createVeriSwarmHooks(
   context: HookContext,
   vsConfig: VeriSwarmConfig,
 ): HooksConfig {
-  if (!vsConfig.enabled || !vsConfig.apiKey) {
+  if (!vsConfig.enabled || !vsConfig.apiKey || !vsConfig.agentId) {
     return {};
   }
 
@@ -329,22 +483,20 @@ export function createVeriSwarmHooks(
 
   const hooks: HooksConfig = {};
 
-  // Pre-tool-use: decision check (only if enforce mode is on)
   if (vsConfig.enforce) {
     hooks.PreToolUse = [
       {
         hooks: [preHook],
-        timeout: 6, // Slightly longer than the 5s fetch timeout
+        timeout: 11, // Slightly longer than the 10s fetch timeout
       },
     ];
   }
 
-  // Post-tool-use: event reporting (always, if reporting is enabled)
   if (vsConfig.reportEvents) {
     hooks.PostToolUse = [
       {
         hooks: [postHook],
-        timeout: 2, // Fire-and-forget, don't block
+        timeout: 2,
       },
     ];
   }
@@ -354,7 +506,6 @@ export function createVeriSwarmHooks(
 
 /**
  * Merge VeriSwarm hooks into an existing HooksConfig.
- * Appends VeriSwarm hooks after existing hooks in each event category.
  */
 export function mergeHooks(base: HooksConfig, veriswarm: HooksConfig): HooksConfig {
   const merged = { ...base };

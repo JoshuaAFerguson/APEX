@@ -12,11 +12,14 @@ import { GatePanel } from '@/components/tasks/GatePanel'
 import { SubtaskList, ParentTaskInfo } from '@/components/tasks/SubtaskList'
 import { SubtaskTree } from '@/components/tasks/SubtaskTree'
 import { TaskDependencyGraph } from '@/components/tasks/TaskDependencyGraph'
+import { ExecutionTimeline } from '@/components/tasks/ExecutionTimeline'
 import { TokenUsageChart } from '@/components/charts/TokenUsageChart'
+import { SaveTemplateModal } from '@/components/templates/SaveTemplateModal'
 import { apiClient } from '@/lib/api-client'
 import { useTaskStream } from '@/lib/websocket-client'
 import { formatCost, getStatusVariant, formatStatus, formatDate, truncateId } from '@/lib/utils'
-import { ChevronLeft, RefreshCw, XCircle, RotateCcw, Clock, GitBranch, Play } from 'lucide-react'
+import { transformTaskToExecutionStages, getCurrentStageId, shouldShowExecutionTimeline } from '@/lib/execution-timeline-utils'
+import { ChevronLeft, RefreshCw, XCircle, RotateCcw, Clock, GitBranch, Play, Save } from 'lucide-react'
 import type { Task } from '@apexcli/core'
 
 interface LogEntry {
@@ -41,6 +44,7 @@ export default function TaskDetailPage() {
   const [relatedTasks, setRelatedTasks] = useState<Task[]>([])
   const [dependenciesLoading, setDependenciesLoading] = useState(false)
   const [dependenciesError, setDependenciesError] = useState<string | null>(null)
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false)
 
   // WebSocket streaming for real-time updates
   const { events, isConnected } = useTaskStream(taskId)
@@ -255,6 +259,19 @@ export default function TaskDetailPage() {
     }
   }
 
+  const handleSaveAsTemplate = () => {
+    if (!task?.description) {
+      setError('Cannot save template: Task description is missing')
+      return
+    }
+    setShowSaveTemplateModal(true)
+  }
+
+  const handleTemplateSaved = (templateId: string) => {
+    setShowSaveTemplateModal(false)
+    // Optional: Show success toast or other feedback here
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -364,6 +381,16 @@ export default function TaskDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSaveAsTemplate}
+              className="text-foreground-secondary hover:text-foreground"
+              title="Save this task as a template for future use"
+            >
+              <Save className="w-4 h-4 mr-1" />
+              Save as Template
+            </Button>
             <Button variant="secondary" size="sm" onClick={loadTask}>
               <RefreshCw className="w-4 h-4 mr-1" />
               Refresh
@@ -427,6 +454,27 @@ export default function TaskDetailPage() {
               onApproved={loadTask}
               onRejected={loadTask}
             />
+          )}
+
+          {/* Execution Timeline */}
+          {shouldShowExecutionTimeline(task) && (
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold">Execution Timeline</h2>
+              </CardHeader>
+              <CardContent>
+                <ExecutionTimeline
+                  stages={transformTaskToExecutionStages(task)}
+                  currentStageId={getCurrentStageId(task)}
+                  showTiming={true}
+                  animated={isRunning}
+                  onStageClick={(stageId) => {
+                    // Optional: could scroll to relevant logs or show stage-specific details
+                    console.log('Timeline stage clicked:', stageId)
+                  }}
+                />
+              </CardContent>
+            </Card>
           )}
 
           {/* Task Dependencies Graph */}
@@ -602,6 +650,21 @@ export default function TaskDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Save Template Modal */}
+      {task && (
+        <SaveTemplateModal
+          isOpen={showSaveTemplateModal}
+          onClose={() => setShowSaveTemplateModal(false)}
+          onSaved={handleTemplateSaved}
+          taskData={{
+            description: task.description,
+            acceptanceCriteria: task.acceptanceCriteria || undefined,
+            workflow: task.workflow,
+            autonomy: task.autonomy,
+          }}
+        />
+      )}
     </div>
   )
 }

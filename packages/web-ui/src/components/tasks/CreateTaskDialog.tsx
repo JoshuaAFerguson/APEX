@@ -3,8 +3,14 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
+import { Alert, AlertDescription } from '@/components/ui/Alert'
 import { apiClient } from '@/lib/api-client'
-import { X, Plus, Zap } from 'lucide-react'
+import { TemplateSelectionModal } from '@/components/templates/TemplateSelectionModal'
+import { SaveTemplateModal } from '@/components/templates/SaveTemplateModal'
+import { QuickActionVariableModal } from '@/components/dashboard/QuickActionVariableModal'
+import { templateHasRequiredVariables } from '@/types/task-template'
+import type { TaskTemplate } from '@/types/task-template'
+import { X, Plus, Zap, FileText, Info, Save } from 'lucide-react'
 
 interface CreateTaskDialogProps {
   isOpen: boolean
@@ -34,6 +40,63 @@ export function CreateTaskDialog({ isOpen, onClose, onCreated }: CreateTaskDialo
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Template-related state
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false)
+  const [showVariableModal, setShowVariableModal] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null)
+  const [isFromTemplate, setIsFromTemplate] = useState(false)
+
+  // Template selection handlers
+  const handleTemplateSelected = (template: TaskTemplate) => {
+    setSelectedTemplate(template)
+    setShowTemplateModal(false)
+
+    // Check if template has required variables
+    if (templateHasRequiredVariables(template)) {
+      // Open variable modal for templates with required variables
+      setShowVariableModal(true)
+    } else {
+      // Pre-fill form with template data for templates without variables
+      setDescription(template.descriptionTemplate)
+      setAcceptanceCriteria(template.acceptanceCriteriaTemplate || '')
+      setWorkflow(template.workflow)
+      setAutonomy(template.autonomy)
+      setIsFromTemplate(true)
+    }
+  }
+
+  const handleVariableModalTaskCreated = (taskId: string) => {
+    // Task was created directly from variable modal, close everything
+    setShowVariableModal(false)
+    setSelectedTemplate(null)
+    resetForm()
+    onCreated(taskId)
+    onClose()
+  }
+
+  const resetForm = () => {
+    setDescription('')
+    setAcceptanceCriteria('')
+    setWorkflow('feature')
+    setAutonomy('review-before-commit')
+    setSelectedTemplate(null)
+    setIsFromTemplate(false)
+  }
+
+  const handleSaveAsTemplate = () => {
+    if (!description.trim()) {
+      setError('Please enter a task description before saving as template')
+      return
+    }
+    setShowSaveTemplateModal(true)
+  }
+
+  const handleTemplateSaved = (templateId: string) => {
+    setShowSaveTemplateModal(false)
+    // Optional: You could show a success message here or redirect to templates
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -52,11 +115,7 @@ export function CreateTaskDialog({ isOpen, onClose, onCreated }: CreateTaskDialo
         autonomy,
       })
       onCreated(response.taskId)
-      // Reset form
-      setDescription('')
-      setAcceptanceCriteria('')
-      setWorkflow('feature')
-      setAutonomy('review-before-commit')
+      resetForm()
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create task')
@@ -83,18 +142,56 @@ export function CreateTaskDialog({ isOpen, onClose, onCreated }: CreateTaskDialo
             <div className="p-2 rounded-lg bg-apex-500/10">
               <Zap className="w-5 h-5 text-apex-500" />
             </div>
-            <h2 className="text-lg font-semibold">Create New Task</h2>
+            <div>
+              <h2 className="text-lg font-semibold">Create New Task</h2>
+              {isFromTemplate && selectedTemplate && (
+                <p className="text-sm text-foreground-secondary">
+                  From template: {selectedTemplate.name}
+                </p>
+              )}
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-background-tertiary transition-colors"
-          >
-            <X className="w-5 h-5 text-foreground-secondary" />
-          </button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowTemplateModal(true)}
+              disabled={loading}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Use Template
+            </Button>
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-background-tertiary transition-colors"
+            >
+              <X className="w-5 h-5 text-foreground-secondary" />
+            </button>
+          </div>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* Template Info */}
+          {isFromTemplate && selectedTemplate && (
+            <Alert className="border-blue-200 bg-blue-50">
+              <Info className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-700 flex items-center justify-between">
+                <span>Form pre-filled from template: <strong>{selectedTemplate.name}</strong></span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    resetForm()
+                    setError(null)
+                  }}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-100 h-auto p-1"
+                >
+                  Clear
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           {/* Description */}
           <div>
             <label className="block text-sm font-medium mb-2">
@@ -176,26 +273,73 @@ export function CreateTaskDialog({ isOpen, onClose, onCreated }: CreateTaskDialo
           )}
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
-              Cancel
+          <div className="flex items-center justify-between pt-4 border-t border-border">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleSaveAsTemplate}
+              disabled={loading || !description.trim()}
+              className="text-foreground-secondary hover:text-foreground"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Save as Template
             </Button>
-            <Button type="submit" variant="primary" disabled={loading || !description.trim()}>
-              {loading ? (
-                <>
-                  <Spinner size="sm" className="mr-2" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Task
-                </>
-              )}
-            </Button>
+            <div className="flex gap-3">
+              <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={loading || !description.trim()}>
+                {loading ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Task
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </form>
       </div>
+
+      {/* Template Selection Modal */}
+      <TemplateSelectionModal
+        isOpen={showTemplateModal}
+        onClose={() => setShowTemplateModal(false)}
+        onTemplateSelected={handleTemplateSelected}
+      />
+
+      {/* Save Template Modal */}
+      <SaveTemplateModal
+        isOpen={showSaveTemplateModal}
+        onClose={() => setShowSaveTemplateModal(false)}
+        onSaved={handleTemplateSaved}
+        taskData={{
+          description,
+          acceptanceCriteria: acceptanceCriteria || undefined,
+          workflow,
+          autonomy,
+        }}
+      />
+
+      {/* Variable Modal for templates with required variables */}
+      {selectedTemplate && showVariableModal && (
+        <QuickActionVariableModal
+          isOpen={showVariableModal}
+          template={selectedTemplate}
+          onClose={() => {
+            setShowVariableModal(false)
+            setSelectedTemplate(null)
+          }}
+          onTaskCreated={handleVariableModalTaskCreated}
+          onError={(error) => setError(error.message)}
+        />
+      )}
     </div>
   )
 }

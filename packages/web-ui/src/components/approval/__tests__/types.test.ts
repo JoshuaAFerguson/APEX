@@ -22,6 +22,7 @@ import type {
 
 import {
   isPendingGate,
+  isPendingGateStrict,
   isResolvedGate,
   isGateRequiredEvent,
   isGateApprovedEvent,
@@ -36,6 +37,7 @@ import {
   validateGateType,
   validateResourceImpact,
   validateGatePriority,
+  INITIAL_CONFIRMATION_STATE,
 } from '@/types/approval-gate-panel'
 
 import {
@@ -105,7 +107,9 @@ describe('Approval Gate Type Guards', () => {
       const invalidGate = { ...pendingGate }
       delete (invalidGate as any).resourceImpact
 
-      expect(isPendingGate(invalidGate)).toBe(false)
+      // isPendingGate allows optional resourceImpact, use isPendingGateStrict for strict validation
+      expect(isPendingGate(invalidGate)).toBe(true) // resourceImpact is optional
+      expect(isPendingGateStrict(invalidGate)).toBe(false) // strict version requires it
     })
   })
 
@@ -343,24 +347,18 @@ describe('State Validation Functions', () => {
 })
 
 describe('Confirmation Reducer', () => {
-  const initialState: ConfirmationState = {
-    isOpen: false,
-    action: null,
-    gate: null,
-    comment: '',
-    isLoading: false,
-    error: null,
-  }
+  // Use the exported INITIAL_CONFIRMATION_STATE which uses actionType/isSubmitting
+  const initialState = INITIAL_CONFIRMATION_STATE
 
   describe('OPEN_DIALOG action', () => {
     it('should open dialog with action and gate', () => {
       const gate = {} as PendingApprovalGate
-      const action = { type: 'OPEN_DIALOG' as const, action: 'approve' as const, gate }
+      const action = { type: 'OPEN_DIALOG' as const, payload: { actionType: 'approve' as const, gate } }
 
       const newState = confirmationReducer(initialState, action)
 
       expect(newState.isOpen).toBe(true)
-      expect(newState.action).toBe('approve')
+      expect(newState.actionType).toBe('approve')
       expect(newState.gate).toBe(gate)
       expect(newState.comment).toBe('')
       expect(newState.error).toBe(null)
@@ -369,10 +367,10 @@ describe('Confirmation Reducer', () => {
 
   describe('CLOSE_DIALOG action', () => {
     it('should close dialog and reset state', () => {
-      const openState = {
+      const openState: ConfirmationState = {
         ...initialState,
         isOpen: true,
-        action: 'approve' as const,
+        actionType: 'approve' as const,
         gate: {} as PendingApprovalGate,
         comment: 'test comment',
         error: 'test error',
@@ -381,43 +379,44 @@ describe('Confirmation Reducer', () => {
       const action = { type: 'CLOSE_DIALOG' as const }
       const newState = confirmationReducer(openState, action)
 
+      // CLOSE_DIALOG only closes the dialog, doesn't reset other state
       expect(newState.isOpen).toBe(false)
-      expect(newState.action).toBe(null)
-      expect(newState.gate).toBe(null)
-      expect(newState.comment).toBe('')
-      expect(newState.error).toBe(null)
+      expect(newState.actionType).toBe('approve') // Preserved
+      expect(newState.gate).toBe(openState.gate) // Preserved
+      expect(newState.comment).toBe('test comment') // Preserved
+      expect(newState.error).toBe('test error') // Preserved
     })
   })
 
   describe('SET_COMMENT action', () => {
     it('should update comment', () => {
-      const action = { type: 'SET_COMMENT' as const, comment: 'new comment' }
+      const action = { type: 'SET_COMMENT' as const, payload: 'new comment' }
       const newState = confirmationReducer(initialState, action)
 
       expect(newState.comment).toBe('new comment')
     })
   })
 
-  describe('SET_LOADING action', () => {
+  describe('SUBMIT_START action', () => {
     it('should update loading state', () => {
-      const action = { type: 'SET_LOADING' as const, isLoading: true }
+      const action = { type: 'SUBMIT_START' as const }
       const newState = confirmationReducer(initialState, action)
 
-      expect(newState.isLoading).toBe(true)
+      expect(newState.isSubmitting).toBe(true)
     })
   })
 
-  describe('SET_ERROR action', () => {
+  describe('SUBMIT_ERROR action', () => {
     it('should update error state', () => {
-      const action = { type: 'SET_ERROR' as const, error: 'test error' }
+      const action = { type: 'SUBMIT_ERROR' as const, payload: 'test error' }
       const newState = confirmationReducer(initialState, action)
 
       expect(newState.error).toBe('test error')
     })
 
-    it('should clear error when error is null', () => {
-      const errorState = { ...initialState, error: 'existing error' }
-      const action = { type: 'SET_ERROR' as const, error: null }
+    it('should clear error with RESET', () => {
+      const errorState: ConfirmationState = { ...initialState, error: 'existing error' }
+      const action = { type: 'RESET' as const }
       const newState = confirmationReducer(errorState, action)
 
       expect(newState.error).toBe(null)
@@ -632,7 +631,7 @@ describe('Edge Cases and Error Conditions', () => {
   it('should handle malformed objects gracefully', () => {
     const malformedGate = {
       id: 'gate-1',
-      // Missing required properties
+      // Missing required properties (name, taskId, status, requiredAt/respondedAt)
     }
 
     expect(isPendingGate(malformedGate)).toBe(false)
