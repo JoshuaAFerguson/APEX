@@ -1776,7 +1776,34 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       maxTokensPerTask: this.effectiveConfig.limits.maxTokensPerTask || 100000,
     });
 
+    // Initialize VeriSwarm integration (auto-registers agent if needed)
+    await this.initializeVeriSwarmIntegration();
+
     this.initialized = true;
+  }
+
+  private veriswarmConfig: import('./veriswarm-hook').VeriSwarmConfig | null = null;
+
+  private async initializeVeriSwarmIntegration(): Promise<void> {
+    try {
+      const { initializeVeriSwarm } = await import('./veriswarm-hook.js');
+      const vsConfigInput = (this.config as any)?.veriswarm as Partial<import('./veriswarm-hook').VeriSwarmConfig> | undefined;
+
+      const hookContext: import('./hooks').HookContext = {
+        taskId: 'init',
+        store: this.store,
+        projectPath: this.projectPath,
+      };
+
+      const { config: vsConfig } = await initializeVeriSwarm(hookContext, {
+        ...vsConfigInput,
+        projectPath: this.projectPath,
+      });
+
+      this.veriswarmConfig = vsConfig;
+    } catch {
+      // Non-fatal: VeriSwarm is optional
+    }
   }
 
   /**
@@ -4059,6 +4086,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       config: this.effectiveConfig,
       cliFlags: this.currentTaskCliFlags,
       aliasResolver: this.aliasResolver,
+      veriswarm: this.veriswarmConfig ? {
+        enabled: this.veriswarmConfig.enabled,
+        apiUrl: this.veriswarmConfig.apiUrl,
+        apiKey: this.veriswarmConfig.apiKey,
+        agentId: this.veriswarmConfig.agentId,
+        agentApiKey: this.veriswarmConfig.agentApiKey,
+        enforce: this.veriswarmConfig.enforce,
+        onDeny: this.veriswarmConfig.onDeny,
+        reportEvents: this.veriswarmConfig.reportEvents,
+      } : undefined,
     };
 
     // Store the context for access during tool completion
