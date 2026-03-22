@@ -156,6 +156,13 @@ async function veriswarmRequest(
     });
 
     if (!response.ok) {
+      // Log error details for debugging (only for non-event-reporting calls)
+      if (!apiPath.includes('/events')) {
+        try {
+          const errorBody = await response.text();
+          console.log(`🐝 VeriSwarm: ${method} ${apiPath} → ${response.status}: ${errorBody.slice(0, 200)}`);
+        } catch { /* ignore */ }
+      }
       return null;
     }
 
@@ -203,7 +210,7 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
 
   console.log(`\n🐝 VeriSwarm: Registering agent "${slug}" ...`);
 
-  const result = await veriswarmRequest(vsConfig, 'POST', '/api/veriswarm/v1/public/agents/register', registrationBody);
+  const result = await veriswarmRequest(vsConfig, 'POST', '/v1/public/agents/register', registrationBody);
 
   if (!result || !result.agent_id) {
     console.log('🐝 VeriSwarm: Registration failed (non-fatal). Will retry next run.\n');
@@ -284,7 +291,7 @@ async function veriswarmPreToolCheck(
 
   const toolName = (input as Record<string, unknown>).tool_name as string ?? 'unknown';
 
-  const result = await veriswarmRequest(vsConfig, 'POST', '/api/veriswarm/v1/decisions/check', {
+  const result = await veriswarmRequest(vsConfig, 'POST', '/v1/decisions/check', {
     agent_id: vsConfig.agentId,
     action_type: 'tool_call',
     resource_type: toolName,
@@ -363,7 +370,7 @@ async function veriswarmPostToolReport(
   }
 
   // Fire and forget
-  veriswarmRequest(vsConfig, 'POST', '/api/veriswarm/v1/events', {
+  veriswarmRequest(vsConfig, 'POST', '/v1/events', {
     event_id: eventId,
     agent_id: vsConfig.agentId,
     source_type: 'agent',
@@ -380,7 +387,7 @@ async function veriswarmPostToolReport(
 export async function reportTaskStarted(vsConfig: VeriSwarmConfig, taskId: string, taskType: string): Promise<void> {
   if (!vsConfig.enabled || !vsConfig.reportEvents || !vsConfig.agentId) return;
 
-  await veriswarmRequest(vsConfig, 'POST', '/api/veriswarm/v1/events', {
+  await veriswarmRequest(vsConfig, 'POST', '/v1/events', {
     event_id: `apex-task-start-${taskId}`,
     agent_id: vsConfig.agentId,
     source_type: 'agent',
@@ -393,7 +400,7 @@ export async function reportTaskStarted(vsConfig: VeriSwarmConfig, taskId: strin
 export async function reportTaskCompleted(vsConfig: VeriSwarmConfig, taskId: string, taskType: string, durationMs?: number): Promise<void> {
   if (!vsConfig.enabled || !vsConfig.reportEvents || !vsConfig.agentId) return;
 
-  await veriswarmRequest(vsConfig, 'POST', '/api/veriswarm/v1/events', {
+  await veriswarmRequest(vsConfig, 'POST', '/v1/events', {
     event_id: `apex-task-complete-${taskId}`,
     agent_id: vsConfig.agentId,
     source_type: 'agent',
@@ -406,7 +413,7 @@ export async function reportTaskCompleted(vsConfig: VeriSwarmConfig, taskId: str
 export async function reportTaskFailed(vsConfig: VeriSwarmConfig, taskId: string, taskType: string, errorType: string): Promise<void> {
   if (!vsConfig.enabled || !vsConfig.reportEvents || !vsConfig.agentId) return;
 
-  await veriswarmRequest(vsConfig, 'POST', '/api/veriswarm/v1/events', {
+  await veriswarmRequest(vsConfig, 'POST', '/v1/events', {
     event_id: `apex-task-fail-${taskId}`,
     agent_id: vsConfig.agentId,
     source_type: 'agent',
@@ -425,7 +432,7 @@ export async function reportTaskFailed(vsConfig: VeriSwarmConfig, taskId: string
 export async function checkMyTrustScore(vsConfig: VeriSwarmConfig): Promise<Record<string, unknown> | null> {
   if (!vsConfig.agentId || !vsConfig.agentApiKey) return null;
 
-  return veriswarmRequest(vsConfig, 'GET', '/api/veriswarm/v1/agents/me/scores', undefined, true);
+  return veriswarmRequest(vsConfig, 'GET', '/v1/agents/me/scores', undefined, true);
 }
 
 // ── Hook Registration ─────────────────────────────────────────

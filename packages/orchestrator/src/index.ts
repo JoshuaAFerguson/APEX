@@ -1801,8 +1801,9 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
       });
 
       this.veriswarmConfig = vsConfig;
-    } catch {
+    } catch (err) {
       // Non-fatal: VeriSwarm is optional
+      console.log(`🐝 VeriSwarm: initialization skipped (${err instanceof Error ? err.message : 'unknown error'})`);
     }
   }
 
