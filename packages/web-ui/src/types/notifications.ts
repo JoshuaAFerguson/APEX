@@ -41,8 +41,9 @@ export interface Notification {
 
 /**
  * Input for creating a new notification (id and createdAt are auto-generated)
+ * duration and dismissible are optional and will use defaults if not provided
  */
-export type CreateNotificationInput = Omit<Notification, 'id' | 'createdAt'> & {
+export type CreateNotificationInput = Omit<Notification, 'id' | 'createdAt' | 'duration' | 'dismissible'> & {
   duration?: number
   dismissible?: boolean
 }

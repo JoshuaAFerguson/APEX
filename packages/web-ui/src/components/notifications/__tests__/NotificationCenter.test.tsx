@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 
+import React from 'react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -17,6 +18,18 @@ vi.mock('react-dom', async () => {
     createPortal: (element: React.ReactNode) => element,
   }
 })
+
+// Mock lucide-react icons
+vi.mock('lucide-react', () => ({
+  Bell: ({ className, ...props }: any) => <div data-testid="bell-icon" className={className} {...props} />,
+  Check: ({ className, ...props }: any) => <div data-testid="check-icon" className={className} {...props} />,
+  X: ({ className, ...props }: any) => <div data-testid="x-icon" className={className} {...props} />,
+  Settings: ({ className, ...props }: any) => <div data-testid="settings-icon" className={className} {...props} />,
+  CheckCircle: ({ className, ...props }: any) => <div data-testid="check-circle-icon" className={className} {...props} />,
+  XCircle: ({ className, ...props }: any) => <div data-testid="x-circle-icon" className={className} {...props} />,
+  AlertTriangle: ({ className, ...props }: any) => <div data-testid="alert-triangle-icon" className={className} {...props} />,
+  Info: ({ className, ...props }: any) => <div data-testid="info-icon" className={className} {...props} />,
+}))
 
 // Wrapper component with provider
 function TestWrapper({ children }: { children: React.ReactNode }) {

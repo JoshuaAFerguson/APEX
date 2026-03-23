@@ -11,6 +11,9 @@ import {
   isTaskRunning,
   getProgressVariant,
   formatPercentage,
+  getPanelGridClasses,
+  getGridLayoutClasses,
+  GRID_CONFIGS,
 } from '../utils';
 import type { TaskStatus } from '@apexcli/core';
 
@@ -579,5 +582,162 @@ describe('formatPercentage', () => {
 
   it('should handle high precision values', () => {
     expect(formatPercentage(0.123456789, 5)).toBe('12.34568%');
+  });
+});
+
+describe('GRID_CONFIGS', () => {
+  it('should have grid configurations for 1-6 panels', () => {
+    expect(GRID_CONFIGS[1]).toBe('grid grid-cols-1 gap-2');
+    expect(GRID_CONFIGS[2]).toBe('grid grid-cols-1 sm:grid-cols-2 gap-2');
+    expect(GRID_CONFIGS[3]).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2');
+    expect(GRID_CONFIGS[4]).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2');
+    expect(GRID_CONFIGS[5]).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2');
+    expect(GRID_CONFIGS[6]).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2');
+  });
+
+  it('should use responsive breakpoints correctly', () => {
+    // All configs should start with single column
+    Object.values(GRID_CONFIGS).forEach((config) => {
+      expect(config).toContain('grid-cols-1');
+      expect(config).toContain('gap-2');
+    });
+
+    // Multi-column configs should have responsive breakpoints
+    expect(GRID_CONFIGS[2]).toContain('sm:grid-cols-2');
+    expect(GRID_CONFIGS[3]).toContain('lg:grid-cols-3');
+    expect(GRID_CONFIGS[4]).toContain('lg:grid-cols-4');
+    expect(GRID_CONFIGS[5]).toContain('xl:grid-cols-5');
+    expect(GRID_CONFIGS[6]).toContain('xl:grid-cols-6');
+  });
+});
+
+describe('getPanelGridClasses', () => {
+  it('should return empty string when no panel is maximized', () => {
+    const result = getPanelGridClasses(false, false);
+    expect(result).toBe('');
+  });
+
+  it('should return "col-span-full" when this panel is maximized', () => {
+    const result = getPanelGridClasses(true, true);
+    expect(result).toBe('col-span-full');
+  });
+
+  it('should return "hidden" when another panel is maximized', () => {
+    const result = getPanelGridClasses(true, false);
+    expect(result).toBe('hidden');
+  });
+
+  it('should handle edge case where isMaximized is true but isThisMaximized is false', () => {
+    // This represents a panel that is NOT maximized while another panel IS maximized
+    const result = getPanelGridClasses(true, false);
+    expect(result).toBe('hidden');
+  });
+
+  it('should handle edge case where isMaximized is false regardless of isThisMaximized', () => {
+    // When no panel is maximized, isThisMaximized should be irrelevant
+    expect(getPanelGridClasses(false, true)).toBe('');
+    expect(getPanelGridClasses(false, false)).toBe('');
+  });
+
+  // Test scenarios that might occur in real usage
+  describe('real-world scenarios', () => {
+    it('should handle multiple panels where none is maximized', () => {
+      // Panel 1
+      expect(getPanelGridClasses(false, false)).toBe('');
+      // Panel 2
+      expect(getPanelGridClasses(false, false)).toBe('');
+      // Panel 3
+      expect(getPanelGridClasses(false, false)).toBe('');
+    });
+
+    it('should handle multiple panels where one is maximized', () => {
+      // Panel 1 (maximized)
+      expect(getPanelGridClasses(true, true)).toBe('col-span-full');
+      // Panel 2 (not maximized)
+      expect(getPanelGridClasses(true, false)).toBe('hidden');
+      // Panel 3 (not maximized)
+      expect(getPanelGridClasses(true, false)).toBe('hidden');
+    });
+  });
+});
+
+describe('getGridLayoutClasses', () => {
+  it('should return single column layout when maximized', () => {
+    // Any panel count should return single column when maximized
+    expect(getGridLayoutClasses(1, true)).toBe('grid grid-cols-1 gap-2');
+    expect(getGridLayoutClasses(3, true)).toBe('grid grid-cols-1 gap-2');
+    expect(getGridLayoutClasses(6, true)).toBe('grid grid-cols-1 gap-2');
+  });
+
+  it('should return appropriate grid config for panel count when not maximized', () => {
+    expect(getGridLayoutClasses(1, false)).toBe('grid grid-cols-1 gap-2');
+    expect(getGridLayoutClasses(2, false)).toBe('grid grid-cols-1 sm:grid-cols-2 gap-2');
+    expect(getGridLayoutClasses(3, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2');
+    expect(getGridLayoutClasses(4, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2');
+    expect(getGridLayoutClasses(5, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2');
+    expect(getGridLayoutClasses(6, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2');
+  });
+
+  it('should fall back to 6-column layout for panel counts > 6', () => {
+    expect(getGridLayoutClasses(7, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2');
+    expect(getGridLayoutClasses(10, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2');
+    expect(getGridLayoutClasses(100, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2');
+  });
+
+  it('should handle edge cases with panel count 0 or negative', () => {
+    // Should fall back to 6-column layout for invalid counts
+    expect(getGridLayoutClasses(0, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2');
+    expect(getGridLayoutClasses(-1, false)).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2');
+  });
+
+  // Test scenarios that might occur in real usage
+  describe('real-world scenarios', () => {
+    it('should handle dashboard with 3 panels, none maximized', () => {
+      const result = getGridLayoutClasses(3, false);
+      expect(result).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2');
+    });
+
+    it('should handle dashboard with 3 panels, one maximized', () => {
+      const result = getGridLayoutClasses(3, true);
+      expect(result).toBe('grid grid-cols-1 gap-2');
+    });
+
+    it('should handle large dashboard with many panels', () => {
+      const result = getGridLayoutClasses(8, false);
+      // Should use the max 6-column layout
+      expect(result).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2');
+    });
+
+    it('should handle transition from normal to maximized state', () => {
+      const panelCount = 4;
+
+      // Normal state
+      const normalLayout = getGridLayoutClasses(panelCount, false);
+      expect(normalLayout).toBe('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2');
+
+      // Maximized state
+      const maximizedLayout = getGridLayoutClasses(panelCount, true);
+      expect(maximizedLayout).toBe('grid grid-cols-1 gap-2');
+    });
+  });
+
+  it('should maintain consistent gap spacing across all configurations', () => {
+    for (let i = 1; i <= 6; i++) {
+      const normalLayout = getGridLayoutClasses(i, false);
+      const maximizedLayout = getGridLayoutClasses(i, true);
+
+      expect(normalLayout).toContain('gap-2');
+      expect(maximizedLayout).toContain('gap-2');
+    }
+  });
+
+  it('should always include base grid class', () => {
+    for (let i = 1; i <= 10; i++) {
+      const normalLayout = getGridLayoutClasses(i, false);
+      const maximizedLayout = getGridLayoutClasses(i, true);
+
+      expect(normalLayout).toMatch(/^grid /);
+      expect(maximizedLayout).toMatch(/^grid /);
+    }
   });
 });

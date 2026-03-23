@@ -417,6 +417,20 @@ export interface AgentTerminalPanelProps {
    */
   onResume?: () => void
 
+  // === Keyboard Accessibility Props ===
+
+  /**
+   * Whether keyboard input is enabled for panel interactions
+   *
+   * When true, the panel can respond to keyboard events for:
+   * - Minimize/maximize/restore operations (Enter/Space, M, Escape, -/+)
+   * - Focus management
+   * - Custom key bindings
+   *
+   * @default true
+   */
+  allowKeyboardInput?: boolean
+
   // === Styling ===
 
   /**

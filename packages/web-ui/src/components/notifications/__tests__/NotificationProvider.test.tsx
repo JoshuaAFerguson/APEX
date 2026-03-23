@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 
+import React from 'react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -53,12 +54,10 @@ describe('NotificationProvider', () => {
 
   beforeEach(() => {
     user = userEvent.setup()
-    vi.useFakeTimers()
   })
 
   afterEach(() => {
-    vi.runOnlyPendingTimers()
-    vi.useRealTimers()
+    vi.clearAllTimers()
   })
 
   test('throws error when hook is used outside provider', () => {
@@ -114,15 +113,16 @@ describe('NotificationProvider', () => {
     const titles = screen.getAllByTestId('title')
     const types = screen.getAllByTestId('type')
 
-    expect(titles[0]).toHaveTextContent('Success Title')
-    expect(titles[1]).toHaveTextContent('Error Title')
-    expect(titles[2]).toHaveTextContent('Warning Title')
-    expect(titles[3]).toHaveTextContent('Info Title')
+    // Notifications are added newest first, so order is reversed
+    expect(titles[0]).toHaveTextContent('Info Title')
+    expect(titles[1]).toHaveTextContent('Warning Title')
+    expect(titles[2]).toHaveTextContent('Error Title')
+    expect(titles[3]).toHaveTextContent('Success Title')
 
-    expect(types[0]).toHaveTextContent('success')
-    expect(types[1]).toHaveTextContent('error')
-    expect(types[2]).toHaveTextContent('warning')
-    expect(types[3]).toHaveTextContent('info')
+    expect(types[0]).toHaveTextContent('info')
+    expect(types[1]).toHaveTextContent('warning')
+    expect(types[2]).toHaveTextContent('error')
+    expect(types[3]).toHaveTextContent('success')
   })
 
   test('removes notification', async () => {
@@ -171,7 +171,7 @@ describe('NotificationProvider', () => {
 
   test('auto-dismisses notifications after duration', async () => {
     render(
-      <NotificationProvider defaultDuration={1000}>
+      <NotificationProvider defaultDuration={50}>
         <TestComponent />
       </NotificationProvider>
     )
@@ -179,19 +179,15 @@ describe('NotificationProvider', () => {
     await user.click(screen.getByTestId('success-btn'))
     expect(screen.getByTestId('notification-count')).toHaveTextContent('1')
 
-    // Fast-forward time
-    act(() => {
-      vi.advanceTimersByTime(1000)
-    })
-
+    // Wait for auto-dismiss (use shorter duration for faster test)
     await waitFor(() => {
       expect(screen.getByTestId('notification-count')).toHaveTextContent('0')
-    })
+    }, { timeout: 200 })
   })
 
   test('error notifications persist by default', async () => {
     render(
-      <NotificationProvider defaultDuration={1000}>
+      <NotificationProvider defaultDuration={50}>
         <TestComponent />
       </NotificationProvider>
     )
@@ -199,11 +195,8 @@ describe('NotificationProvider', () => {
     await user.click(screen.getByTestId('error-btn'))
     expect(screen.getByTestId('notification-count')).toHaveTextContent('1')
 
-    // Fast-forward time - error should still be there
-    act(() => {
-      vi.advanceTimersByTime(1000)
-    })
-
+    // Wait some time - error should still be there (persistent)
+    await new Promise(resolve => setTimeout(resolve, 100))
     expect(screen.getByTestId('notification-count')).toHaveTextContent('1')
   })
 
@@ -254,39 +247,30 @@ describe('NotificationProvider', () => {
 
 describe('NotificationProvider with custom props', () => {
   test('uses custom default duration', async () => {
-    const user = userEvent.setup()
-    vi.useFakeTimers()
-
     render(
-      <NotificationProvider defaultDuration={500}>
+      <NotificationProvider defaultDuration={50}>
         <TestComponent />
       </NotificationProvider>
     )
 
+    const user = userEvent.setup()
     await user.click(screen.getByTestId('success-btn'))
     expect(screen.getByTestId('notification-count')).toHaveTextContent('1')
 
-    // Fast-forward by custom duration
-    act(() => {
-      vi.advanceTimersByTime(500)
-    })
-
+    // Wait for custom duration to pass
     await waitFor(() => {
       expect(screen.getByTestId('notification-count')).toHaveTextContent('0')
-    })
-
-    vi.useRealTimers()
+    }, { timeout: 200 })
   })
 
   test('uses custom max notifications', async () => {
-    const user = userEvent.setup()
-
     render(
       <NotificationProvider maxNotifications={1}>
         <TestComponent />
       </NotificationProvider>
     )
 
+    const user = userEvent.setup()
     await user.click(screen.getByTestId('success-btn'))
     await user.click(screen.getByTestId('error-btn'))
 

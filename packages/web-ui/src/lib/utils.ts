@@ -170,3 +170,52 @@ export function getProgressVariant(status: TaskStatus): 'default' | 'success' | 
 export function formatPercentage(value: number, precision: number = 1): string {
   return `${(value * 100).toFixed(precision)}%`
 }
+
+/**
+ * Grid configuration for different panel counts
+ */
+export const GRID_CONFIGS = {
+  1: 'grid grid-cols-1 gap-2',
+  2: 'grid grid-cols-1 sm:grid-cols-2 gap-2',
+  3: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2',
+  4: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2',
+  5: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2',
+  6: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2',
+} as const
+
+/**
+ * Get grid classes for individual panels based on maximized state
+ * @param isMaximized - Whether any panel is maximized
+ * @param isThisMaximized - Whether this specific panel is maximized
+ * @returns CSS class string for the panel
+ */
+export function getPanelGridClasses(isMaximized: boolean, isThisMaximized: boolean): string {
+  if (isMaximized) {
+    // If this panel is maximized, it spans full width
+    if (isThisMaximized) {
+      return 'col-span-full'
+    }
+    // If another panel is maximized, hide this one
+    return 'hidden'
+  }
+
+  // No panel is maximized, return empty string for normal grid behavior
+  return ''
+}
+
+/**
+ * Get grid layout classes based on panel count and maximized state
+ * @param panelCount - Number of panels in the grid
+ * @param isMaximized - Whether any panel is maximized
+ * @returns CSS class string for the grid container
+ */
+export function getGridLayoutClasses(panelCount: number, isMaximized: boolean): string {
+  if (isMaximized) {
+    // When maximized, use single column layout
+    return 'grid grid-cols-1 gap-2'
+  }
+
+  // Use responsive grid configuration based on panel count
+  const gridConfig = GRID_CONFIGS[panelCount as keyof typeof GRID_CONFIGS]
+  return gridConfig || GRID_CONFIGS[6] // Default to 6-column layout for higher counts
+}

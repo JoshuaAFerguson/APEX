@@ -8,7 +8,10 @@
  */
 
 import type { AgentStatus } from './AgentStatusIndicator.types.js';
-import type { Breakpoint } from '../../hooks/index.js';
+import type { Breakpoint, PanelState } from '../../hooks/index.js';
+
+// Re-export PanelState for convenience when importing from types
+export { PanelState } from '../../hooks/index.js';
 
 // ============================================================================
 // Agent Execution Types (local definitions compatible with web-ui types)
@@ -161,6 +164,67 @@ export interface AgentTerminalPanelProps {
    * Test ID for testing purposes
    */
   testId?: string;
+
+  // ============================================================================
+  // Keyboard Accessibility Props
+  // ============================================================================
+
+  /**
+   * Whether keyboard input is enabled for panel interactions
+   *
+   * When true, the panel can respond to keyboard events for:
+   * - Minimize/maximize/restore operations
+   * - Focus management
+   * - Custom key bindings
+   *
+   * @default true
+   */
+  allowKeyboardInput?: boolean;
+
+  /**
+   * Callback invoked when the panel should be minimized
+   *
+   * Triggered by keyboard shortcut (typically '-' or 'm') when focused,
+   * or programmatically via the panel's minimize action.
+   *
+   * @param execution - The agent execution associated with this panel
+   */
+  onMinimize?: (execution: AgentExecution) => void;
+
+  /**
+   * Callback invoked when the panel should be maximized
+   *
+   * Triggered by keyboard shortcut (typically '+' or 'M') when focused,
+   * or programmatically via the panel's maximize action.
+   * When maximized, other panels are typically minimized.
+   *
+   * @param execution - The agent execution associated with this panel
+   */
+  onMaximize?: (execution: AgentExecution) => void;
+
+  /**
+   * Callback invoked when the panel should be restored to normal state
+   *
+   * Triggered by keyboard shortcut (typically 'Escape' or 'r') when focused,
+   * or programmatically via the panel's restore action.
+   *
+   * @param execution - The agent execution associated with this panel
+   */
+  onRestore?: (execution: AgentExecution) => void;
+
+  /**
+   * Current panel state for controlled mode
+   *
+   * When provided, the component operates in controlled mode:
+   * - The panel's visual state (minimized/maximized/normal) is determined by this prop
+   * - State changes are communicated via onMinimize/onMaximize/onRestore callbacks
+   * - Parent component is responsible for state management
+   *
+   * When omitted, the component operates in uncontrolled mode with internal state.
+   *
+   * @see PanelState
+   */
+  panelState?: PanelState;
 }
 
 // ============================================================================
@@ -295,7 +359,7 @@ export function getResponsiveTerminalPanelConfig(breakpoint: Breakpoint): Respon
 export const DEFAULT_TERMINAL_PANEL_PROPS: Required<
   Pick<
     AgentTerminalPanelProps,
-    'displayMode' | 'focused' | 'animated' | 'borderStyle' | 'showElapsedTime' | 'showProgress'
+    'displayMode' | 'focused' | 'animated' | 'borderStyle' | 'showElapsedTime' | 'showProgress' | 'allowKeyboardInput'
   >
 > = {
   displayMode: 'normal',
@@ -304,6 +368,7 @@ export const DEFAULT_TERMINAL_PANEL_PROPS: Required<
   borderStyle: 'single',
   showElapsedTime: true,
   showProgress: true,
+  allowKeyboardInput: true,
 } as const;
 
 // ============================================================================
@@ -412,6 +477,19 @@ export function isValidDisplayMode(value: unknown): value is TerminalPanelDispla
  */
 export function isValidBorderStyle(value: unknown): value is TerminalPanelBorderStyle {
   return typeof value === 'string' && ['single', 'round', 'double', 'none'].includes(value);
+}
+
+/**
+ * Type guard for PanelState
+ *
+ * Validates that a value is a valid PanelState enum value.
+ * Useful for runtime validation of external inputs.
+ */
+export function isValidPanelState(value: unknown): value is PanelState {
+  return (
+    typeof value === 'string' &&
+    ['normal', 'minimized', 'maximized'].includes(value)
+  );
 }
 
 // ============================================================================

@@ -23,14 +23,15 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
  */
 function notificationReducer(
   state: NotificationState,
-  action: NotificationReducerAction
+  action: NotificationReducerAction,
+  maxNotifications: number = NOTIFICATION_DEFAULTS.MAX_NOTIFICATIONS
 ): NotificationState {
   switch (action.type) {
     case 'ADD':
       // Add new notification and enforce max limit
       const newNotifications = [action.payload, ...state.notifications]
       return {
-        notifications: newNotifications.slice(0, NOTIFICATION_DEFAULTS.MAX_NOTIFICATIONS),
+        notifications: newNotifications.slice(0, maxNotifications),
       }
 
     case 'REMOVE':
@@ -64,8 +65,26 @@ export function NotificationProvider({
   maxNotifications = NOTIFICATION_DEFAULTS.MAX_NOTIFICATIONS,
   position = NOTIFICATION_DEFAULTS.DEFAULT_POSITION,
 }: NotificationProviderProps) {
-  const [state, dispatch] = useReducer(notificationReducer, { notifications: [] })
+  const [state, dispatch] = useReducer(
+    (state: NotificationState, action: NotificationReducerAction) =>
+      notificationReducer(state, action, maxNotifications),
+    { notifications: [] }
+  )
   const timeoutRefs = React.useRef<Map<string, NodeJS.Timeout>>(new Map())
+
+  /**
+   * Remove a notification by ID
+   */
+  const removeNotification = useCallback((id: string) => {
+    // Clear any pending timeout
+    const timeoutId = timeoutRefs.current.get(id)
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutRefs.current.delete(id)
+    }
+
+    dispatch({ type: 'REMOVE', payload: id })
+  }, [])
 
   /**
    * Add a new notification with auto-dismiss logic
@@ -96,21 +115,7 @@ export function NotificationProvider({
     }
 
     return id
-  }, [defaultDuration])
-
-  /**
-   * Remove a notification by ID
-   */
-  const removeNotification = useCallback((id: string) => {
-    // Clear any pending timeout
-    const timeoutId = timeoutRefs.current.get(id)
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-      timeoutRefs.current.delete(id)
-    }
-
-    dispatch({ type: 'REMOVE', payload: id })
-  }, [])
+  }, [defaultDuration, removeNotification])
 
   /**
    * Clear all notifications
