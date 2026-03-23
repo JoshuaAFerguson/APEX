@@ -105,3 +105,6 @@ undefined/
 *.db-shm
 *.db-wal
 !packages/**/migrations/**/*.db
+
+# VeriSwarm agent credentials (do not commit)
+.apex/veriswarm.json
