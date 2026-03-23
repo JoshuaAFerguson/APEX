@@ -323,7 +323,7 @@ export const ParallelAgentView: React.FC<ParallelAgentViewProps> = ({
               <Button
                 key={value}
                 variant={localSortBy === value ? "primary" : "ghost"}
-                size="xs"
+                size="sm"
                 onClick={() => handleSortChange(value)}
                 className="text-xs"
                 title={`Sort by ${label}`}
@@ -344,7 +344,7 @@ export const ParallelAgentView: React.FC<ParallelAgentViewProps> = ({
               <Button
                 key={layout}
                 variant={localLayout === layout ? "primary" : "ghost"}
-                size="xs"
+                size="sm"
                 onClick={() => handleLayoutChange(layout as ParallelAgentViewLayout)}
                 className="rounded-none border-0"
                 title={`${layout} view`}
@@ -357,7 +357,7 @@ export const ParallelAgentView: React.FC<ParallelAgentViewProps> = ({
           {/* Refresh button */}
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             onClick={handleRefresh}
             title="Refresh data"
           >
@@ -367,7 +367,7 @@ export const ParallelAgentView: React.FC<ParallelAgentViewProps> = ({
           {/* Settings (placeholder) */}
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             title="View settings"
           >
             <Settings className="w-4 h-4" />

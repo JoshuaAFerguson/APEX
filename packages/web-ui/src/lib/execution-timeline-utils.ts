@@ -11,16 +11,17 @@ import type { ExecutionStage, ExecutionStageStatus } from '@/components/tasks/Ex
  * @returns Array of ExecutionStage objects representing the task's execution timeline
  */
 export function transformTaskToExecutionStages(task: Task): ExecutionStage[] {
-  // If the task already has execution stages, use them directly
-  if (task.executionStages && Array.isArray(task.executionStages)) {
-    return task.executionStages.map(stage => ({
-      id: stage.id,
-      name: stage.name,
+  // If the task already has execution stages (from API response), use them directly
+  const taskAny = task as any; // Task may have extra fields from API
+  if (taskAny.executionStages && Array.isArray(taskAny.executionStages)) {
+    return (taskAny.executionStages as Array<Record<string, unknown>>).map(stage => ({
+      id: stage.id as string,
+      name: stage.name as string,
       status: stage.status as ExecutionStageStatus,
-      startedAt: stage.startedAt ? new Date(stage.startedAt) : undefined,
-      completedAt: stage.completedAt ? new Date(stage.completedAt) : undefined,
-      duration: stage.duration,
-      metadata: stage.metadata,
+      startedAt: stage.startedAt ? new Date(stage.startedAt as string) : undefined,
+      completedAt: stage.completedAt ? new Date(stage.completedAt as string) : undefined,
+      duration: stage.duration as number | undefined,
+      metadata: stage.metadata as Record<string, unknown> | undefined,
     }))
   }
 
@@ -274,7 +275,8 @@ export function getCurrentStageId(task: Task): string | undefined {
  */
 export function shouldShowExecutionTimeline(task: Task): boolean {
   // Always show for tasks with explicit execution stages
-  if (task.executionStages && task.executionStages.length > 0) {
+  const taskAny = task as any; // Task may have extra fields from API
+  if (taskAny.executionStages && Array.isArray(taskAny.executionStages) && (taskAny.executionStages as unknown[]).length > 0) {
     return true
   }
 

@@ -247,6 +247,7 @@ export class SlackInstallationStore implements InstallationStore {
         name: row.enterprise_name,
       } : undefined,
       bot: {
+        id: row.bot_user_id,
         userId: row.bot_user_id,
         token: this.decrypt(row.bot_token),
         scopes: JSON.parse(row.bot_scopes),
@@ -259,7 +260,7 @@ export class SlackInstallationStore implements InstallationStore {
         id: row.installed_by_user_id,
         token: this.decrypt(row.user_token),
         scopes: row.user_scopes ? JSON.parse(row.user_scopes) : undefined,
-      } : undefined,
+      } as any : undefined,
     };
   }
 

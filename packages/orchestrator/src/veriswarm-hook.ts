@@ -381,7 +381,7 @@ async function veriswarmPostToolReport(
     payload.error_summary = String(error).slice(0, 200);
   }
 
-  // Fire and forget
+  // Fire and forget — use agent key for self-reporting
   veriswarmRequest(vsConfig, 'POST', '/v1/events', {
     event_id: eventId,
     agent_id: vsConfig.agentId,
@@ -389,7 +389,7 @@ async function veriswarmPostToolReport(
     event_type: eventType,
     occurred_at: new Date().toISOString(),
     payload,
-  }).catch(() => {});
+  }, true).catch(() => {});
 
   return {};
 }
@@ -406,7 +406,7 @@ export async function reportTaskStarted(vsConfig: VeriSwarmConfig, taskId: strin
     event_type: 'task.started',
     occurred_at: new Date().toISOString(),
     payload: { task_type: taskType, apex_task_id: taskId },
-  }).catch(() => {});
+  }, true).catch(() => {});
 }
 
 export async function reportTaskCompleted(vsConfig: VeriSwarmConfig, taskId: string, taskType: string, durationMs?: number): Promise<void> {
@@ -419,7 +419,7 @@ export async function reportTaskCompleted(vsConfig: VeriSwarmConfig, taskId: str
     event_type: 'task.completed',
     occurred_at: new Date().toISOString(),
     payload: { task_type: taskType, apex_task_id: taskId, duration_ms: durationMs },
-  }).catch(() => {});
+  }, true).catch(() => {});
 }
 
 export async function reportTaskFailed(vsConfig: VeriSwarmConfig, taskId: string, taskType: string, errorType: string): Promise<void> {
@@ -432,7 +432,7 @@ export async function reportTaskFailed(vsConfig: VeriSwarmConfig, taskId: string
     event_type: 'task.failed',
     occurred_at: new Date().toISOString(),
     payload: { task_type: taskType, apex_task_id: taskId, error_type: errorType },
-  }).catch(() => {});
+  }, true).catch(() => {});
 }
 
 // ── Trust Score Check ─────────────────────────────────────────

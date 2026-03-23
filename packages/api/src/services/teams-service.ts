@@ -194,9 +194,7 @@ export class TeamsService extends ActivityHandler {
         MicrosoftAppId: this.config.appId,
         MicrosoftAppPassword: this.config.appPassword,
         MicrosoftAppTenantId: this.config.tenantId,
-      },
-      undefined,
-      this.logger
+      } as any,
     );
 
     // Create CloudAdapter with authentication
@@ -257,18 +255,6 @@ export class TeamsService extends ActivityHandler {
       await next();
     });
 
-    // Handle messaging extension queries
-    this.onInvokeActivity(async (context, next) => {
-      if (context.activity.name === 'composeExtension/query') {
-        await this.handleMessagingExtensionQuery(context);
-      } else if (context.activity.name === 'composeExtension/submitAction') {
-        await this.handleMessagingExtensionAction(context);
-      } else if (context.activity.name === 'task/submit') {
-        await this.handleTaskSubmit(context);
-      }
-      await next();
-    });
-
     // Handle member additions (welcome message)
     this.onMembersAdded(async (context, next) => {
       const membersAdded = context.activity.membersAdded;
@@ -280,6 +266,21 @@ export class TeamsService extends ActivityHandler {
       }
       await next();
     });
+  }
+
+  /**
+   * Override onInvokeActivity to handle messaging extension queries.
+   * This is a method override, not a listener registration like onMessage().
+   */
+  protected async onInvokeActivity(context: TurnContext): Promise<any> {
+    if (context.activity.name === 'composeExtension/query') {
+      await this.handleMessagingExtensionQuery(context);
+    } else if (context.activity.name === 'composeExtension/submitAction') {
+      await this.handleMessagingExtensionAction(context);
+    } else if (context.activity.name === 'task/submit') {
+      await this.handleTaskSubmit(context);
+    }
+    return super.onInvokeActivity(context);
   }
 
   private resolveConfig(config?: TeamsIntegrationConfig): TeamsIntegrationConfig {
@@ -371,7 +372,7 @@ export class TeamsService extends ActivityHandler {
     if (this.config.threadUpdates) {
       this.taskConversations.set(task.id, {
         serviceUrl: context.activity.serviceUrl,
-        conversationReference: TurnContext.getConversationReference(context.activity),
+        conversationReference: TurnContext.getConversationReference(context.activity) as ConversationReference,
         activityId: context.activity.id,
       });
     }

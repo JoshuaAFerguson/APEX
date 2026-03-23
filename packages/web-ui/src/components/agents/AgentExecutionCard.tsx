@@ -247,7 +247,7 @@ export const AgentExecutionCard: React.FC<AgentExecutionCardProps> = ({
           {canPause && (
             <Button
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={handlePause}
               className="w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Pause execution"
@@ -258,7 +258,7 @@ export const AgentExecutionCard: React.FC<AgentExecutionCardProps> = ({
           {canResume && (
             <Button
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={handleResume}
               className="w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Resume execution"
@@ -269,7 +269,7 @@ export const AgentExecutionCard: React.FC<AgentExecutionCardProps> = ({
           {canRetry && (
             <Button
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={handleRetry}
               className="w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Retry execution"
@@ -280,7 +280,7 @@ export const AgentExecutionCard: React.FC<AgentExecutionCardProps> = ({
           {canCancel && (
             <Button
               variant="ghost"
-              size="xs"
+              size="sm"
               onClick={handleCancel}
               className="w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Cancel execution"

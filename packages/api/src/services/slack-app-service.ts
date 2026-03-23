@@ -145,6 +145,7 @@ export class SlackAppService {
       await this.installationStore.deleteInstallation({
         teamId: context.teamId,
         enterpriseId: context.enterpriseId,
+        isEnterpriseInstall: Boolean(context.enterpriseId),
       });
       this.logger.info(`Slack app uninstalled from team ${context.teamId}`);
     });
@@ -330,7 +331,7 @@ export class SlackAppService {
     channel: string,
     client: WebClient
   ): Promise<void> {
-    const activeTasks = await this.orchestrator.getActiveTasks();
+    const activeTasks = await this.orchestrator.listTasks({ status: 'in-progress' });
 
     const statusText = activeTasks.length > 0
       ? `${activeTasks.length} active task(s)`
@@ -391,7 +392,7 @@ export class SlackAppService {
     }
 
     try {
-      await this.orchestrator.cancelTask(taskId, 'Cancelled via Slack');
+      await this.orchestrator.cancelTask(taskId);
       await client.chat.postMessage({
         channel,
         text: `Task ${taskId} cancelled`,

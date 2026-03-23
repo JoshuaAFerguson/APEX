@@ -211,7 +211,7 @@ export const AgentLane: React.FC<AgentLaneProps> = ({
           {/* Collapse toggle */}
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             onClick={handleToggleCollapse}
             className="w-6 h-6 p-0 hover:bg-background-primary"
             title={isCollapsed ? 'Expand lane' : 'Collapse lane'}
@@ -287,7 +287,7 @@ export const AgentLane: React.FC<AgentLaneProps> = ({
           {/* More actions */}
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             className="w-6 h-6 p-0 opacity-50 hover:opacity-100"
             title="More options"
           >
