@@ -24,7 +24,12 @@ vi.mock('../../../hooks/useAgentHandoff.js', () => ({
     pulseIntensity: 0,
     arrowFrame: 0,
     handoffStartTime: null,
+    arrowAnimationFrame: 0,
+    iconFrame: 0,
+    colorIntensity: 0,
+    colorPhase: 'source-bright',
   })),
+  formatHandoffElapsed: vi.fn(() => '1.2s'),
 }));
 
 vi.mock('../../../hooks/useElapsedTime.js', () => ({

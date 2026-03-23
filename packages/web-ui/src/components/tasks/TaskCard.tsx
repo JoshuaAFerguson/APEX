@@ -3,6 +3,7 @@ import { Badge } from '../ui/Badge'
 import { ProgressIndicator } from '../ui/ProgressIndicator'
 import { Spinner } from '../ui/Spinner'
 import { Card, CardContent } from '../ui/Card'
+import { Checkbox } from '../ui/Checkbox'
 import {
   truncateId,
   getElapsedTime,
@@ -10,6 +11,8 @@ import {
   getProgressVariant,
   cn,
 } from '../../lib/utils'
+import { useBulkSelectionOptional } from './BulkSelectionContext'
+import { BULK_TEST_IDS, BULK_ARIA_LABELS } from '@/types/bulk-operations'
 import type { Task } from '@apexcli/core'
 import {
   Clock,
@@ -39,6 +42,8 @@ export interface TaskCardProps {
   isActionLoading?: boolean
   /** Optional callback to inject context into the task */
   onInjectContext?: (taskId: string) => void
+  /** Whether bulk selection is enabled (overrides context) */
+  selectable?: boolean
 }
 
 /**
@@ -58,7 +63,13 @@ export function TaskCard({
   onRetry,
   isActionLoading = false,
   onInjectContext,
+  selectable,
 }: TaskCardProps) {
+  // Check if bulk selection is available and enabled
+  const bulkSelection = useBulkSelectionOptional()
+  const isBulkSelectionEnabled = selectable ?? (bulkSelection !== null)
+  const isSelected = bulkSelection?.isSelected(task.id) ?? false
+
   const isRunning = isTaskRunning(task.status)
   const hasSubtasks = task.subtaskIds && task.subtaskIds.length > 0
   const progressVariant = getProgressVariant(task.status)
@@ -88,6 +99,12 @@ export function TaskCard({
   const handleCardClick = () => {
     if (onViewDetails) {
       onViewDetails(task.id)
+    }
+  }
+
+  const handleSelectionChange = (selected: boolean) => {
+    if (bulkSelection) {
+      bulkSelection.toggleTaskSelection(task.id)
     }
   }
 
@@ -122,6 +139,25 @@ export function TaskCard({
       onClick={handleCardClick}
     >
       <CardContent className={cn('p-0', compact && 'space-y-2')}>
+        {/* Selection checkbox - shows when bulk selection is enabled */}
+        {isBulkSelectionEnabled && (
+          <div className="absolute left-2 top-2 z-10">
+            <div
+              className="flex items-center justify-center w-6 h-6 bg-background/90 backdrop-blur-sm rounded border border-border/50"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={(e) => handleSelectionChange(e.target.checked)}
+                data-testid={BULK_TEST_IDS.taskCheckbox(task.id)}
+                aria-label={BULK_ARIA_LABELS.taskSelection(task.description, isSelected)}
+                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Action overlay - shows on hover */}
         {(canCancel || canRetry || canInjectContext) && (
           <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -160,7 +196,10 @@ export function TaskCard({
 
         {/* Header with title and status */}
         <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex-1 min-w-0">
+          <div className={cn(
+            'flex-1 min-w-0',
+            isBulkSelectionEnabled && 'ml-8' // Add left margin when checkbox is present
+          )}>
             <h4 className={cn(
               'font-medium text-foreground line-clamp-2 leading-tight',
               compact ? 'text-sm' : 'text-base'

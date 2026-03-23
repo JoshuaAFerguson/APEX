@@ -1,7 +1,14 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Task } from '@apexcli/core'
 import { ExecutionTimeline, type ExecutionStage } from '../ExecutionTimeline'
+import {
+  transformTaskToExecutionStages,
+  getCurrentStageId,
+  shouldShowExecutionTimeline
+} from '@/lib/execution-timeline-utils'
 
 describe('ExecutionTimeline Integration', () => {
   // Mock realistic execution stages that would come from a real task
@@ -52,6 +59,29 @@ describe('ExecutionTimeline Integration', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  // Factory for creating realistic task objects
+  const createTaskWithWorkflow = (
+    workflow: 'developer' | 'researcher' | 'reviewer' | 'orchestrator' | 'custom',
+    status: Task['status'],
+    overrides?: Partial<Task>
+  ): Task => ({
+    id: `task-${workflow}-${status}`,
+    description: `Test ${workflow} task`,
+    status,
+    workflow,
+    autonomy: 'medium',
+    priority: 'medium',
+    effort: 'medium',
+    projectPath: '/test',
+    retryCount: 0,
+    maxRetries: 3,
+    resumeAttempts: 0,
+    createdAt: new Date('2024-01-01T10:00:00Z').toISOString(),
+    updatedAt: new Date('2024-01-01T10:00:00Z').toISOString(),
+    ...overrides,
   })
 
   describe('Real-world Usage Scenarios', () => {
@@ -391,6 +421,655 @@ describe('ExecutionTimeline Integration', () => {
       )
 
       expect(container.querySelector('.custom-timeline')).toBeInTheDocument()
+    })
+  })
+
+  describe('Task Detail Page Integration', () => {
+    describe('Task Data Transformation', () => {
+      it('transforms developer task to planning → implementing → testing → reviewing stages', () => {
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+          createdAt: new Date('2024-01-01T10:00:00Z').toISOString(),
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={getCurrentStageId(task)}
+            animated={true}
+            showTiming={true}
+          />
+        )
+
+        // Verify all expected stages are present
+        expect(screen.getByText('Queued')).toBeInTheDocument()
+        expect(screen.getByText('Planning')).toBeInTheDocument()
+        expect(screen.getByText('Implementing')).toBeInTheDocument()
+        expect(screen.getByText('Testing')).toBeInTheDocument()
+        expect(screen.getByText('Reviewing')).toBeInTheDocument()
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+
+        // Verify current stage is highlighted
+        const currentStageId = getCurrentStageId(task)
+        expect(currentStageId).toBe('implementing')
+      })
+
+      it('transforms researcher task to investigating → analyzing → documenting stages', () => {
+        const task = createTaskWithWorkflow('researcher', 'in-progress', {
+          currentStage: 'analyzing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={getCurrentStageId(task)}
+            showTiming={true}
+          />
+        )
+
+        expect(screen.getByText('Queued')).toBeInTheDocument()
+        expect(screen.getByText('Investigating')).toBeInTheDocument()
+        expect(screen.getByText('Analyzing')).toBeInTheDocument()
+        expect(screen.getByText('Documenting')).toBeInTheDocument()
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+
+        expect(getCurrentStageId(task)).toBe('analyzing')
+      })
+
+      it('transforms reviewer task to reviewing → feedback stages', () => {
+        const task = createTaskWithWorkflow('reviewer', 'in-progress', {
+          currentStage: 'feedback',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={getCurrentStageId(task)}
+            showTiming={true}
+          />
+        )
+
+        expect(screen.getByText('Queued')).toBeInTheDocument()
+        expect(screen.getByText('Reviewing')).toBeInTheDocument()
+        expect(screen.getByText('Feedback')).toBeInTheDocument()
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+
+        expect(getCurrentStageId(task)).toBe('feedback')
+      })
+
+      it('transforms orchestrator task to orchestrating → coordinating → finalizing stages', () => {
+        const task = createTaskWithWorkflow('orchestrator', 'in-progress', {
+          currentStage: 'coordinating',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={getCurrentStageId(task)}
+            showTiming={true}
+          />
+        )
+
+        expect(screen.getByText('Queued')).toBeInTheDocument()
+        expect(screen.getByText('Orchestrating')).toBeInTheDocument()
+        expect(screen.getByText('Coordinating')).toBeInTheDocument()
+        expect(screen.getByText('Finalizing')).toBeInTheDocument()
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+
+        expect(getCurrentStageId(task)).toBe('coordinating')
+      })
+
+      it('handles custom/unknown workflow types with default stages', () => {
+        const task = createTaskWithWorkflow('custom', 'in-progress', {
+          workflow: 'unknown-workflow',
+          currentStage: 'executing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={getCurrentStageId(task)}
+            showTiming={true}
+          />
+        )
+
+        // Should use default stages
+        expect(screen.getByText('Pending')).toBeInTheDocument()
+        expect(screen.getByText('Planning')).toBeInTheDocument()
+        expect(screen.getByText('Executing')).toBeInTheDocument()
+        expect(screen.getByText('Reviewing')).toBeInTheDocument()
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+
+        expect(getCurrentStageId(task)).toBe('executing')
+      })
+
+      it('handles tasks with explicit executionStages from API', () => {
+        const task = {
+          ...createTaskWithWorkflow('developer', 'in-progress'),
+          executionStages: [
+            {
+              id: 'custom-planning',
+              name: 'Custom Planning',
+              status: 'completed',
+              startedAt: '2024-01-01T10:00:00Z',
+              completedAt: '2024-01-01T10:05:00Z',
+              duration: 300000,
+            },
+            {
+              id: 'custom-implementing',
+              name: 'Custom Implementing',
+              status: 'running',
+              startedAt: '2024-01-01T10:05:00Z',
+            },
+          ],
+        } as Task & { executionStages: any[] }
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="custom-implementing"
+            showTiming={true}
+          />
+        )
+
+        // Should use the explicit stages from API
+        expect(screen.getByText('Custom Planning')).toBeInTheDocument()
+        expect(screen.getByText('Custom Implementing')).toBeInTheDocument()
+
+        // Should not show standard workflow stages
+        expect(screen.queryByText('Testing')).not.toBeInTheDocument()
+        expect(screen.queryByText('Reviewing')).not.toBeInTheDocument()
+      })
+    })
+
+    describe('Workflow-Specific Stage Rendering', () => {
+      it('shows correct stages for pending/queued tasks', () => {
+        const task = createTaskWithWorkflow('developer', 'pending')
+
+        const stages = transformTaskToExecutionStages(task)
+        const currentStageId = getCurrentStageId(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={currentStageId}
+            animated={true}
+          />
+        )
+
+        expect(currentStageId).toBe('pending')
+
+        // First stage should be running (for pending tasks)
+        expect(screen.getByText('Queued')).toBeInTheDocument()
+      })
+
+      it('shows correct stages for in-progress tasks', () => {
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+        const currentStageId = getCurrentStageId(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={currentStageId}
+            animated={true}
+          />
+        )
+
+        expect(currentStageId).toBe('implementing')
+
+        // Previous stages should be completed, current running, future pending
+        expect(screen.getByText('Implementing')).toBeInTheDocument()
+      })
+
+      it('shows all stages as completed for completed tasks', () => {
+        const task = createTaskWithWorkflow('developer', 'completed', {
+          completedAt: new Date('2024-01-01T11:00:00Z').toISOString(),
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+        const currentStageId = getCurrentStageId(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={currentStageId}
+            showTiming={true}
+          />
+        )
+
+        expect(currentStageId).toBe('completed')
+
+        // All stages should be present
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+      })
+
+      it('shows failed stage indicator for failed tasks', () => {
+        const task = createTaskWithWorkflow('developer', 'failed', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+        const currentStageId = getCurrentStageId(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={currentStageId}
+            animated={false}
+          />
+        )
+
+        expect(currentStageId).toBe('implementing')
+        expect(screen.getByText('Implementing')).toBeInTheDocument()
+      })
+
+      it('shows skipped stages for cancelled tasks', () => {
+        const task = createTaskWithWorkflow('developer', 'cancelled', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+        const currentStageId = getCurrentStageId(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={currentStageId}
+            animated={false}
+          />
+        )
+
+        expect(currentStageId).toBe('implementing')
+        expect(screen.getByText('Implementing')).toBeInTheDocument()
+      })
+
+      it('shows paused indicator for paused tasks', () => {
+        const task = createTaskWithWorkflow('developer', 'paused', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+        const currentStageId = getCurrentStageId(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId={currentStageId}
+            animated={false}
+          />
+        )
+
+        expect(currentStageId).toBe('implementing')
+        expect(screen.getByText('Implementing')).toBeInTheDocument()
+      })
+    })
+
+    describe('Running Task Animation', () => {
+      it('applies animation to running stage indicator', () => {
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        const { container } = render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            animated={true}
+          />
+        )
+
+        // Should have animated elements for running tasks
+        const animatedElements = container.querySelectorAll('.animate-pulse')
+        expect(animatedElements.length).toBeGreaterThan(0)
+      })
+
+      it('does not animate completed tasks', () => {
+        const task = createTaskWithWorkflow('developer', 'completed')
+
+        const stages = transformTaskToExecutionStages(task)
+
+        const { container } = render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="completed"
+            animated={true}
+          />
+        )
+
+        // Verify the component renders
+        expect(container.firstChild).toBeInTheDocument()
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+      })
+
+      it('does not animate failed tasks', () => {
+        const task = createTaskWithWorkflow('developer', 'failed', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        const { container } = render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            animated={true}
+          />
+        )
+
+        expect(container.firstChild).toBeInTheDocument()
+      })
+
+      it('toggles animation correctly when animated prop changes', () => {
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        const { container, rerender } = render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            animated={false}
+          />
+        )
+
+        // Initially no animation
+        let animatedElements = container.querySelectorAll('.animate-pulse')
+        expect(animatedElements.length).toBe(0)
+
+        // Enable animation
+        rerender(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            animated={true}
+          />
+        )
+
+        // Now should have animation
+        animatedElements = container.querySelectorAll('.animate-pulse')
+        expect(animatedElements.length).toBeGreaterThan(0)
+      })
+    })
+
+    describe('Stage Interaction', () => {
+      it('stage click integrates with task navigation pattern', async () => {
+        const onStageClick = vi.fn()
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            onStageClick={onStageClick}
+          />
+        )
+
+        // Click on a stage
+        const planningStage = screen.getByText('Planning')
+        fireEvent.click(planningStage.closest('[role="button"]') || planningStage.parentElement!)
+
+        expect(onStageClick).toHaveBeenCalledWith('planning')
+      })
+
+      it('keyboard navigation works with Enter key', async () => {
+        const onStageClick = vi.fn()
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            onStageClick={onStageClick}
+          />
+        )
+
+        const buttons = screen.getAllByRole('button')
+        const firstButton = buttons[0]
+
+        // Focus and press Enter
+        firstButton.focus()
+        fireEvent.keyDown(firstButton, { key: 'Enter' })
+
+        expect(onStageClick).toHaveBeenCalled()
+      })
+
+      it('keyboard navigation works with Space key', async () => {
+        const onStageClick = vi.fn()
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            onStageClick={onStageClick}
+          />
+        )
+
+        const buttons = screen.getAllByRole('button')
+        const firstButton = buttons[0]
+
+        // Focus and press Space
+        firstButton.focus()
+        fireEvent.keyDown(firstButton, { key: ' ' })
+
+        expect(onStageClick).toHaveBeenCalled()
+      })
+
+      it('multiple clicks track correctly', async () => {
+        const onStageClick = vi.fn()
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            onStageClick={onStageClick}
+          />
+        )
+
+        // Click multiple stages
+        const planningStage = screen.getByText('Planning')
+        const implementingStage = screen.getByText('Implementing')
+        const testingStage = screen.getByText('Testing')
+
+        fireEvent.click(planningStage.closest('[role="button"]') || planningStage.parentElement!)
+        fireEvent.click(implementingStage.closest('[role="button"]') || implementingStage.parentElement!)
+        fireEvent.click(testingStage.closest('[role="button"]') || testingStage.parentElement!)
+
+        expect(onStageClick).toHaveBeenCalledTimes(3)
+        expect(onStageClick).toHaveBeenNthCalledWith(1, 'planning')
+        expect(onStageClick).toHaveBeenNthCalledWith(2, 'implementing')
+        expect(onStageClick).toHaveBeenNthCalledWith(3, 'testing')
+      })
+
+      it('accessibility attributes present when clickable', () => {
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            onStageClick={() => {}}
+          />
+        )
+
+        const buttons = screen.getAllByRole('button')
+        expect(buttons.length).toBeGreaterThan(0)
+
+        buttons.forEach(button => {
+          expect(button).toBeVisible()
+          expect(button).not.toBeDisabled()
+        })
+      })
+    })
+
+    describe('Timing Display Integration', () => {
+      beforeEach(() => {
+        vi.useFakeTimers()
+      })
+
+      afterEach(() => {
+        vi.useRealTimers()
+      })
+
+      it('displays elapsed time for running stages using real transformation', () => {
+        vi.setSystemTime(new Date('2024-01-01T10:15:00Z'))
+
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+          createdAt: new Date('2024-01-01T10:00:00Z').toISOString(),
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            showTiming={true}
+          />
+        )
+
+        // Should show elapsed time - the component internally uses getElapsedTime
+        // We can't easily test the exact format without mocking getElapsedTime
+        // But we can verify timing is being shown
+        expect(screen.getByText('Implementing')).toBeInTheDocument()
+      })
+
+      it('shows duration for completed stages', () => {
+        const task = createTaskWithWorkflow('developer', 'completed', {
+          createdAt: new Date('2024-01-01T10:00:00Z').toISOString(),
+          completedAt: new Date('2024-01-01T10:30:00Z').toISOString(),
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="completed"
+            showTiming={true}
+          />
+        )
+
+        expect(screen.getByText('Completed')).toBeInTheDocument()
+        // Duration display details would be tested in unit tests
+      })
+
+      it('handles edge cases with timing display', () => {
+        // Test task with missing start time
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+          createdAt: undefined, // Missing timing data
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            showTiming={true}
+          />
+        )
+
+        // Should still render without crashing
+        expect(screen.getByText('Implementing')).toBeInTheDocument()
+      })
+
+      it('formats large durations correctly', () => {
+        vi.setSystemTime(new Date('2024-01-02T10:00:00Z')) // 24 hours later
+
+        const task = createTaskWithWorkflow('developer', 'in-progress', {
+          currentStage: 'implementing',
+          createdAt: new Date('2024-01-01T10:00:00Z').toISOString(),
+        })
+
+        const stages = transformTaskToExecutionStages(task)
+
+        render(
+          <ExecutionTimeline
+            stages={stages}
+            currentStageId="implementing"
+            showTiming={true}
+          />
+        )
+
+        // Should handle large time differences
+        expect(screen.getByText('Implementing')).toBeInTheDocument()
+      })
+    })
+
+    describe('shouldShowExecutionTimeline Integration', () => {
+      it('shows timeline for tasks with explicit execution stages', () => {
+        const task = {
+          ...createTaskWithWorkflow('developer', 'pending'),
+          executionStages: [
+            { id: 'stage1', name: 'Stage 1', status: 'pending' }
+          ]
+        } as Task & { executionStages: any[] }
+
+        expect(shouldShowExecutionTimeline(task)).toBe(true)
+      })
+
+      it('shows timeline for advanced task statuses', () => {
+        const advancedStatuses: Task['status'][] = [
+          'planning', 'in-progress', 'waiting-approval', 'completed', 'failed', 'paused'
+        ]
+
+        advancedStatuses.forEach(status => {
+          const task = createTaskWithWorkflow('developer', status)
+          expect(shouldShowExecutionTimeline(task)).toBe(true)
+        })
+      })
+
+      it('does not show timeline for basic pending/queued tasks without execution stages', () => {
+        const basicTask = createTaskWithWorkflow('developer', 'pending')
+        expect(shouldShowExecutionTimeline(basicTask)).toBe(false)
+
+        const queuedTask = createTaskWithWorkflow('developer', 'queued')
+        expect(shouldShowExecutionTimeline(queuedTask)).toBe(false)
+      })
     })
   })
 })

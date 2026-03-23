@@ -15,6 +15,11 @@ import type {
   InjectContextResponse,
 } from '@apexcli/core'
 import type {
+  BulkOperationOptions,
+  BulkOperationTaskResult,
+} from '@/types/bulk-operations'
+import { BULK_OPERATION_DEFAULTS } from '@/types/bulk-operations'
+import type {
   TaskTemplate,
   CreateTemplateRequest,
   UpdateTemplateRequest,
@@ -22,6 +27,11 @@ import type {
   CreateTaskFromTemplateRequest,
   TemplateFilters,
 } from '@/types/task-template'
+import type {
+  ChangelogFilters,
+  ChangelogResponse,
+  taskToChangelogEntry,
+} from '@/types/changelog'
 import { getApiUrl } from './config'
 
 /**
@@ -679,6 +689,64 @@ export class ApexApiClient {
   }
 
   /**
+   * Get changelog entries from completed tasks
+   */
+  async getChangelog(filters?: ChangelogFilters): Promise<ChangelogResponse> {
+    const params = new URLSearchParams()
+
+    // Status filters - default to completed if not specified
+    if (filters?.status) {
+      params.set('status', filters.status.join(','))
+    } else {
+      params.set('status', 'completed')
+    }
+
+    // Workflow filter
+    if (filters?.workflows && filters.workflows.length > 0) {
+      params.set('workflow', filters.workflows.join(','))
+    }
+
+    // Date range filters
+    if (filters?.startDate) {
+      params.set('startDate', filters.startDate.toISOString())
+    }
+    if (filters?.endDate) {
+      params.set('endDate', filters.endDate.toISOString())
+    }
+
+    // Search filter
+    if (filters?.search) {
+      params.set('search', filters.search)
+    }
+
+    // Pagination
+    if (filters?.limit) {
+      params.set('limit', filters.limit.toString())
+    }
+    if (filters?.offset) {
+      params.set('offset', filters.offset.toString())
+    }
+
+    const url = `/tasks/changelog${params.toString() ? `?${params.toString()}` : ''}`
+    const response = await this.fetch(url)
+    const data = await response.json()
+
+    // Transform task data to changelog entries
+    const { taskToChangelogEntry } = await import('@/types/changelog')
+    const entries = data.tasks.map(taskToChangelogEntry)
+
+    // Extract unique workflows
+    const workflows = Array.from(new Set(data.tasks.map((task: Task) => task.workflow))).sort()
+
+    return {
+      entries,
+      total: data.total,
+      hasMore: data.offset + data.count < data.total,
+      workflows,
+    }
+  }
+
+  /**
    * Internal fetch wrapper with error handling
    */
   private async fetch(path: string, options?: RequestInit): Promise<Response> {
@@ -718,6 +786,236 @@ export class ApexApiClient {
         0
       )
     }
+  }
+
+  // ============================================================================
+  // Bulk Operations
+  // ============================================================================
+
+  /**
+   * Execute operations with controlled concurrency
+   */
+  private async executeWithConcurrency<T, R>(
+    items: T[],
+    fn: (item: T) => Promise<R>,
+    concurrency: number,
+    delayBetweenOps: number = 0,
+    signal?: AbortSignal
+  ): Promise<R[]> {
+    const results: R[] = new Array(items.length)
+    const executing: Promise<void>[] = []
+
+    for (let i = 0; i < items.length; i++) {
+      if (signal?.aborted) {
+        throw new Error('Operation aborted')
+      }
+
+      const item = items[i]
+      const execute = async (index: number): Promise<void> => {
+        try {
+          const result = await fn(item)
+          results[index] = result
+        } catch (error) {
+          throw error
+        }
+      }
+
+      const promise = execute(i)
+      executing.push(promise)
+
+      // If we've reached the concurrency limit, wait for one to complete
+      if (executing.length >= concurrency) {
+        // Wait for at least one to complete
+        await Promise.race(executing.map(p => p.catch(() => {})))
+        // Filter out completed promises by creating a wrapper that tracks completion
+        // Since we can't easily detect which promises are done, use a simpler approach:
+        // Just wait for all current ones and start fresh
+        await Promise.allSettled(executing)
+        executing.length = 0
+      }
+
+      // Add delay between operations if specified
+      if (delayBetweenOps > 0 && i < items.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayBetweenOps))
+      }
+    }
+
+    // Wait for all remaining operations
+    await Promise.allSettled(executing)
+    return results
+  }
+
+  /**
+   * Cancel multiple tasks in parallel
+   * @param taskIds - Array of task IDs to cancel
+   * @param options - Configuration for parallel execution
+   */
+  async bulkCancelTasks(
+    taskIds: string[],
+    options: BulkOperationOptions = {}
+  ): Promise<BulkOperationTaskResult[]> {
+    if (taskIds.length === 0) return []
+
+    const {
+      concurrency = BULK_OPERATION_DEFAULTS.concurrency,
+      delayBetweenOps = BULK_OPERATION_DEFAULTS.delayBetweenOps,
+      signal,
+    } = options
+
+    const results: BulkOperationTaskResult[] = []
+
+    try {
+      await this.executeWithConcurrency(
+        taskIds,
+        async (taskId: string) => {
+          try {
+            const task = await this.cancelTask(taskId)
+            const result: BulkOperationTaskResult = {
+              taskId,
+              success: true,
+              task,
+            }
+            results.push(result)
+            return result
+          } catch (error) {
+            const result: BulkOperationTaskResult = {
+              taskId,
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            }
+            results.push(result)
+            return result
+          }
+        },
+        concurrency,
+        delayBetweenOps,
+        signal
+      )
+    } catch (error) {
+      // If operation was aborted or had fatal error, still return partial results
+      if (error instanceof Error && !error.message.includes('aborted')) {
+        throw error
+      }
+    }
+
+    return results
+  }
+
+  /**
+   * Retry multiple tasks in parallel
+   * @param taskIds - Array of task IDs to retry
+   * @param options - Configuration for parallel execution
+   */
+  async bulkRetryTasks(
+    taskIds: string[],
+    options: BulkOperationOptions = {}
+  ): Promise<BulkOperationTaskResult[]> {
+    if (taskIds.length === 0) return []
+
+    const {
+      concurrency = BULK_OPERATION_DEFAULTS.concurrency,
+      delayBetweenOps = BULK_OPERATION_DEFAULTS.delayBetweenOps,
+      signal,
+    } = options
+
+    const results: BulkOperationTaskResult[] = []
+
+    try {
+      await this.executeWithConcurrency(
+        taskIds,
+        async (taskId: string) => {
+          try {
+            const task = await this.retryTask(taskId)
+            const result: BulkOperationTaskResult = {
+              taskId,
+              success: true,
+              task,
+            }
+            results.push(result)
+            return result
+          } catch (error) {
+            const result: BulkOperationTaskResult = {
+              taskId,
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            }
+            results.push(result)
+            return result
+          }
+        },
+        concurrency,
+        delayBetweenOps,
+        signal
+      )
+    } catch (error) {
+      // If operation was aborted or had fatal error, still return partial results
+      if (error instanceof Error && !error.message.includes('aborted')) {
+        throw error
+      }
+    }
+
+    return results
+  }
+
+  /**
+   * Delete multiple tasks in parallel
+   * @param taskIds - Array of task IDs to delete
+   * @param options - Configuration for parallel execution
+   */
+  async bulkDeleteTasks(
+    taskIds: string[],
+    options: BulkOperationOptions = {}
+  ): Promise<BulkOperationTaskResult[]> {
+    if (taskIds.length === 0) return []
+
+    const {
+      concurrency = BULK_OPERATION_DEFAULTS.concurrency,
+      delayBetweenOps = BULK_OPERATION_DEFAULTS.delayBetweenOps,
+      signal,
+    } = options
+
+    const results: BulkOperationTaskResult[] = []
+
+    try {
+      await this.executeWithConcurrency(
+        taskIds,
+        async (taskId: string) => {
+          try {
+            // Note: Assuming there will be a deleteTask method
+            // For now, we'll implement a placeholder that uses the fetch method directly
+            const response = await this.fetch(`/tasks/${taskId}`, {
+              method: 'DELETE',
+            })
+            const task = await response.json()
+            const result: BulkOperationTaskResult = {
+              taskId,
+              success: true,
+              task,
+            }
+            results.push(result)
+            return result
+          } catch (error) {
+            const result: BulkOperationTaskResult = {
+              taskId,
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            }
+            results.push(result)
+            return result
+          }
+        },
+        concurrency,
+        delayBetweenOps,
+        signal
+      )
+    } catch (error) {
+      // If operation was aborted or had fatal error, still return partial results
+      if (error instanceof Error && !error.message.includes('aborted')) {
+        throw error
+      }
+    }
+
+    return results
   }
 }
 

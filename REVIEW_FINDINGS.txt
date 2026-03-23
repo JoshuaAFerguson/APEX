@@ -1,239 +1,234 @@
-================================================================================
-CODE REVIEW FINDINGS - ApprovalDiffPreview Component
-================================================================================
+# CODE REVIEW FINDINGS - Automated Changelog Display Component
 
-COMPONENT: ApprovalDiffPreview
-LOCATION: /packages/web-ui/src/components/approval/ApprovalDiffPreview.tsx
-REVIEW DATE: 2026-03-16
-REVIEWER: Code Review Agent
+## CRITICAL ISSUES (Must Fix Before Merge)
 
-================================================================================
-EXECUTIVE SUMMARY
-================================================================================
+### 1. packages/web-ui/src/components/changelog/ChangelogFilters.tsx:17 - Missing Select Component API
+**SEVERITY: HIGH**
+**TYPE: Build Error**
 
-The ApprovalDiffPreview component is a well-structured React component that
-integrates DiffViewer to display code changes for approval gates.
+The component imports SelectContent, SelectItem, SelectTrigger, SelectValue from @/components/ui/Select, but these named exports don't exist. The Select component in the project is a custom component that only exports:
+- Select (component)
+- SelectOption (interface)
+- SelectProps (interface)
 
-✓ Comprehensive feature set (collapsible, loading/error states, copy)
-✓ 61 unit/integration/performance tests - ALL PASSING
-✓ 92.59% code coverage
-✓ No critical security vulnerabilities
-✓ Proper TypeScript typing
+**Impact**: Build fails with "Module has no exported member 'SelectContent'"
 
-OVERALL STATUS: REVIEW COMPLETE - 5 ISSUES IDENTIFIED (3 medium, 2 low)
-TESTS STATUS: ALL PASSING (61/61)
-BUILD STATUS: SUCCESS
-
-================================================================================
-DETAILED FINDINGS
-================================================================================
-
-ISSUE 1: ApprovalDiffPreview.tsx:53 - UNUSED STATE VARIABLE
-SEVERITY: MEDIUM
-
-  const [localViewMode, setLocalViewMode] = useState(viewMode)
-
-PROBLEM:
-  The `localViewMode` state variable is initialized but the setter
-  `setLocalViewMode` is never called. The component directly passes the
-  `viewMode` prop to DiffViewer on line 289, making this local state unused.
-
-IMPACT: Dead code, potential confusion for maintainers
-
-RECOMMENDATION:
-  Either implement view mode switching functionality or remove unused state
-
-
-ISSUE 2: ApprovalDiffPreview.tsx:14-24 - UNUSED ICON IMPORTS
-SEVERITY: LOW
-
-  import {
-    ChevronDown,  // <- Not used
-    ChevronUp,    // <- Not used
+**Fix Required**: Refactor to use the actual Select API:
+```tsx
+// Current (broken):
+<Select value={getCurrentDatePreset()} onValueChange={handleDatePresetChange}>
+  <SelectTrigger className="h-9">
+    <SelectValue />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="all">All time</SelectItem>
     ...
-  } from 'lucide-react'
+  </SelectContent>
+</Select>
 
-PROBLEM:
-  ChevronDown and ChevronUp icons are imported but never rendered. The
-  component uses Eye/EyeOff icons for expand/collapse functionality instead.
+// Should be:
+const dateOptions: SelectOption[] = [
+  { value: 'all', label: 'All time' },
+  { value: 'last7Days', label: FILTER_PRESETS.last7Days.label },
+  ...
+]
+<Select
+  options={dateOptions}
+  value={getCurrentDatePreset()}
+  onChange={handleDatePresetChange}
+  placeholder="Select date range"
+/>
+```
 
-IMPACT: Unnecessary imports, slight bundle size increase
+---
 
-RECOMMENDATION: Remove unused icon imports
+### 2. packages/web-ui/src/components/changelog/ChangelogEntry.tsx:91 - React Hook Dependencies Violation
+**SEVERITY: HIGH**
+**TYPE: React Hooks ESLint Rule**
 
+The useCallback hook at line 91-93 depends on `toggleExpanded`, which is computed at line 74 and changes on every render. This violates react-hooks/exhaustive-deps.
 
-ISSUE 3: ApprovalDiffPreview.tsx:157-191 - MISSING ERROR HANDLING
-SEVERITY: MEDIUM
+**Impact**: ESLint warning will block Next.js build
 
-  const getDiffContent = useMemo(() => {
-    if (diffData.fileDiffs && diffData.fileDiffs.length > 0) {
-      return diffData.fileDiffs
-        .map(fileDiff => {
-          const header = `--- ${fileDiff.oldPath}\n+++ ${fileDiff.newPath}`
-          // ... processing continues
-        })
+**Fix Required**:
+```tsx
+const handleToggleExpand = useCallback((event: React.MouseEvent) => {
+  event.stopPropagation()
+  // Move the logic inline instead of depending on toggleExpanded
+  if (onToggleExpand) {
+    onToggleExpand()
+  } else {
+    setLocalExpanded(!localExpanded)
+  }
+}, [onToggleExpand])  // Only depend on props, not computed values
+```
+
+---
+
+### 3. packages/web-ui/src/hooks/useChangelog.ts:72 - API Integration Not Implemented
+**SEVERITY: HIGH**
+**TYPE: Production Readiness**
+
+The hook is using a `simulateApiCall` function with hardcoded mock data instead of actual API integration. The apiClient is imported but never used.
+
+**Impact**: Feature will not work with real data in production
+
+**Fix Required**: Implement actual API call once backend endpoint exists
+
+---
+
+### 4. packages/web-ui/src/hooks/useChangelog.ts:76 - Missing Hook Dependency
+**SEVERITY: MEDIUM**
+**TYPE: React Hooks ESLint Rule**
+
+The useCallback at line 76 (fetchChangelog) uses `simulateApiCall` function but doesn't include it in dependencies.
+
+**Impact**: ESLint warning, potential stale closure bugs
+
+**Fix Required**:
+- Remove simulateApiCall from inside the hook or add to dependencies
+- Move to module level when implementing real API
+
+---
+
+### 5. packages/web-ui/src/components/changelog/ChangelogFilters.tsx:298 - Date Preset Detection Bug
+**SEVERITY: MEDIUM**
+**TYPE: Logic Error**
+
+The `getCurrentDatePreset()` function uses `.toDateString()` comparison, which will always return 'custom' even when a preset matches because each preset.startDate() call creates a new Date object.
+
+**Fix Required**:
+```tsx
+const getCurrentDatePreset = () => {
+  if (!filters.startDate || !filters.endDate) return 'all'
+
+  const filterStart = filters.startDate.getTime()
+  const filterEnd = filters.endDate.getTime()
+
+  for (const [key, preset] of Object.entries(FILTER_PRESETS)) {
+    const presetStart = preset.startDate().getTime()
+    const presetEnd = preset.endDate().getTime()
+
+    if (filterStart === presetStart && filterEnd === presetEnd) {
+      return key
     }
-    return diffData.rawDiff || ''
-  }, [diffData])
+  }
+  return 'custom'
+}
+```
 
-PROBLEM:
-  The FileDiff to raw diff conversion doesn't handle potential errors:
-  - Accessing fileDiff.oldPath/newPath without null checks
-  - fileDiff.hunks.map() could fail if hunks is undefined
-  - hunk.lines.map() could fail if lines is undefined
-  - No try-catch to prevent component crashes
+---
 
-IMPACT: Malformed FileDiff objects could cause unhandled exceptions
+## MAJOR ISSUES (Should Fix)
 
-RECOMMENDATION: Add defensive programming with null checks and try-catch
+### 6. packages/web-ui/src/components/changelog/ChangelogDisplay.tsx:143 - Unused Error State
+**SEVERITY: MEDIUM**
+**TYPE: Code Quality**
 
+Error state is declared but never set. The ErrorState component exists but can never be triggered.
 
-ISSUE 4: ApprovalDiffPreview.tsx:224-228 - MISSING ACCESSIBILITY ATTRIBUTE
-SEVERITY: MEDIUM
+**Impact**: Error handling UI is dead code, users won't see API errors
 
-  <Button
-    variant="ghost"
-    size="sm"
-    onClick={() => handleCopy(getDiffContent)}
-    className="px-2 py-1 h-auto"
-  >
-    <Copy className="w-3 h-3" />
-  </Button>
+**Fix Required**:
+- Remove unused error state if not implementing error handling yet
+- OR implement proper error handling in fetchChangelog via useChangelog hook
 
-PROBLEM:
-  The copy button has only an icon, no aria-label or title attribute.
-  Screen reader users cannot understand the button's purpose.
+---
 
-IMPACT:
-  - WCAG 2.1 Level A accessibility violation
-  - Screen reader announces "button" with no context
-  - Users with visual impairments cannot use the copy functionality
+### 7. packages/web-ui/src/components/changelog/ChangelogEntry.tsx:68-74 - Controlled vs Uncontrolled Confusion
+**SEVERITY: MEDIUM**
+**TYPE: Code Quality/Design**
 
-RECOMMENDATION: Add aria-label="Copy diff content" and title attributes
+The component accepts `isExpanded` prop AND has local `localExpanded` state, creating ambiguity about whether it's controlled or uncontrolled. When using controlled mode, localExpanded state never updates.
 
+**Fix Required**: Refactor to clearly support both modes or add useEffect to sync state:
+```tsx
+const [localExpanded, setLocalExpanded] = useState(isExpanded)
 
-ISSUE 5: ApprovalDiffPreview.tsx:268-275 - INCONSISTENT ERROR HANDLING
-SEVERITY: LOW
+useEffect(() => {
+  setLocalExpanded(isExpanded)
+}, [isExpanded])
+```
 
-  {error && (
-    <div className="p-6 text-center">
-      <AlertTriangle className="w-6 h-6 text-red-500 mx-auto mb-2" />
-      <p className="text-sm text-red-500">
-        {typeof error === 'string' ? error : 'Failed to load diff'}
-      </p>
-    </div>
-  )}
+---
 
-PROBLEM:
-  Error objects with stack traces lose information. Generic message
-  "Failed to load diff" doesn't help with debugging.
+### 8. packages/web-ui/src/components/changelog/ChangelogFilters.tsx - Missing UI Component Verification
+**SEVERITY: MEDIUM**
+**TYPE: Component API Mismatch**
 
-IMPACT: Error details are lost, no logging mechanism for tracking
+Verification needed: Confirm these components have compatible APIs:
+- Input (used at line 143, 150)
+- Checkbox (used at line 188, 240)
+- Label (used at line 134, 181, 236)
 
-RECOMMENDATION: Extract error.message for Error objects, add logging
+---
 
+## CODE QUALITY ISSUES (Nice to Fix)
 
-================================================================================
-TEST COVERAGE ANALYSIS
-================================================================================
+### 9. packages/web-ui/src/types/changelog.ts - Unused Helper Functions
+**SEVERITY: LOW**
+**TYPE: Dead Code**
 
-Total Tests: 61 (ALL PASSING ✓)
-  - Unit Tests: 38 (ApprovalDiffPreview.test.tsx)
-  - Integration Tests: 10 (ApprovalDiffPreview.integration.test.tsx)
-  - Performance Tests: 13 (ApprovalDiffPreview.performance.test.tsx)
+Type utility functions `taskToChangelogEntry`, `determineChangeType`, `countAdditions`, `countDeletions`, `truncateText` are exported but never imported or used anywhere.
 
-Code Coverage: 92.59%
+**Fix Required**:
+- Delete if not needed
+- OR use in useChangelog hook to transform real Task objects
+- OR add to test utilities
 
-Test Results:
-  ✓ Basic rendering with various change types (6 tests)
-  ✓ File metadata display (3 tests)
-  ✓ Diff content rendering (3 tests)
-  ✓ Empty diff handling (3 tests)
-  ✓ Loading state (2 tests)
-  ✓ Error state (3 tests)
-  ✓ Collapsible functionality (4 tests)
-  ✓ Copy functionality (3 tests)
-  ✓ Props customization (5 tests)
-  ✓ Edge cases (6 tests)
-  ✓ Real-world integration scenarios (10 tests)
-  ✓ Performance benchmarks (13 tests)
+---
 
-Issues Fixed During Review:
-  ✓ FIXED: Performance test threshold was unrealistic (100ms → 200ms)
+### 10. packages/web-ui/src/components/changelog/ChangelogEntry.tsx:117 - Unchecked URL Opening
+**SEVERITY: LOW**
+**TYPE: Security/Validation**
 
+Opening PR URL without additional security checks:
 
-================================================================================
-SECURITY REVIEW RESULTS
-================================================================================
+```tsx
+// Should add noopener,noreferrer for security:
+window.open(entry.git?.prUrl!, '_blank', 'noopener,noreferrer')
+```
 
-XSS Prevention:        ✓ PASSED (JSX rendering, no dangerouslySetInnerHTML)
-Injection Attacks:     ✓ PASSED (No eval, SQL, or dynamic code execution)
-Data Handling:         ✓ PASSED (No hardcoded secrets, proper typing)
-Cryptographic Usage:   ✓ PASSED (Not applicable)
-Authentication:        ✓ PASSED (Not applicable)
-Authorization:         ✓ PASSED (Not applicable)
+---
 
-OVERALL SECURITY: ✓ PASSED
+### 11. packages/web-ui/src/hooks/useChangelog.ts - No Error Handling in Mock
+**SEVERITY: LOW**
+**TYPE: Test Coverage**
 
+The simulateApiCall function never throws errors, so error handling is never tested.
 
-================================================================================
-CODE QUALITY ASSESSMENT
-================================================================================
+**Fix**: simulateApiCall should occasionally throw to test error paths
 
-Architecture:          ✓ Clean separation of concerns
-Component Composition: ✓ Proper React patterns
-TypeScript Typing:     ✓ Comprehensive type definitions
-Performance:           ✓ useMemo optimization, efficient rendering
-Error Handling:        ⚠ Missing try-catch in FileDiff conversion
-Accessibility:         ⚠ Missing aria-label on copy button
-Testing:               ✓ 61 comprehensive tests
-Documentation:         ✓ JSDoc comments on major functions
+---
 
+### 12. packages/web-ui/src/components/changelog/constants.ts - FILTER_PRESETS Mutation Bug
+**SEVERITY: LOW**
+**TYPE: Logic Accuracy**
 
-================================================================================
-ACCEPTANCE CRITERIA VERIFICATION
-================================================================================
+The filter preset calculations mutate the date object with `.setDate()`. Should create new Date object instead.
 
-[✓] Component renders DiffViewer with diff content
-[✓] Supports loading/error states
-[✓] Shows file metadata (files changed, lines added/removed)
-[✓] Handles empty diffs gracefully
-[✓] Props accept diff string and optional file path
-[✓] Unit tests verify rendering and edge cases
-[✓] All 61 tests passing
+```tsx
+// Current (mutating):
+return new Date(date.setDate(diff))
 
+// Should be:
+return new Date(date.getFullYear(), date.getMonth(), diff)
+```
 
-================================================================================
-RECOMMENDATIONS & ACTION ITEMS
-================================================================================
+---
 
-HIGH PRIORITY (Fix before merging):
-  [ ] Add error handling to getDiffContent with try-catch
-  [ ] Add aria-label to copy button for WCAG compliance
+## SUMMARY
 
-MEDIUM PRIORITY (Should fix):
-  [ ] Remove or implement unused localViewMode state
-  [ ] Remove unused icon imports (ChevronDown, ChevronUp)
+**Total Issues Found: 12**
+- Critical (Build Blockers): 5
+- Major (Should Fix): 3
+- Code Quality: 4
 
-LOW PRIORITY (Nice to have):
-  [ ] Improve error display with error.message extraction
-  [ ] Add error logging/monitoring
+**Build Blockers for Merge:**
+1. ChangelogFilters.tsx:17 - Fix SelectContent imports
+2. ChangelogEntry.tsx:91 - Fix React hook dependencies
+3. useChangelog.ts:72 - Implement real API call
+4. useChangelog.ts:76 - Add missing dependency
+5. ChangelogFilters.tsx:298 - Fix date preset detection
 
-
-================================================================================
-FINAL ASSESSMENT
-================================================================================
-
-The ApprovalDiffPreview component is well-implemented with:
-  ✓ Comprehensive testing (61 tests, 92.59% coverage)
-  ✓ Good security posture
-  ✓ Clean, maintainable code structure
-  ⚠ 5 minor issues identified (3 medium, 2 low severity)
-
-RECOMMENDATION: Ready for next stage with noted issues for future iterations
-
-Status: ✓ REVIEW COMPLETE
-Tests:  61/61 PASSING
-Build:  SUCCESS
-
-================================================================================
+**Estimated Effort to Fix All Critical Issues:** 2-3 hours

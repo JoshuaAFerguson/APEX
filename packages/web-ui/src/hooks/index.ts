@@ -6,3 +6,6 @@
 
 export * from './useWebSocketConnection'
 export * from './useAgentMetrics'
+export * from './useAgentLogStream'
+export * from './useAutoScroll'
+export * from './useAgentTerminalPanelState'

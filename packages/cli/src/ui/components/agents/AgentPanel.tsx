@@ -210,6 +210,11 @@ function formatAgentName(
   name: string,
   config: ResponsiveAgentConfig
 ): string {
+  // Handle null/undefined names
+  if (!name || typeof name !== 'string') {
+    return '?';
+  }
+
   if (config.abbreviateNames && AGENT_ABBREVIATIONS[name]) {
     return AGENT_ABBREVIATIONS[name];
   }

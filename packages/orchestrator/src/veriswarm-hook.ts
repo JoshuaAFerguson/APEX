@@ -221,9 +221,9 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
     return vsConfig;
   }
 
-  const agentId = result.agent_id as string;
-  const agentApiKey = result.agent_api_key as string ?? '';
-  const workspaceApiKey = result.workspace_api_key as string ?? '';
+  const agentId = (result.id ?? result.agent_id) as string;
+  const agentApiKey = (result.api_key ?? result.agent_api_key) as string ?? '';
+  const workspaceApiKey = (result.workspace_api_key) as string ?? '';
   const claimUrl = result.claim_url as string ?? '';
   const tenantId = result.tenant_id as string ?? '';
 
@@ -265,7 +265,7 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
 // ── Tool Name to Event Type Mapping ───────────────────────────
 
 function mapToolToEventType(_toolName: string, success: boolean): string {
-  return success ? 'tool.call.success' : 'tool.call.failure';
+  return success ? 'tool.called' : 'tool.denied';
 }
 
 function getToolCategory(toolName: string): string {
@@ -305,7 +305,7 @@ async function veriswarmPreToolCheck(
 
   const result = await veriswarmRequest(vsConfig, 'POST', '/v1/decisions/check', {
     agent_id: vsConfig.agentId,
-    action_type: 'tool_call',
+    action_type: 'call_external_tool',
     resource_type: toolName,
   });
 
@@ -403,9 +403,9 @@ export async function reportTaskStarted(vsConfig: VeriSwarmConfig, taskId: strin
     event_id: `apex-task-start-${taskId}`,
     agent_id: vsConfig.agentId,
     source_type: 'agent',
-    event_type: 'task.started',
+    event_type: 'tool.called',
     occurred_at: new Date().toISOString(),
-    payload: { task_type: taskType, apex_task_id: taskId },
+    payload: { task_type: taskType, apex_task_id: taskId, lifecycle: 'started' },
   }, true).catch(() => {});
 }
 
@@ -447,6 +447,108 @@ export async function checkMyTrustScore(vsConfig: VeriSwarmConfig): Promise<Reco
   return veriswarmRequest(vsConfig, 'GET', '/v1/agents/me/scores', undefined, true);
 }
 
+// ── Credentials: Portable Trust JWTs ──────────────────────────
+
+/**
+ * Issue a portable trust credential (JWT) for this agent.
+ * The credential contains the agent's trust scores and can be presented
+ * to third-party services for cross-platform trust verification.
+ * TTL: 1 hour.
+ */
+export async function issueCredential(vsConfig: VeriSwarmConfig): Promise<{ credential: string; ttl_seconds: number } | null> {
+  if (!vsConfig.agentId || !vsConfig.agentApiKey) return null;
+
+  const result = await veriswarmRequest(vsConfig, 'POST', '/v1/credentials/issue', undefined, true);
+  if (!result || !result.credential) return null;
+
+  return {
+    credential: result.credential as string,
+    ttl_seconds: (result.ttl_seconds as number) ?? 3600,
+  };
+}
+
+/**
+ * Verify a portable trust credential (JWT) from any agent.
+ * No authentication required — designed for third-party verification.
+ */
+export async function verifyCredential(vsConfig: VeriSwarmConfig, credential: string): Promise<{ valid: boolean; payload?: Record<string, unknown> } | null> {
+  const result = await veriswarmRequest(vsConfig, 'POST', '/v1/credentials/verify', { credential });
+  if (!result) return null;
+
+  return {
+    valid: result.valid as boolean,
+    payload: result.payload as Record<string, unknown> | undefined,
+  };
+}
+
+// ── Guard: Kill Switch ────────────────────────────────────────
+
+/**
+ * Check if this agent has been killed (emergency shutdown).
+ * Killed agents cannot issue credentials and all decisions are auto-denied.
+ * Returns true if the agent is killed and should stop operating.
+ */
+export async function isAgentKilled(vsConfig: VeriSwarmConfig): Promise<boolean> {
+  if (!vsConfig.agentId) return false;
+
+  const result = await veriswarmRequest(vsConfig, 'GET', '/v1/credentials/revoked');
+  if (!result || !Array.isArray(result.revoked_agent_ids)) return false;
+
+  return (result.revoked_agent_ids as string[]).includes(vsConfig.agentId);
+}
+
+// ── Passport: Identity Verification ───────────────────────────
+
+/**
+ * Check if this agent's identity has been verified via VeriSwarm Passport.
+ * Verified agents receive "allow" decisions even without full scoring.
+ * Returns the verification status from the agent's current scores.
+ */
+export async function isAgentVerified(vsConfig: VeriSwarmConfig): Promise<boolean> {
+  if (!vsConfig.agentId || !vsConfig.agentApiKey) return false;
+
+  const scores = await checkMyTrustScore(vsConfig);
+  if (!scores) return false;
+
+  return (scores as any).is_verified === true;
+}
+
+// ── Evidence: Audit Ledger ────────────────────────────────────
+
+/**
+ * Query the immutable evidence ledger for this agent's audit trail.
+ * Each entry is hash-chained for tamper-evidence.
+ */
+export async function getEvidenceLedger(vsConfig: VeriSwarmConfig, limit: number = 50): Promise<Array<Record<string, unknown>> | null> {
+  if (!vsConfig.agentId) return null;
+
+  const result = await veriswarmRequest(vsConfig, 'GET', `/v1/suite/evidence/ledger?limit=${limit}`);
+  if (!result || !Array.isArray(result.events)) return null;
+
+  return result.events as Array<Record<string, unknown>>;
+}
+
+// ── Startup Guard Check ───────────────────────────────────────
+
+/**
+ * Perform a startup health check against VeriSwarm.
+ * Checks if the agent has been killed and reports the startup event.
+ * Returns false if the agent has been killed and should not operate.
+ */
+export async function startupGuardCheck(vsConfig: VeriSwarmConfig): Promise<boolean> {
+  if (!vsConfig.enabled || !vsConfig.agentId) return true;
+
+  const killed = await isAgentKilled(vsConfig);
+  if (killed) {
+    console.log(`\n🐝 VeriSwarm Guard: Agent ${vsConfig.agentId} has been KILLED.`);
+    console.log(`   This agent has been emergency-stopped by its owner or VeriSwarm.`);
+    console.log(`   The daemon will not process tasks until the kill is lifted.\n`);
+    return false;
+  }
+
+  return true;
+}
+
 // ── Hook Registration ─────────────────────────────────────────
 
 /**
@@ -483,6 +585,12 @@ export async function initializeVeriSwarm(
     console.log();
   }
 
+  // Guard check: verify the agent hasn't been killed before proceeding
+  const canOperate = await startupGuardCheck(vsConfig);
+  if (!canOperate) {
+    return { hooks: {}, config: { ...vsConfig, enabled: false } };
+  }
+
   const hooks = createVeriSwarmHooks(context, vsConfig);
   return { hooks, config: vsConfig };
 }
@@ -495,7 +603,7 @@ export function createVeriSwarmHooks(
   context: HookContext,
   vsConfig: VeriSwarmConfig,
 ): HooksConfig {
-  if (!vsConfig.enabled || !vsConfig.apiKey || !vsConfig.agentId) {
+  if (!vsConfig.enabled || !vsConfig.agentId || (!vsConfig.apiKey && !vsConfig.agentApiKey)) {
     return {};
   }
 

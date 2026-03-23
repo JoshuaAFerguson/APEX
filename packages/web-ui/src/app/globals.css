@@ -90,6 +90,23 @@
     overflow: hidden;
   }
 
+  /* Panel content animation for AgentTerminalPanel */
+  .panel-content-animate {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 300ms ease-out, opacity 200ms ease-in-out;
+    opacity: 0;
+  }
+
+  .panel-content-animate[data-expanded="true"] {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  .panel-content-inner {
+    overflow: hidden;
+  }
+
   /* Diff Viewer Syntax Highlighting */
   .diff-keyword {
     color: #c792ea; /* Purple for keywords */
@@ -239,5 +256,20 @@
 
   .light .md-list {
     color: #ca8a04;
+  }
+
+  /* Accessibility: Reduce animations for users who prefer reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-collapse,
+    .panel-content-animate,
+    [class*="transition-"] {
+      transition-duration: 0.01ms !important;
+    }
+
+    /* Remove rotation animations for reduced motion */
+    [class*="rotate-"] {
+      transition: none !important;
+      transform: none !important;
+    }
   }
 }

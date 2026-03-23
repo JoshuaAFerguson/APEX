@@ -637,42 +637,122 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.8.0 - IDE Integration
+## v0.8.0 - Multi-Provider & Intelligent Routing
 
-*Deep integration with development environments*
+*Break vendor lock-in and optimize cost/performance with intelligent task routing*
 
-### VS Code Extension (`@apexcli/vscode`)
+> **Competitive Context**: [ruflo](https://github.com/ruvnet/ruflo) supports 5+ AI providers with auto-failover,
+> Q-Learning task routing, and a token optimizer that reduces API costs 30-50%. These features represent
+> the highest-impact competitive gaps for APEX.
 
-- ⚪ APEX sidebar panel
-- ⚪ Task creation from editor context
-- ⚪ Inline task status indicators
-- ⚪ Code diff previews in editor
-- ⚪ Approval actions via editor UI
-- ⚪ Integrated log panel
-- ⚪ Configuration IntelliSense
-- ⚪ Agent/workflow file snippets
-- ⚪ Context menu actions (select code → create task)
-- ⚪ Status bar integration
-- ⚪ CodeLens for APEX suggestions
-- ⚪ Inline chat mode
+### Multi-Provider Foundation (`@apexcli/providers`)
 
-### JetBrains Plugin
+- ⚪ **Provider adapter interface** - Abstract AI provider behind a common `ProviderAdapter` interface
+- ⚪ **Claude provider** - Refactor existing Claude Agent SDK integration into adapter pattern
+- ⚪ **OpenAI/GPT provider** - GPT-4o, GPT-4-turbo, o1/o3 support via OpenAI SDK
+- ⚪ **Gemini provider** - Gemini 2.5 Pro/Flash support via Google AI SDK
+- ⚪ **Ollama provider** - Local model support (Llama, Mistral, CodeLlama, DeepSeek)
+- ⚪ **Cohere provider** - Command R+ support via Cohere SDK
+- ⚪ **Provider health checks** - Monitor provider availability, latency, error rates
+- ⚪ **Automatic failover** - Fall back to next provider on failure (configurable chain)
+- ⚪ **Per-agent provider selection** - Assign different providers to different agents
+- ⚪ **Per-task provider override** - Override provider at task creation time
+- ⚪ **Unified cost tracking** - Normalize cost metrics across all providers
 
-- 💡 IntelliJ IDEA support
-- 💡 WebStorm support
-- 💡 PyCharm support
+### Intelligent Task Routing
 
-### Other IDEs
+- ⚪ **Cost-based routing** - Route to cheapest capable provider automatically
+- ⚪ **Capability-match routing** - Match task requirements to provider strengths (coding, reasoning, speed)
+- ⚪ **Latency-based routing** - Route time-sensitive tasks to fastest available provider
+- ⚪ **Q-Learning task router** - Reinforcement learning that improves routing over time based on task outcomes
+- ⚪ **Routing policy engine** - Configurable rules for routing decisions (cost caps, provider preferences, fallback order)
+- ⚪ **Routing analytics** - Dashboard showing routing decisions, cost savings, and success rates
 
-- 💡 Neovim plugin (Lua)
-- 💡 Emacs package (elisp)
-- 💡 Sublime Text plugin
+### Token Optimizer
+
+- ⚪ **LLM-free operations** - Detect simple transforms (rename, move, format) that don't need an LLM call
+- ⚪ **Prompt compression** - Reduce token usage by intelligently compressing context
+- ⚪ **Response caching** - Cache identical/similar requests to avoid duplicate API calls
+- ⚪ **Smart context windowing** - Only include the most relevant context per provider's window size
+- ⚪ **Token budget advisor** - Suggest optimal model/provider for each task based on complexity estimate
+
+### Provider Configuration
+
+```yaml
+# .apex/config.yaml
+providers:
+  default: claude
+  routing: auto  # auto | manual | cost-optimized | latency-optimized
+  adapters:
+    claude:
+      enabled: true
+      models: [claude-sonnet-4-5-20250514, claude-opus-4-20250514]
+      authMethod: oauth
+    openai:
+      enabled: true
+      models: [gpt-4o, o3]
+      apiKey: ${OPENAI_API_KEY}
+    gemini:
+      enabled: true
+      models: [gemini-2.5-pro, gemini-2.5-flash]
+      authMethod: oauth
+    ollama:
+      enabled: true
+      endpoint: http://localhost:11434
+      models: [deepseek-coder-v2, llama3.1]
+  failover:
+    chain: [claude, openai, gemini, ollama]
+    maxRetries: 2
+    retryDelay: 5000
+  routing:
+    costWeight: 0.4
+    latencyWeight: 0.3
+    qualityWeight: 0.3
+    learningRate: 0.01  # Q-Learning adaptation speed
+```
+
+### IDE Integration
+
+- ⚪ **VS Code Extension** (`@apexcli/vscode`) - Sidebar panel, task creation, inline status, diff previews, approval actions, log panel, config IntelliSense, context menu actions, status bar, CodeLens suggestions, inline chat
+- 💡 **JetBrains Plugin** - IntelliJ IDEA, WebStorm, PyCharm support
+- 💡 **Neovim plugin** (Lua)
+- 💡 **Emacs package** (elisp)
 
 ---
 
-## v0.9.0 - Advanced Workflows
+## v0.9.0 - Swarm Coordination & Advanced Workflows
 
-*Complex workflow capabilities and automation*
+*Multi-agent swarm topologies with consensus and advanced workflow capabilities*
+
+> **Competitive Context**: ruflo implements mesh, hierarchical, ring, star, and hierarchical-mesh
+> swarm topologies with Raft/Byzantine/Gossip/CRDT consensus algorithms and queen-led anti-drift
+> control. APEX currently uses linear workflow stages with a single orchestrator.
+
+### Swarm Topologies (`@apexcli/swarm`)
+
+- ⚪ **Topology engine** - Pluggable swarm topology system with configurable coordination patterns
+- ⚪ **Hierarchical topology** - Lead agent delegates to specialist sub-agents (current behavior, formalized)
+- ⚪ **Mesh topology** - All agents communicate as peers, best for collaborative tasks
+- ⚪ **Star topology** - Central coordinator with direct agent connections, best for independent parallel tasks
+- ⚪ **Ring topology** - Sequential pipeline with each agent feeding the next, best for staged workflows
+- ⚪ **Hybrid topology** - Hierarchical-mesh combining delegation with peer collaboration
+- ⚪ **Dynamic topology switching** - Change topology mid-task based on execution stage
+- ⚪ **Topology visualization** - Real-time topology graph in web UI and CLI
+
+### Consensus Mechanisms
+
+- ⚪ **Raft consensus** - Leader election and log replication for multi-agent decisions
+- ⚪ **Voting protocol** - Multi-agent voting on design decisions, code review, architecture choices
+- ⚪ **Conflict resolution** - When agents disagree, apply configurable resolution strategy (majority, leader, escalate)
+- ⚪ **Decision audit trail** - Log all consensus decisions with agent votes and rationale
+
+### Anti-Drift Control
+
+- ⚪ **Goal tracking** - Monitor agent progress against original task objectives
+- ⚪ **Drift detection** - Detect when agents deviate from task scope (token budget, file scope, time)
+- ⚪ **Automatic correction** - Redirect drifting agents back to task with updated context
+- ⚪ **Scope enforcement** - Hard limits on files, directories, and operations an agent can touch
+- ⚪ **Drift analytics** - Track drift patterns per agent and workflow for continuous improvement
 
 ### Built-in Workflow Templates (inspired by [Rover](https://github.com/endorhq/rover))
 
@@ -755,9 +835,53 @@ The goal of v0.3.0 is to make APEX feel as polished and intuitive as Claude Code
 
 ---
 
-## v0.10.0 - Intelligence & Learning
+## v0.10.0 - Intelligence, Learning & Plugin System
 
-*Smarter agents and continuous improvement*
+*Self-improving agents, vector search, and extensibility*
+
+> **Competitive Context**: ruflo implements SONA self-optimization, EWC++ learning preservation,
+> HNSW vector search (150x-12,500x faster retrieval), and a full plugin architecture.
+> These features enable ruflo to improve over time and support community extensions.
+
+### Self-Learning System (`@apexcli/learning`)
+
+- ⚪ **Pattern extraction** - Automatically extract reusable patterns from completed tasks
+- ⚪ **Success/failure learning** - Track what works and what fails, adjust agent behavior
+- ⚪ **Experience replay** - Store and replay successful execution traces to inform new tasks
+- ⚪ **Learning persistence** - SQLite-backed learning store with cross-session retention
+- ⚪ **Learning decay** - Gradually reduce weight of old patterns as codebase evolves
+- ⚪ **Learning dashboard** - Visualize what APEX has learned, pattern confidence, agent improvements
+
+### Vector Search & Embeddings (`@apexcli/embeddings`)
+
+- ⚪ **Embedding generation** - Generate embeddings for code, docs, and task history
+- ⚪ **HNSW vector index** - Fast approximate nearest-neighbor search for context retrieval
+- ⚪ **Semantic code search** - Find code by meaning, not just text (upgrade from current grep-based)
+- ⚪ **Context retrieval** - Automatically retrieve most relevant code/docs for a given task
+- ⚪ **Incremental indexing** - Update index on file changes without full re-index
+- ⚪ **Multi-provider embeddings** - Support OpenAI, Cohere, local (Ollama) embedding models
+
+### Plugin System (`@apexcli/plugins`)
+
+- ⚪ **Plugin specification** - Standardized plugin manifest format (plugin.yaml)
+- ⚪ **Plugin lifecycle** - Install, enable, disable, uninstall, update plugins
+- ⚪ **Plugin types** - Agent plugins, tool plugins, workflow plugins, UI plugins
+- ⚪ **Plugin hooks** - Pre/post task, pre/post tool, pre/post agent hooks
+- ⚪ **Plugin isolation** - Sandboxed execution for third-party plugins
+- ⚪ **Plugin marketplace** - Community registry for discovering and sharing plugins
+- ⚪ **Plugin CLI** - `apex plugins install/list/remove/create` commands
+- ⚪ **Plugin SDK** - TypeScript SDK for plugin development with types and utilities
+
+### Expanded Agent Library
+
+- ⚪ **Security agent** - Dedicated security scanning and vulnerability assessment
+- ⚪ **Performance agent** - Performance profiling and optimization suggestions
+- ⚪ **Documentation agent** - Auto-generate and maintain documentation
+- ⚪ **Migration agent** - Database and framework migration specialist
+- ⚪ **Debugging agent** - Systematic bug reproduction and diagnosis
+- ⚪ **Refactoring agent** - Code smell detection and refactoring suggestions
+- ⚪ **Agent templates** - Community-contributed agent definitions
+- ⚪ **Dynamic agent creation** - Create specialized agents on-the-fly for specific tasks
 
 ### Confidence & Clarification (inspired by [Devin](https://devin.ai/))
 
@@ -1159,19 +1283,12 @@ telemetry:
 - 💡 **Free tier credits** - Trial credits for new users
 - 💡 **Team workspaces** - Shared cloud workspaces for teams
 
-### Multi-LLM Backend Support (inspired by [Rover](https://github.com/endorhq/rover) & [OpenCode](https://github.com/anomalyco/opencode))
+### Multi-LLM Backend Support *(moved to v0.8.0)*
 
-- 💡 **Pluggable LLM backends** - Support multiple AI providers
-- 💡 **Claude Code backend** - Current default (via Claude Agent SDK)
-- 💡 **OpenAI Codex backend** - OpenAI's coding model
-- 💡 **Gemini CLI backend** - Google's Gemini models
+- *See v0.8.0 Multi-Provider & Intelligent Routing for full details*
+- *Additional future providers:*
 - 💡 **Qwen Code backend** - Alibaba's coding model
 - 💡 **Cursor backend** - Cursor's AI capabilities
-- 💡 **Local models** - Ollama, llama.cpp integration
-- 💡 **Per-task model selection** - Choose model per task
-- 💡 **Per-agent model selection** - Different models for different agents
-- 💡 **Cost comparison** - Compare costs across providers
-- 💡 **Fallback chains** - Try cheaper model first, escalate if needed
 
 ### Advanced AI Features
 
@@ -1234,55 +1351,47 @@ telemetry:
 
 ## CLI Feature Comparison
 
-| Feature | Claude Code | Codex CLI | Gemini CLI | Aider | Cline | OpenHands | Rover | GSD | Auto-Claude | OpenCode | APEX |
-|---------|-------------|-----------|------------|-------|-------|-----------|-------|-----|-------------|----------|------|
-| Streaming responses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟢 |
-| Syntax highlighting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟢 |
-| Markdown rendering | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | 🟢 |
-| Diff views | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | 🟢 |
-| Tab completion | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | 🟢 |
-| History navigation | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | 🟢 |
-| Tool approval workflow | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🟢 |
-| Multi-turn conversations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | 🟢 |
-| Session persistence | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | 🟢 |
-| Git awareness | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
-| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | 🟢 |
-| **Workflow system** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | 🟢 |
-| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | 🟢 |
-| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | 🟢 |
-| **Browser automation** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **Voice coding** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 💡 |
-| **Multimodal input (images)** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Repository map (AST)** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Lint-after-edit** | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **GitHub issue resolver** | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ | ⚪ |
-| **Confidence scoring** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Auto-documentation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **MCP marketplace** | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **24/7 daemon mode** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **Auto-resume on session limit** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
-| **Container sandbox isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | 🟢 |
-| **Git worktree isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | 🟢 |
-| **Multi-LLM backends** | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | 💡 |
-| **VSCode extension** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | ⚪ |
-| **Parallel agent execution** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | 🟢 |
-| **Visual Kanban board** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Linear integration** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Self-validating QA loop** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | 🟢 |
-| **AI merge conflict resolution** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **Memory layer (cross-session)** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ⚪ |
-| **LSP integration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
-| **Desktop app** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ⚪ |
-| **Cloud platform** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ⚪ |
-| **Brownfield codebase mapping** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | 🟢 |
-| **Automated changelog** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
-| **GitHub Actions trigger** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| Feature | Claude Code | Codex CLI | Gemini CLI | Aider | Cline | OpenHands | Rover | GSD | Auto-Claude | Ruflo | OpenCode | APEX |
+|---------|-------------|-----------|------------|-------|-------|-----------|-------|-----|-------------|-------|----------|------|
+| Streaming responses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | 🟢 |
+| Syntax highlighting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | 🟢 |
+| Markdown rendering | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | 🟢 |
+| Diff views | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | 🟢 |
+| Tab completion | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | 🟢 |
+| Cost/token tracking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | 🟢 |
+| Git awareness | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟢 |
+| **Multi-agent orchestration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | 🟢 |
+| **Swarm topologies** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Consensus algorithms** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Q-Learning task routing** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Token optimizer** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Anti-drift control** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Self-learning system** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Vector search/embeddings** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Plugin system** | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚪ |
+| **Multi-LLM backends** | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ⚪ |
+| **Workflow system** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| **Subtask decomposition** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | 🟢 |
+| **Web dashboard** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | 🟢 |
+| **Browser automation** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | 🟢 |
+| **MCP marketplace** | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | 🟢 |
+| **24/7 daemon mode** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Auto-resume on session limit** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Container sandbox isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | 🟢 |
+| **Git worktree isolation** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | 🟢 |
+| **Approval gates & policies** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **TDD mode** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **Thought/reasoning capture** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟢 |
+| **VSCode extension** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **GitHub issue resolver** | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ⚪ |
+| **LSP integration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚪ |
+| **Brownfield codebase mapping** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | 🟢 |
 
 > **Legend**: 🟢 Complete | 🟡 Partial | ⚪ Planned | 💡 Considering | ✅ Has feature | ❌ No feature
 >
 > **Competitors**:
 >
+> - [Ruflo](https://github.com/ruvnet/ruflo) - Enterprise multi-agent AI orchestration with swarm topologies, Q-Learning routing, and WASM acceleration
 > - [GSD (Get-Shit-Done)](https://github.com/glittercowboy/get-shit-done) - Meta-prompting and context engineering for Claude Code
 > - [Auto-Claude](https://github.com/AndyMik90/Auto-Claude) - Autonomous multi-agent desktop app with Kanban board
 > - [OpenCode](https://github.com/anomalyco/opencode) - Provider-agnostic terminal agent with LSP support
@@ -1314,19 +1423,19 @@ Have an idea? Open a [Discussion](https://github.com/JoshuaAFerguson/apex/discus
 |---------|-------------|-------|
 | v0.1.0 | Q4 2025 | Foundation ✅ |
 | v0.2.0 | Q4 2025 | Production Ready ✅ |
-| v0.3.0 | Q4 2025 | Claude Code-like CLI Experience |
-| v0.4.0 | Q4 2025 | Sleepless Mode & Autonomy |
-| v0.5.0 | Q1 2026 | Tool System & Permissions |
-| v0.6.0 | Q1 2026 | Context & Memory |
-| v0.7.0 | Q1 2026 | Web Dashboard & Integrations |
-| v0.8.0 | Q1 2026 | IDE Integration |
-| v0.9.0 | Q1 2026 | Advanced Workflows |
-| v0.10.0 | Q2 2026 | Intelligence & Learning |
-| v0.11.0 | Q2 2026 | Enterprise Features |
-| v0.12.0 | Q2 2026 | Domain-Specific Agent Packs |
-| v0.13.0 | Q2 2026 | Ecosystem & Extensibility |
-| v0.14.0 | Q2 2026 | Scale & Performance |
-| v1.0.0 | Q3 2026 | General Availability |
+| v0.3.0 | Q4 2025 | Claude Code-like CLI Experience ✅ |
+| v0.4.0 | Q4 2025 | Sleepless Mode & Autonomy ✅ |
+| v0.5.0 | Q1 2026 | Tool System & Permissions ✅ |
+| v0.6.0 | Q1 2026 | Context & Memory ✅ |
+| v0.7.0 | Q1 2026 | Web Dashboard & Integrations (current) |
+| v0.8.0 | Q2 2026 | Multi-Provider & Intelligent Routing |
+| v0.9.0 | Q2 2026 | Swarm Coordination & Advanced Workflows |
+| v0.10.0 | Q2 2026 | Intelligence, Learning & Plugin System |
+| v0.11.0 | Q3 2026 | Enterprise Features |
+| v0.12.0 | Q3 2026 | Domain-Specific Agent Packs |
+| v0.13.0 | Q3 2026 | Ecosystem & Extensibility |
+| v0.14.0 | Q3 2026 | Scale & Performance |
+| v1.0.0 | Q4 2026 | General Availability |
 
 *Dates are tentative and subject to change based on community feedback and priorities.*
 

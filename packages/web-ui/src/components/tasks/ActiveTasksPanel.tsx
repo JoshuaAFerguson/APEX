@@ -1,10 +1,16 @@
 import React, { useState, useMemo } from 'react'
 import { TaskCard } from './TaskCard'
+import { BulkSelectionProvider } from './BulkSelectionContext'
+import { BulkActionToolbar } from './BulkActionToolbar'
+import { BulkActionConfirmationDialog, useSkipConfirmation } from './BulkActionConfirmationDialog'
+import { BulkOperationProgress } from './BulkOperationProgress'
 import { Card, CardHeader, CardContent } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { useBulkTaskOperations } from '@/hooks/useBulkTaskOperations'
 import { isTaskRunning, cn } from '../../lib/utils'
 import type { Task, TaskStatus } from '@apexcli/core'
+import type { BulkOperationType } from '@/types/bulk-operations'
 import {
   Filter,
   RefreshCw,
@@ -36,6 +42,8 @@ export interface ActiveTasksPanelProps {
   onRetry?: (taskId: string) => Promise<void>
   /** ID of task currently being acted upon (for loading state) */
   actionLoadingTaskId?: string | null
+  /** Whether to enable bulk operations */
+  enableBulkOperations?: boolean
 }
 
 type FilterType = 'all' | 'active' | 'completed' | 'failed' | 'paused'
@@ -58,6 +66,7 @@ export function ActiveTasksPanel({
   onCancel,
   onRetry,
   actionLoadingTaskId,
+  enableBulkOperations = false,
 }: ActiveTasksPanelProps) {
   const [filter, setFilter] = useState<FilterType>(defaultShowActiveOnly ? 'active' : 'all')
 

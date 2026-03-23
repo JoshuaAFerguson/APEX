@@ -185,6 +185,7 @@ vi.mock('lucide-react', () => ({
   Clock: () => <div data-testid="clock-icon">🕐</div>,
   GitBranch: () => <div data-testid="git-branch-icon">🌿</div>,
   Play: () => <div data-testid="play-icon">▶</div>,
+  Save: () => <div data-testid="save-icon">💾</div>,
 }))
 
 // Mock utils

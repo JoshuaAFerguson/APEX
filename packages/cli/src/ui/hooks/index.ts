@@ -1,4 +1,10 @@
 export { useAgentHandoff, type HandoffAnimationState, type UseAgentHandoffOptions, formatHandoffElapsed } from './useAgentHandoff.js';
+export {
+  useAgentTerminalPanelState,
+  PanelState,
+  type UseAgentTerminalPanelStateOptions,
+  type PanelStateManager
+} from './useAgentTerminalPanelState.js';
 export { useBudgetStatus, type BudgetData, type BudgetThresholds, type UseBudgetStatusOptions, type BudgetStatusState } from './useBudgetStatus.js';
 export { useElapsedTime } from './useElapsedTime.js';
 export { useOrchestratorEvents, type OrchestratorEventState, type UseOrchestratorEventsOptions } from './useOrchestratorEvents.js';

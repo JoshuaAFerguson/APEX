@@ -13040,7 +13040,7 @@ export {
 } from './test-cleanup';
 export { buildOrchestratorPrompt, buildAgentDefinitions, buildStagePrompt, buildResumePrompt } from './prompts';
 export { createHooks } from './hooks';
-export { initializeVeriSwarm, createVeriSwarmHooks, mergeHooks, resolveVeriSwarmConfig, autoRegisterAgent, checkMyTrustScore, reportTaskStarted, reportTaskCompleted, reportTaskFailed } from './veriswarm-hook';
+export { initializeVeriSwarm, createVeriSwarmHooks, mergeHooks, resolveVeriSwarmConfig, autoRegisterAgent, checkMyTrustScore, reportTaskStarted, reportTaskCompleted, reportTaskFailed, issueCredential, verifyCredential, isAgentKilled, isAgentVerified, getEvidenceLedger, startupGuardCheck } from './veriswarm-hook';
 export type { VeriSwarmConfig } from './veriswarm-hook';
 export { HookManager, type HookExecutionStartEvent, type HookExecutionCompleteEvent } from './hook-manager';
 export {

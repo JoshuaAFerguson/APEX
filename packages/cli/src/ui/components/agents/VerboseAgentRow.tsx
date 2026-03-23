@@ -106,6 +106,11 @@ function getStatusIcon(status: AgentInfo['status']): string {
 }
 
 function formatTokens(count: number): string {
+  // Handle undefined/null/NaN values
+  if (count == null || isNaN(count) || typeof count !== 'number') {
+    return '0';
+  }
+
   if (count >= 1000000) {
     return `${(count / 1000000).toFixed(1)}M`;
   }

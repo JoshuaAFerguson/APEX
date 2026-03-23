@@ -1,0 +1,248 @@
+# CODE REVIEW FINDINGS - AgentTerminalPanel & useAgentLogStream Tests
+
+## CRITICAL ISSUES
+
+### 1. packages/web-ui/src/hooks/useAgentLogStream.ts:244-252 - Global State Pollution - HIGH SEVERITY
+Issue: Using global window.__agentLogSequenceCounter for sequence numbering creates race conditions
+Impact: Multiple hook instances share the same counter; test interference in parallel execution
+Fix: Use closure variable or instance-level counter instead of global window state
+
+### 2. packages/web-ui/src/hooks/useAgentLogStream.ts:273-275 - Unsafe Global Initialization - MEDIUM SEVERITY
+Issue: Module-level initialization of global counter at import time
+Impact: Executes before test setup; cannot be reset between tests; test isolation issues
+Fix: Move initialization into hook or use lazy initialization
+
+### 3. packages/web-ui/src/hooks/__tests__/useAgentLogStream.test.tsx:156-198 - Incomplete Mock Setup - MEDIUM SEVERITY
+Issue: Test uses vi.mocked() incorrectly inside test body instead of beforeEach
+Code: const { useAgentLogStream } = vi.mocked(await import('@/hooks/useAgentLogStream'))
+Impact: Dynamic import doesn't work with vitest mocks; setup should be at module level
+Fix: Move mock setup to beforeEach or beforeAll hook
+
+### 4. packages/web-ui/src/hooks/useAgentLogStream.ts:370-406 - Missing Error Handling - MEDIUM SEVERITY
+Issue: updateConnectionStatus lacks try-catch for non-reconnector code paths
+Impact: wsClient.isConnected() or getHealthState() failures could crash hook
+Fix: Wrap all wsClient calls in try-catch blocks
+
+### 5. packages/web-ui/src/hooks/__tests__/useAgentLogStream.test.tsx:933-975 - Fake Timers Cleanup - MEDIUM SEVERITY
+Issue: Test uses vi.useFakeTimers() with cleanup in test body instead of afterEach
+Impact: If test fails, fake timers not restored; affects subsequent tests
+Fix: Move timer cleanup to afterEach hook
+
+---
+
+## CODE QUALITY ISSUES
+
+### 6. packages/web-ui/src/hooks/useAgentLogStream.ts:574-575 - Wildcard Listener Memory Leak - MEDIUM SEVERITY
+Issue: Comment acknowledges wildcard handler cannot be unsubscribed
+Code: // Note: We can't easily unsubscribe from wildcard...
+Impact: Each component mount adds listener without removal; potential memory leak
+Fix: Implement proper wildcard unsubscribe in wsClient or track handlers differently
+
+### 7. packages/web-ui/src/hooks/useAgentLogStream.ts:188-192 - Magic String Event Types - LOW SEVERITY
+Issue: Event type strings duplicated across multiple locations
+Impact: Typos hard to catch; maintenance burden if types change
+Fix: Define event type constants or enum; reuse across function
+
+### 8. packages/web-ui/src/components/agents/AgentTerminalPanel.tsx:298-327 - Keyboard Handler Race Condition - MEDIUM SEVERITY
+Issue: Multiple key handlers could trigger state updates simultaneously
+Impact: Possible conflicting state updates in single event
+Fix: Add debouncing or state update coordination
+
+### 9. packages/web-ui/src/components/agents/AgentTerminalPanel.tsx:250-262 - Unvalidated Log Export - LOW SEVERITY
+Issue: No validation of exported log content before creating blob/download
+Impact: Could export sensitive data without warning
+Fix: Add warning dialog for export or validate content
+
+### 10. packages/web-ui/src/hooks/useAgentLogStream.ts:256 - Unchecked crypto.randomUUID - LOW SEVERITY
+Issue: Uses crypto.randomUUID() without error handling
+Impact: Could fail in environments without crypto API
+Fix: Add fallback UUID generation method
+
+---
+
+## TEST COVERAGE GAPS
+
+### 11. Missing Error Boundary Tests - LOW SEVERITY
+Tests don't cover error boundary behavior when child components throw
+Impact: Component errors not caught by tests
+
+### 12. Missing Memory Leak Tests - LOW SEVERITY
+No verification that refs are properly cleaned up
+Impact: Potential memory leaks not caught in tests
+
+### 13. Missing Concurrent Event Tests - MEDIUM SEVERITY
+Tests don't verify behavior with concurrent rapid WebSocket events
+Impact: Race conditions with simultaneous events not caught
+
+### 14. Missing Disconnection Recovery Tests - MEDIUM SEVERITY
+No explicit tests for reconnection after network failure
+Impact: Recovery scenarios not fully validated
+
+### 15. Missing Filter State Persistence Tests - LOW SEVERITY
+No tests for filter state across reconnections
+Impact: State management edge cases not covered
+
+---
+
+## SUMMARY BY SEVERITY
+
+HIGH: 1 issue
+- Global state pollution via window counter
+
+MEDIUM: 10 issues
+- Unsafe global initialization
+- Incomplete mock setup
+- Missing error handling in connection check
+- Fake timers cleanup
+- Wildcard listener leak
+- Keyboard handler race conditions
+- Concurrent event tests missing
+- Disconnection recovery tests missing
+- Filter persistence tests missing
+- Error boundary tests missing
+
+LOW: 5 issues
+- Magic string event types
+- Unvalidated log export
+- Unchecked crypto.randomUUID
+- Memory leak tests missing
+- Test documentation gaps
+
+---
+
+## KEY RECOMMENDATIONS
+
+1. **URGENT**: Refactor sequence number generation to use closure/instance variable
+2. Fix test mock setup to use beforeEach/afterEach patterns
+3. Add try-catch error handling around all wsClient calls
+4. Implement proper wildcard listener unsubscribe mechanism
+5. Extract event type constants to prevent magic strings
+6. Add comprehensive tests for: concurrent events, disconnection recovery, filter persistence
+7. Move fake timer cleanup to afterEach hooks
+8. Add proper error boundaries in component tests
+9. Validate log exports before download
+10. Add fallback for crypto.randomUUID
+
+---
+
+## TEST EXECUTION NOTES
+
+Current test run shows failures in lucide-react mocks in unrelated tests.
+AgentTerminalPanel and useAgentLogStream tests are structurally sound but have the issues noted above.
+
+
+---
+
+## TEST EXECUTION RESULTS
+
+### Test Run Output
+- **File Tested**: packages/web-ui/src/hooks/__tests__/useAgentLogStream.test.tsx
+- **Total Tests**: 95
+- **Failed**: 49
+- **Error Type**: "Should not already be working" - React state errors
+
+### Root Cause Analysis
+The widespread test failures are directly caused by the issues identified:
+
+1. **Global Counter Pollution**: The window.__agentLogSequenceCounter causes React state conflicts across tests
+   - Each test increments shared counter
+   - State becomes inconsistent
+   - React's reconciliation fails with "Should not already be working" error
+
+2. **Window Deletion in Tests**: Tests delete window.crypto/window object mid-execution
+   - Subsequent tests cannot render React components
+   - Reference errors cascade
+   - Test isolation completely broken
+
+3. **Missing Cleanup**: No proper beforeEach/afterEach setup
+   - Previous test state persists to next test
+   - Global mocks interfere
+   - Fake timers not restored between tests
+
+### Specific Failing Test Categories
+- Edge Cases and Error Handling: 12 failures
+- Advanced Event Processing: 2 failures  
+- Statistics and Performance: 2 failures
+- Debug Mode: 2 failures
+- Scroll Management: 2 failures
+- Cleanup: 2 failures
+- Memory Management: 2 failures
+- Error Recovery and Resilience: 3 failures
+
+All failures trace back to the global state and test isolation issues.
+
+---
+
+## ACCEPTANCE CRITERIA EVALUATION
+
+### Requirement: "Unit tests cover: component rendering, auto-scroll behavior, log filtering, status display, WebSocket connection handling, real-time log streaming, edge cases (empty logs, rapid updates, disconnection)"
+
+**Status**: ⚠️ PARTIALLY COVERED (but tests are failing)
+
+**Coverage Assessment**:
+✅ Component rendering - COVERED (AgentTerminalPanel.test.tsx)
+✅ Auto-scroll behavior - COVERED (AgentTerminalPanel.auto-scroll.test.tsx)
+✅ Log filtering - COVERED (useAgentLogStream.test.tsx: 356-447)
+✅ Status display - COVERED (AgentTerminalPanel.websocket.test.tsx)
+✅ WebSocket connection handling - COVERED (useAgentLogStream.test.tsx: 450-510, 990-994)
+✅ Real-time log streaming - COVERED (useAgentLogStream.test.tsx: 160-261)
+⚠️ Edge cases - PARTIALLY COVERED:
+  - Empty logs: COVERED (AgentTerminalPanel.test.tsx:149-154)
+  - Rapid updates: COVERED (useAgentLogStream.test.tsx:834-863)
+  - Disconnection: PARTIALLY COVERED (needs more explicit recovery tests)
+
+### Requirement: "All tests pass"
+
+**Status**: ❌ FAILED - 49/95 tests failing
+
+**Blockers**:
+1. Global state pollution prevents test isolation
+2. Tests modifying global objects (window.crypto) without cleanup
+3. Improper test setup/teardown for mocks and timers
+
+---
+
+## IMMEDIATE ACTION ITEMS (In Priority Order)
+
+### CRITICAL (Must Fix Before Merge)
+1. ❌ **Remove/fix global window.__agentLogSequenceCounter**
+   - Replace with instance-level or closure-based counter
+   - This is blocking all test execution
+   
+2. ❌ **Fix test isolation**
+   - Move dynamic imports to module level
+   - Use proper beforeEach/afterEach hooks
+   - Clean up global state modifications
+
+3. ❌ **Fix React rendering errors**
+   - Restore proper window object in tests
+   - Ensure all mocks are properly set up before render
+
+### HIGH (Should Fix)
+4. Add try-catch error handling to wsClient calls
+5. Fix wildcard listener memory leak
+6. Add missing test cases for concurrent events and disconnection recovery
+
+### MEDIUM (Nice to Have)
+7. Extract event type constants
+8. Add comprehensive error boundary tests
+9. Improve test documentation
+
+---
+
+## CONCLUSION
+
+The tests are well-designed and structurally comprehensive, covering all acceptance criteria areas. However, they are currently FAILING due to critical issues with global state management and test isolation. These must be fixed before the tests can pass.
+
+The code under test (AgentTerminalPanel.tsx and useAgentLogStream.ts) also has quality issues that should be addressed:
+- Global state pollution (HIGH priority)
+- Missing error handling (MEDIUM priority)  
+- Memory leak potential (MEDIUM priority)
+
+**Recommendation**: Do NOT merge until:
+1. Tests pass (fix global state issues)
+2. Code fixes applied (at minimum the HIGH severity issues)
+3. Additional test cases added for edge cases
+
+**Estimated Fix Time**: 2-3 hours for test fixes + code improvements
+

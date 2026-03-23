@@ -112,8 +112,16 @@ function getPulseStyle(intensity: number): { bold: boolean; dimColor: boolean } 
  * @returns Progress bar string
  */
 function generateProgressBar(progress: number, width: number = 40): string {
-  const filledCount = Math.floor(progress * width);
-  const emptyCount = width - filledCount;
+  // Handle invalid inputs
+  if (typeof progress !== 'number' || isNaN(progress)) progress = 0;
+  if (typeof width !== 'number' || isNaN(width) || width <= 0) width = 40;
+
+  // Clamp progress to 0-1 range
+  progress = Math.max(0, Math.min(1, progress));
+
+  const filledCount = Math.max(0, Math.floor(progress * width));
+  const emptyCount = Math.max(0, width - filledCount);
+
   return '█'.repeat(filledCount) + '░'.repeat(emptyCount);
 }
 
