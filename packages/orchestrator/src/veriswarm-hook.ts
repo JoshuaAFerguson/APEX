@@ -60,6 +60,7 @@ interface StoredCredentials {
   agentSlug: string;
   registeredAt: string;
   claimUrl?: string;
+  workspaceApiKey?: string;
 }
 
 const CREDENTIALS_DIR = '.apex';
@@ -112,10 +113,15 @@ export function resolveVeriSwarmConfig(
   // Try to load stored credentials
   const stored = loadStoredCredentials(resolvedProjectPath);
 
+  // VeriSwarm is enabled if: explicitly enabled, or stored credentials exist, or API key is set, or VERISWARM_ENABLED=true
+  const hasStoredCreds = !!stored;
+  const hasApiKey = !!(config?.apiKey ?? process.env.VERISWARM_API_KEY);
+  const explicitlyEnabled = config?.enabled ?? (process.env.VERISWARM_ENABLED === 'true');
+
   return {
-    enabled: config?.enabled ?? (!!process.env.VERISWARM_API_KEY),
+    enabled: explicitlyEnabled || hasStoredCreds || hasApiKey,
     apiUrl: config?.apiUrl ?? process.env.VERISWARM_API_URL ?? 'https://api.veriswarm.ai',
-    apiKey: config?.apiKey ?? process.env.VERISWARM_API_KEY ?? '',
+    apiKey: config?.apiKey ?? process.env.VERISWARM_API_KEY ?? stored?.workspaceApiKey ?? '',
     agentId: config?.agentId ?? stored?.agentId ?? '',
     agentApiKey: config?.agentApiKey ?? stored?.agentApiKey ?? '',
     enforce: config?.enforce ?? false,
@@ -123,7 +129,7 @@ export function resolveVeriSwarmConfig(
     reportEvents: config?.reportEvents ?? true,
     ownerEmail: config?.ownerEmail ?? process.env.VERISWARM_OWNER_EMAIL ?? '',
     projectPath: resolvedProjectPath,
-    registered: !!stored,
+    registered: hasStoredCreds,
   };
 }
 
@@ -188,9 +194,7 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
     return vsConfig; // Already registered
   }
 
-  if (!vsConfig.apiKey) {
-    return vsConfig; // No API key — can't register
-  }
+  // No API key required — self-registration creates a workspace automatically
 
   // Derive agent slug from project directory name
   const projectName = path.basename(vsConfig.projectPath);
@@ -219,7 +223,9 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
 
   const agentId = result.agent_id as string;
   const agentApiKey = result.agent_api_key as string ?? '';
+  const workspaceApiKey = result.workspace_api_key as string ?? '';
   const claimUrl = result.owner_claim_url as string ?? '';
+  const tenantId = result.tenant_id as string ?? '';
 
   // Store credentials locally
   const storedCreds: StoredCredentials = {
@@ -228,17 +234,21 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
     agentSlug: slug,
     registeredAt: new Date().toISOString(),
     claimUrl: claimUrl || undefined,
+    workspaceApiKey: workspaceApiKey || undefined,
   };
   saveCredentials(vsConfig.projectPath, storedCreds);
 
   // Print registration success with claim instructions
+  const dashboardBase = vsConfig.apiUrl.replace('api.', '').replace(/\/$/, '');
   console.log(`🐝 VeriSwarm: Agent registered successfully!`);
-  console.log(`   Agent ID:  ${agentId}`);
-  console.log(`   Slug:      ${slug}`);
-  console.log(`   Dashboard: ${vsConfig.apiUrl.replace('api.', '')}/agents/${agentId}`);
+  console.log(`   Agent ID:   ${agentId}`);
+  console.log(`   Slug:       ${slug}`);
+  console.log(`   Tenant:     ${tenantId}`);
+  console.log(`   Dashboard:  ${dashboardBase}/agents/${agentId}`);
+  console.log(`   Tracker:    ${dashboardBase}/operations`);
   if (claimUrl) {
-    console.log(`   Claim URL: ${claimUrl}`);
-    console.log(`   ℹ  Claim this agent to boost its identity score and manage it from your VeriSwarm account.`);
+    console.log(`   Claim URL:  ${claimUrl}`);
+    console.log(`   ℹ  Claim this agent to connect it to your VeriSwarm account and boost its identity score.`);
   }
   console.log(`   Credentials stored in ${CREDENTIALS_DIR}/${CREDENTIALS_FILE}\n`);
 
@@ -246,6 +256,7 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
     ...vsConfig,
     agentId,
     agentApiKey,
+    apiKey: workspaceApiKey || vsConfig.apiKey,
     registered: true,
   };
 }
@@ -447,11 +458,11 @@ export async function initializeVeriSwarm(
 ): Promise<{ hooks: HooksConfig; config: VeriSwarmConfig }> {
   let vsConfig = resolveVeriSwarmConfig(config, context.projectPath);
 
-  if (!vsConfig.enabled || !vsConfig.apiKey) {
+  if (!vsConfig.enabled) {
     return { hooks: {}, config: vsConfig };
   }
 
-  // Auto-register if no agent ID stored
+  // Auto-register if no agent ID stored (no API key required — self-registration)
   if (!vsConfig.agentId) {
     vsConfig = await autoRegisterAgent(vsConfig);
   }
