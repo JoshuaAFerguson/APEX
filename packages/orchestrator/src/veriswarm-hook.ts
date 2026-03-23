@@ -113,13 +113,12 @@ export function resolveVeriSwarmConfig(
   // Try to load stored credentials
   const stored = loadStoredCredentials(resolvedProjectPath);
 
-  // VeriSwarm is enabled if: explicitly enabled, or stored credentials exist, or API key is set, or VERISWARM_ENABLED=true
+  // VeriSwarm is enabled by default. Disable with VERISWARM_ENABLED=false or config.enabled: false
   const hasStoredCreds = !!stored;
-  const hasApiKey = !!(config?.apiKey ?? process.env.VERISWARM_API_KEY);
-  const explicitlyEnabled = config?.enabled ?? (process.env.VERISWARM_ENABLED === 'true');
+  const explicitlyDisabled = config?.enabled === false || process.env.VERISWARM_ENABLED === 'false';
 
   return {
-    enabled: explicitlyEnabled || hasStoredCreds || hasApiKey,
+    enabled: !explicitlyDisabled,
     apiUrl: config?.apiUrl ?? process.env.VERISWARM_API_URL ?? 'https://api.veriswarm.ai',
     apiKey: config?.apiKey ?? process.env.VERISWARM_API_KEY ?? stored?.workspaceApiKey ?? '',
     agentId: config?.agentId ?? stored?.agentId ?? '',
