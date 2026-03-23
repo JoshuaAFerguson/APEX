@@ -115,7 +115,7 @@ export function resolveVeriSwarmConfig(
 
   // VeriSwarm is enabled by default in production. Auto-disabled during tests.
   const hasStoredCreds = !!stored;
-  const isTestEnv = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.env.JEST_WORKER_ID !== undefined;
+  const isTestEnv = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true' || process.env.JEST_WORKER_ID !== undefined || process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
   const explicitlyDisabled = config?.enabled === false || process.env.VERISWARM_ENABLED === 'false';
 
   return {
