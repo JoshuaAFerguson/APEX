@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Sidebar } from '@/components/layout'
 import { ThemeProvider } from '@/components/theme'
+import { NotificationProvider, ToastContainer } from '@/components/notifications'
 
 export const metadata: Metadata = {
   title: 'APEX Dashboard',
@@ -22,12 +23,15 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
-            <main className="flex-1 overflow-y-auto bg-background">
-              {children}
-            </main>
-          </div>
+          <NotificationProvider>
+            <div className="flex h-screen overflow-hidden">
+              <Sidebar />
+              <main className="flex-1 overflow-y-auto bg-background">
+                {children}
+              </main>
+            </div>
+            <ToastContainer />
+          </NotificationProvider>
         </ThemeProvider>
       </body>
     </html>

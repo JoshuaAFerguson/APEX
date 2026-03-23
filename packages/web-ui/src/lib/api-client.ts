@@ -736,7 +736,13 @@ export class ApexApiClient {
     const entries = data.tasks.map(taskToChangelogEntry)
 
     // Extract unique workflows
-    const workflows = Array.from(new Set(data.tasks.map((task: Task) => task.workflow))).sort()
+    const workflowSet = new Set<string>()
+    data.tasks.forEach((task: Task) => {
+      if (typeof task.workflow === 'string') {
+        workflowSet.add(task.workflow)
+      }
+    })
+    const workflows = Array.from(workflowSet).sort()
 
     return {
       entries,

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { LayoutDashboard, ListTodo, Users, Settings, BarChart3, Puzzle } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme'
+import { NotificationCenter } from '@/components/notifications'
 
 const navigationItems = [
   {
@@ -87,7 +88,10 @@ export function Sidebar() {
               <p>APEX v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
               <p className="mt-1">Autonomous Engineering</p>
             </div>
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <NotificationCenter />
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </div>

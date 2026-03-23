@@ -22,9 +22,11 @@ import type { Task } from '@apexcli/core'
 import type { ProjectHealthMetrics } from '@/types/project-health'
 import type { AggregatedPerformanceMetrics } from '@/types/performance-metrics'
 import { mapConnectionToProjectHealth } from '@/types/project-health'
+import { useNotifications } from '@/components/notifications'
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { success, error: notifyError, warning, info } = useNotifications()
   const [stats, setStats] = useState<{
     byStatus: Record<string, number>
     totalCost: number
@@ -299,19 +301,60 @@ export default function DashboardPage() {
         <QuickActionsBar
           onTaskCreated={(taskId, templateId) => {
             console.log(`Task ${taskId} created from template ${templateId}`)
+            // Show success notification
+            success('Task Created', `Task ${truncateId(taskId)} created successfully from ${templateId} template`)
             // Refresh dashboard data to show the new task
             handleRefresh()
             // Navigate to the task detail page
             router.push(`/tasks/${taskId}`)
           }}
-          onError={(error, templateId) => {
-            console.error(`Failed to create task from template ${templateId}:`, error)
-            // In a real app, you might want to show a toast notification here
+          onError={(err, templateId) => {
+            console.error(`Failed to create task from template ${templateId}:`, err)
+            // Show error notification
+            notifyError('Task Creation Failed', `Failed to create task from ${templateId} template: ${err}`)
           }}
           maxActions={6}
           showIcons={true}
           compact={false}
         />
+
+        {/* Demo Notification Buttons (for development) */}
+        <Card>
+          <CardHeader>
+            <h3 className="text-lg font-semibold">Notification System Demo</h3>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                size="sm"
+                onClick={() => success('Success!', 'This is a success notification')}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Success Toast
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => notifyError('Error!', 'This is an error notification')}
+                variant="danger"
+              >
+                Error Toast
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => warning('Warning!', 'This is a warning notification')}
+                className="bg-yellow-600 hover:bg-yellow-700"
+              >
+                Warning Toast
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => info('Info', 'This is an info notification')}
+              >
+                Info Toast
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Row 1: Task Status Overview - 6 column metrics */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
