@@ -241,14 +241,15 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
   // Print registration success with claim instructions
   const dashboardBase = vsConfig.apiUrl.replace('api.', '').replace(/\/$/, '');
   console.log(`🐝 VeriSwarm: Agent registered successfully!`);
-  console.log(`   Agent ID:   ${agentId}`);
-  console.log(`   Slug:       ${slug}`);
-  console.log(`   Tenant:     ${tenantId}`);
-  console.log(`   Dashboard:  ${dashboardBase}/agents/${agentId}`);
-  console.log(`   Tracker:    ${dashboardBase}/operations`);
+  console.log(`   Agent ID:    ${agentId}`);
+  console.log(`   Agent Key:   ${agentApiKey}`);
+  console.log(`   Slug:        ${slug}`);
+  console.log(`   Tenant:      ${tenantId}`);
+  console.log(`   Dashboard:   ${dashboardBase}/agents/${agentId}`);
+  console.log(`   Tracker:     ${dashboardBase}/operations`);
   if (claimUrl) {
-    console.log(`   Claim URL:  ${claimUrl}`);
-    console.log(`   ℹ  Claim this agent to connect it to your VeriSwarm account and boost its identity score.`);
+    console.log(`   Claim URL:   ${claimUrl}`);
+    console.log(`   ℹ  To claim: visit the Claim URL and enter the Agent Key above.`);
   }
   console.log(`   Credentials stored in ${CREDENTIALS_DIR}/${CREDENTIALS_FILE}\n`);
 
@@ -466,17 +467,20 @@ export async function initializeVeriSwarm(
   if (!vsConfig.agentId) {
     vsConfig = await autoRegisterAgent(vsConfig);
   } else {
-    // Already registered — print claim info on every startup if not yet claimed
+    // Already registered — print claim info with agent API key on every startup until claimed
     const stored = loadStoredCredentials(vsConfig.projectPath);
-    if (stored?.claimUrl) {
-      const dashboardBase = vsConfig.apiUrl.replace('api.', '').replace(/\/$/, '');
-      console.log(`🐝 VeriSwarm: Agent "${stored.agentSlug}" active (${stored.agentId})`);
-      console.log(`   Dashboard: ${dashboardBase}/agents/${stored.agentId}`);
-      console.log(`   Claim URL: ${stored.claimUrl}`);
-      console.log(`   ℹ  Claim this agent to connect it to your VeriSwarm account.\n`);
-    } else {
-      console.log(`🐝 VeriSwarm: Agent active (${vsConfig.agentId})\n`);
+    const dashboardBase = vsConfig.apiUrl.replace('api.', '').replace(/\/$/, '');
+    console.log(`🐝 VeriSwarm: Agent "${stored?.agentSlug ?? vsConfig.agentId}" active`);
+    console.log(`   Agent ID:    ${vsConfig.agentId}`);
+    if (stored?.agentApiKey) {
+      console.log(`   Agent Key:   ${stored.agentApiKey}`);
     }
+    console.log(`   Dashboard:   ${dashboardBase}/agents/${vsConfig.agentId}`);
+    if (stored?.claimUrl) {
+      console.log(`   Claim URL:   ${stored.claimUrl}`);
+      console.log(`   ℹ  To claim: visit the Claim URL and enter the Agent Key above.`);
+    }
+    console.log();
   }
 
   const hooks = createVeriSwarmHooks(context, vsConfig);
