@@ -21,6 +21,14 @@ export default mergeConfig(
   }) as UserConfig,
   defineConfig({
     test: {
+      // Limit fork concurrency to prevent OOM with 292 test files
+      pool: 'forks',
+      poolOptions: {
+        forks: {
+          maxForks: 4,
+        },
+      },
+
       // Next.js and React setup
       setupFiles: ['./src/__tests__/setup.ts', '../../test-setup.ts'],
 
