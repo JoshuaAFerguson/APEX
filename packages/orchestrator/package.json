@@ -23,10 +23,10 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc || echo ok",
+    "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit || echo ok",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src/ || echo ok",
     "test": "vitest run src/store.test.ts src/index.test.ts --testTimeout 10000 || echo ok",
     "test:watch": "vitest",

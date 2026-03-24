@@ -13,11 +13,11 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc || echo ok",
+    "build": "tsc",
     "postbuild": "chmod +x dist/index.js",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit || echo ok",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src/ || echo ok",
     "test": "echo 'CLI tests skipped (daemon-generated, pending cleanup)' || echo ok",
     "test:watch": "vitest",

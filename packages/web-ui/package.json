@@ -5,14 +5,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build || echo ok",
+    "build": "next build",
     "start": "next start -p 3001",
     "lint": "next lint || echo ok",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf .next out",
-    "typecheck": "tsc --noEmit || echo ok"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@apexcli/core": "*",

@@ -90,11 +90,11 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc || echo ok",
+    "build": "tsc",
     "postbuild": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync(p.join('dist','mcp'),{recursive:true});fs.copyFileSync(p.join('src','mcp','catalog.json'),p.join('dist','mcp','catalog.json'))\"",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit || echo ok",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src/ || echo ok",
     "test": "vitest run src/*.test.ts || echo ok",
     "prepublishOnly": "npm run build"

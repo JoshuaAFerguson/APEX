@@ -88,7 +88,7 @@ function saveCredentials(projectPath: string, creds: StoredCredentials): void {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(getCredentialsPath(projectPath), JSON.stringify(creds, null, 2));
+    fs.writeFileSync(getCredentialsPath(projectPath), JSON.stringify(creds, null, 2), { mode: 0o600 });
 
     // Add to .gitignore if not already there
     const gitignorePath = path.join(projectPath, '.gitignore');
@@ -163,7 +163,7 @@ async function veriswarmRequest(
 
     if (!response.ok) {
       // Log error details for debugging (only for non-event-reporting calls)
-      if (!apiPath.includes('/events')) {
+      if (!apiPath.includes('/events') && !apiPath.includes('/decisions')) {
         try {
           const errorBody = await response.text();
           console.log(`🐝 VeriSwarm: ${method} ${apiPath} → ${response.status}: ${errorBody.slice(0, 200)}`);
@@ -181,6 +181,8 @@ async function veriswarmRequest(
     return null;
   }
 }
+
+const redactKey = (key: string) => key.length > 12 ? `${key.slice(0, 4)}...${key.slice(-4)}` : '****';
 
 // ── Auto-Registration ─────────────────────────────────────────
 
@@ -242,7 +244,7 @@ export async function autoRegisterAgent(vsConfig: VeriSwarmConfig): Promise<Veri
   const dashboardBase = vsConfig.apiUrl.replace('api.', '').replace(/\/$/, '');
   console.log(`🐝 VeriSwarm: Agent registered successfully!`);
   console.log(`   Agent ID:    ${agentId}`);
-  console.log(`   Agent Key:   ${agentApiKey}`);
+  console.log(`   Agent Key:   ${redactKey(agentApiKey)}`);
   console.log(`   Slug:        ${slug}`);
   console.log(`   Tenant:      ${tenantId}`);
   console.log(`   Dashboard:   ${dashboardBase}/agents/${agentId}`);
@@ -575,7 +577,7 @@ export async function initializeVeriSwarm(
     console.log(`🐝 VeriSwarm: Agent "${stored?.agentSlug ?? vsConfig.agentId}" active`);
     console.log(`   Agent ID:    ${vsConfig.agentId}`);
     if (stored?.agentApiKey) {
-      console.log(`   Agent Key:   ${stored.agentApiKey}`);
+      console.log(`   Agent Key:   ${redactKey(stored.agentApiKey)}`);
     }
     console.log(`   Dashboard:   ${dashboardBase}/agents/${vsConfig.agentId}`);
     if (stored?.claimUrl) {
