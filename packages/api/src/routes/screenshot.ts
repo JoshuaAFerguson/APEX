@@ -4,6 +4,7 @@
  * REST API endpoints for screenshot capture functionality
  */
 
+import path from 'path';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { screenshotService, type ScreenshotConfig, type ElementScreenshotConfig } from '../services/screenshot-service.js';
 
@@ -47,9 +48,23 @@ interface ScreenshotElementRequest {
 }
 
 /**
+ * Validate and sanitize savePath to prevent path traversal.
+ * Restricts saves to <projectPath>/.apex/screenshots/
+ */
+function validateSavePath(savePath: string | undefined, projectPath: string): string | undefined {
+  if (!savePath) return undefined;
+  const sandboxDir = path.resolve(projectPath, '.apex', 'screenshots');
+  const resolved = path.resolve(sandboxDir, savePath);
+  if (!resolved.startsWith(sandboxDir + path.sep) && resolved !== sandboxDir) {
+    throw new Error(`savePath must be within ${sandboxDir}`);
+  }
+  return resolved;
+}
+
+/**
  * Register screenshot routes with Fastify instance
  */
-export async function registerScreenshotRoutes(app: FastifyInstance): Promise<void> {
+export async function registerScreenshotRoutes(app: FastifyInstance, projectPath: string): Promise<void> {
   // Capture viewport screenshot
   app.post<{ Body: ScreenshotViewportRequest }>(
     '/screenshot/viewport',
@@ -132,13 +147,24 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
         });
       }
 
+      // Validate savePath against traversal
+      let sanitizedSavePath: string | undefined;
+      try {
+        sanitizedSavePath = validateSavePath(savePath, projectPath);
+      } catch {
+        return reply.status(400).send({
+          success: false,
+          error: 'savePath must be within the .apex/screenshots/ directory'
+        });
+      }
+
       try {
         const config: ScreenshotConfig = {
           format,
           quality,
           omitBackground,
           viewport,
-          savePath,
+          savePath: sanitizedSavePath,
         };
 
         const result = await screenshotService.captureViewport(url, config);
@@ -242,13 +268,24 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
         });
       }
 
+      // Validate savePath against traversal
+      let sanitizedSavePath: string | undefined;
+      try {
+        sanitizedSavePath = validateSavePath(savePath, projectPath);
+      } catch {
+        return reply.status(400).send({
+          success: false,
+          error: 'savePath must be within the .apex/screenshots/ directory'
+        });
+      }
+
       try {
         const config: ScreenshotConfig = {
           format,
           quality,
           omitBackground,
           viewport,
-          savePath,
+          savePath: sanitizedSavePath,
         };
 
         const result = await screenshotService.captureFullPage(url, config);
@@ -370,6 +407,17 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
         });
       }
 
+      // Validate savePath against traversal
+      let sanitizedSavePath: string | undefined;
+      try {
+        sanitizedSavePath = validateSavePath(savePath, projectPath);
+      } catch {
+        return reply.status(400).send({
+          success: false,
+          error: 'savePath must be within the .apex/screenshots/ directory'
+        });
+      }
+
       try {
         const config: ElementScreenshotConfig = {
           selector: selector.trim(),
@@ -378,7 +426,7 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
           omitBackground,
           timeout,
           viewport,
-          savePath,
+          savePath: sanitizedSavePath,
         };
 
         const result = await screenshotService.captureElement(url, config);
@@ -452,7 +500,11 @@ export async function registerScreenshotRoutes(app: FastifyInstance): Promise<vo
  */
 function isValidUrl(url: string): boolean {
   try {
-    new URL(url);
+    const parsed = new URL(url);
+    // Block file:// URLs to prevent local file access
+    if (parsed.protocol === 'file:') {
+      return false;
+    }
     return true;
   } catch {
     // Also allow data URLs for testing

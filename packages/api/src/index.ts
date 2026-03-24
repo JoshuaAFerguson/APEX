@@ -1,5 +1,6 @@
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply, FastifyError } from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { WebSocket } from 'ws';
 import {
@@ -183,7 +184,11 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   });
 
   // Register plugins
-  await app.register(cors as any, { origin: true });
+  await app.register(cors as any, {
+    origin: ['http://localhost:3000', 'http://localhost:4000', 'http://localhost:4001'],
+    credentials: true,
+  });
+  await app.register(rateLimit as any, { max: 100, timeWindow: '1 minute' });
   await app.register(websocket);
 
   // Initialize orchestrator to get config for auth middleware
@@ -193,8 +198,12 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   const config = await orchestrator.getConfig();
 
   // Register auth middleware with configuration
+  const authEnabled = config.api?.auth?.enabled ?? true;
+  if (!authEnabled) {
+    app.log.warn('⚠️  API authentication is DISABLED. Set api.auth.enabled=true in .apex/config.yaml for production use.');
+  }
   await app.register(authPlugin as any, {
-    enabled: config.api?.auth?.enabled ?? false,
+    enabled: authEnabled,
     apiKeys: config.api?.auth?.apiKeys ?? [],
     publicRoutes: ['/health', '/status', '/metrics', '/ws']
   });
@@ -246,7 +255,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   });
 
   // Register screenshot routes
-  await registerScreenshotRoutes(app);
+  await registerScreenshotRoutes(app, projectPath);
 
   // Initialize Slack App Service with OAuth support
   const slackAppService = new SlackAppService({
@@ -2107,10 +2116,26 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   // WebSocket for real-time streaming
   // ============================================================================
 
+  // WebSocket authentication preHandler
+  const wsAuthPreHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!authEnabled) {
+      return; // Allow all connections when auth is disabled
+    }
+    const apiKeys = config.api?.auth?.apiKeys ?? [];
+    if (apiKeys.length === 0) {
+      return; // No keys configured, allow connections
+    }
+    const apiKey = (request.headers['x-api-key'] as string) ||
+      (request.query as Record<string, string>)?.['x-api-key'];
+    if (!apiKey || !apiKeys.includes(apiKey)) {
+      return reply.code(401).send({ error: 'Unauthorized', message: 'Valid x-api-key required for WebSocket connections' });
+    }
+  };
+
   // Global WebSocket endpoint with health check support
   app.get(
     '/ws',
-    { websocket: true },
+    { websocket: true, preHandler: wsAuthPreHandler },
     (socket, request) => {
       app.log.info('Global WebSocket client connected')
 
@@ -2167,7 +2192,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     Querystring: { events?: string; }; // Comma-separated list of event types to subscribe to
   }>(
     '/stream/:taskId',
-    { websocket: true },
+    { websocket: true, preHandler: wsAuthPreHandler },
     (socket, request) => {
       const { taskId } = request.params;
       const { events } = request.query;
