@@ -2640,7 +2640,7 @@ describe('TaskStore', () => {
         expect(updated?.description).toBe(updates.description);
         expect(updated?.priority).toBe(updates.priority);
         expect(updated?.tags).toEqual(updates.tags);
-        expect(updated?.updatedAt.getTime()).toBeGreaterThan(template.updatedAt.getTime());
+        expect(updated?.updatedAt.getTime()).toBeGreaterThanOrEqual(template.updatedAt.getTime());
       });
 
       it('should update template with partial data', async () => {

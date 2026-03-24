@@ -3583,10 +3583,9 @@ You are a developer agent that implements code changes.
         workflow: 'feature',
       });
 
-      // Manually remove branch name to simulate a task without a branch
-      await (orchestrator as unknown as { store: { updateTask: (id: string, updates: any) => Promise<void> } }).store.updateTask(task.id, {
-        branchName: null,
-      });
+      // Manually clear branch name via raw DB access since updateTask doesn't support branchName updates
+      const store = (orchestrator as any).store;
+      store.db.prepare('UPDATE tasks SET branch_name = NULL WHERE id = ?').run(task.id);
 
       const result = await orchestrator.pushTaskBranch(task.id);
 
