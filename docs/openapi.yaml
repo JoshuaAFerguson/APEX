@@ -6,7 +6,7 @@ info:
 
     APEX provides AI-powered development automation with task management,
     agent orchestration, and real-time streaming capabilities.
-  version: 0.1.0
+  version: 0.7.0
   contact:
     url: https://github.com/JoshuaAFerguson/apex
   license:
@@ -308,7 +308,7 @@ components:
           example: ok
         version:
           type: string
-          example: 0.1.0
+          example: 0.7.0
       required:
         - status
         - version

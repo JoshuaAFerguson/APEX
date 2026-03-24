@@ -128,7 +128,7 @@ npm test -- --coverage
 1. Update version in `package.json` files
 2. Update CHANGELOG.md
 3. Create a release PR
-4. After merge, tag the release: `git tag v0.1.0`
+4. After merge, tag the release: `git tag v0.7.0`
 5. Push tags: `git push --tags`
 6. GitHub Actions will publish to npm
 

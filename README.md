@@ -141,6 +141,7 @@ apex/
 
 | Document | Description |
 |----------|-------------|
+| [Documentation Index](docs/INDEX.md) | Master navigation index for all 111+ docs |
 | [Getting Started](docs/getting-started.md) | Installation and first steps |
 | [Configuration](docs/configuration.md) | Project configuration options |
 | [Agents](docs/agents.md) | Built-in agents and customization |

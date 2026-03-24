@@ -5,7 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] - v0.7.0
+
+### Added
+
+- **VeriSwarm Integration:** Full integration across all 4 VeriSwarm products
+  - Event reporting fixes for reliable cross-product communication
+- **Competitive Roadmap Update:** ruflo competitive analysis and positioning
+
+### Security
+
+- **Auth Default Hardening:** Authentication enabled by default on all API endpoints
+- **CORS Policy:** Strict CORS configuration with explicit origin allowlisting
+- **Rate Limiting:** Request rate limiting on API and WebSocket endpoints
+- **Screenshot Sandbox:** Browser screenshot capture runs in sandboxed context
+- **WebSocket Auth:** Token-based authentication required for WebSocket connections
+
+### Fixed
+
+- Reduced dependency vulnerabilities from 23 to 4
+- Fixed all TypeScript type errors (2713 down to 0)
+- Removed `|| echo ok` workarounds from build scripts to enforce build integrity
+- Fixed VeriSwarm event reporting inconsistencies across products
+
+### Documentation
+
+- Created master documentation index (`docs/INDEX.md`) covering all 111+ docs
+- Updated outdated version references across documentation
+- Documented all CLI commands in packages/cli/README.md
 
 ## [0.6.0] - 2026-03-15
 
