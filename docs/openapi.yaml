@@ -5,7 +5,22 @@ info:
     REST API for APEX - Autonomous Product Engineering eXecutor.
 
     APEX provides AI-powered development automation with task management,
-    agent orchestration, and real-time streaming capabilities.
+    agent orchestration, template-based workflows, MCP server marketplace,
+    approval gates, and real-time streaming capabilities.
+
+    ## Authentication
+    Most endpoints require an `x-api-key` header. Public routes (`/health`,
+    `/status`, `/metrics`, `/ws`) do not require authentication.
+    Authentication can be disabled in `.apex/config.yaml` under `api.auth.enabled`.
+
+    ## Rate Limiting
+    All endpoints are rate-limited to 100 requests per minute per client.
+    Rate limit information is returned in response headers.
+
+    ## WebSocket
+    Real-time streaming is available via WebSocket at `/ws` (global) and
+    `/stream/{taskId}` (task-specific). WebSocket connections support
+    `x-api-key` authentication via header or query parameter.
   version: 0.7.0
   contact:
     url: https://github.com/JoshuaAFerguson/apex
@@ -18,17 +33,43 @@ servers:
 
 tags:
   - name: Health
-    description: Server health checks
+    description: Server and daemon health checks
   - name: Tasks
     description: Task management operations
+  - name: Subtasks
+    description: Task decomposition and subtask management
+  - name: Trash
+    description: Soft-delete and trash management
+  - name: Archive
+    description: Task archival
   - name: Gates
     description: Approval gate operations
+  - name: Approvals
+    description: Approval workflow management
+  - name: Confirmations
+    description: Confirmation request handling
   - name: Agents
-    description: Agent information
+    description: Agent CRUD operations
   - name: Configuration
     description: APEX configuration
+  - name: Templates
+    description: Task template CRUD and instantiation
+  - name: MCP Marketplace
+    description: MCP server discovery and recommendations
+  - name: MCP Management
+    description: MCP server installation, lifecycle, and configuration
+  - name: WebSocket
+    description: Real-time event streaming
+  - name: Screenshots
+    description: Browser screenshot capabilities
+
+security:
+  - ApiKeyAuth: []
 
 paths:
+  # ==========================================================================
+  # Health
+  # ==========================================================================
   /health:
     get:
       tags:
@@ -36,20 +77,64 @@ paths:
       summary: Health check
       description: Check if the server is running
       operationId: healthCheck
+      security: []
       responses:
         '200':
           description: Server is healthy
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
 
+  /daemon/health:
+    get:
+      tags:
+        - Health
+      summary: Daemon health check
+      description: >
+        Comprehensive health endpoint returning daemon status, memory usage,
+        task counts, health-check history, and restart history. Returns 503
+        when the daemon is not running.
+      operationId: daemonHealthCheck
+      responses:
+        '200':
+          description: Daemon is running (healthy or degraded)
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DaemonHealthResponse'
+        '503':
+          description: Daemon not running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DaemonUnavailableResponse'
+        '500':
+          description: Health check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # Tasks
+  # ==========================================================================
   /tasks:
     get:
       tags:
         - Tasks
       summary: List tasks
-      description: List all tasks with optional filtering
+      description: List all tasks with optional filtering, pagination, and lightweight mode
       operationId: listTasks
       parameters:
         - name: status
@@ -59,15 +144,36 @@ paths:
             $ref: '#/components/schemas/TaskStatus'
         - name: limit
           in: query
-          description: Maximum number of tasks to return
+          description: Maximum number of tasks to return (capped at 200)
           schema:
             type: integer
             minimum: 1
-            maximum: 100
-            default: 10
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          description: Number of tasks to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: full
+          in: query
+          description: Set to "true" to include full task details (logs, artifacts)
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+            default: 'false'
       responses:
         '200':
           description: List of tasks
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
@@ -77,7 +183,7 @@ paths:
       tags:
         - Tasks
       summary: Create task
-      description: Create a new development task and start execution
+      description: Create a new development task and start execution in the background
       operationId: createTask
       requestBody:
         required: true
@@ -88,6 +194,11 @@ paths:
       responses:
         '201':
           description: Task created successfully
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
@@ -99,27 +210,85 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /tasks/stats:
+    get:
+      tags:
+        - Tasks
+      summary: Task statistics
+      description: Lightweight task statistics for dashboard use
+      operationId: getTaskStats
+      responses:
+        '200':
+          description: Task statistics
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Task count statistics grouped by status
+
+  /tasks/paused:
+    get:
+      tags:
+        - Tasks
+      summary: List paused tasks
+      description: List all tasks currently in paused state
+      operationId: listPausedTasks
+      responses:
+        '200':
+          description: Paused tasks
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListWithMessage'
+
   /tasks/{id}:
     get:
       tags:
         - Tasks
       summary: Get task
-      description: Retrieve details for a specific task
+      description: Retrieve details for a specific task with optional log pagination
       operationId: getTask
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Task ID
+        - $ref: '#/components/parameters/TaskId'
+        - name: logLimit
+          in: query
+          description: Maximum number of log entries to return
           schema:
-            type: string
+            type: integer
+            default: 50
+        - name: logOffset
+          in: query
+          description: Offset into the log entries
+          schema:
+            type: integer
+            default: 0
       responses:
         '200':
-          description: Task details
+          description: Task details with optional log pagination metadata
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Task'
+                allOf:
+                  - $ref: '#/components/schemas/Task'
+                  - type: object
+                    properties:
+                      logPagination:
+                        $ref: '#/components/schemas/LogPagination'
         '404':
           description: Task not found
           content:
@@ -132,15 +301,10 @@ paths:
       tags:
         - Tasks
       summary: Update task status
-      description: Update the status of a task
+      description: Update the status of a task (used by agents via curl)
       operationId: updateTaskStatus
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Task ID
-          schema:
-            type: string
+        - $ref: '#/components/parameters/TaskId'
       requestBody:
         required: true
         content:
@@ -150,6 +314,11 @@ paths:
       responses:
         '200':
           description: Status updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
@@ -169,12 +338,7 @@ paths:
       description: Add a log entry to a task
       operationId: addTaskLog
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Task ID
-          schema:
-            type: string
+        - $ref: '#/components/parameters/TaskId'
       requestBody:
         required: true
         content:
@@ -184,10 +348,625 @@ paths:
       responses:
         '200':
           description: Log entry added
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/cancel:
+    post:
+      tags:
+        - Tasks
+      summary: Cancel task
+      description: Cancel a running task. Cannot cancel already completed or failed tasks.
+      operationId: cancelTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task cancelled
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '400':
+          description: Task cannot be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/retry:
+    post:
+      tags:
+        - Tasks
+      summary: Retry task
+      description: Retry a failed, cancelled, or stuck in-progress/planning task
+      operationId: retryTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task retry started
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '400':
+          description: Task not in a retryable state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/resume:
+    post:
+      tags:
+        - Tasks
+      summary: Resume task
+      description: >
+        Resume a paused task, start a pending/queued task, or continue
+        executing pending subtasks of a parent task. Returns 400 if the
+        task cannot be resumed (suggests using /retry for failed tasks).
+      operationId: resumeTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task resumed or execution started
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  taskId:
+                    type: string
+                required:
+                  - ok
+                  - message
+                  - taskId
+        '400':
+          description: Task cannot be resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict — task could not be resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/context:
+    post:
+      tags:
+        - Tasks
+      summary: Inject context
+      description: >
+        Inject additional context into a running task. Context is broadcast
+        to the task via WebSocket. Maximum 100,000 characters.
+      operationId: injectContext
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InjectContextRequest'
+      responses:
+        '200':
+          description: Context injected
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InjectContextResponse'
+        '400':
+          description: Invalid request or task in terminal state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # Trash Management
+  # ==========================================================================
+  /tasks/{id}/trash:
+    post:
+      tags:
+        - Trash
+      summary: Move task to trash
+      description: Soft-delete a task by moving it to the trash
+      operationId: trashTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task moved to trash
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '400':
+          description: Task is already in trash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/restore:
+    post:
+      tags:
+        - Trash
+      summary: Restore task from trash
+      description: Restore a previously trashed task
+      operationId: restoreTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task restored from trash
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '400':
+          description: Task is not in trash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/trashed:
+    get:
+      tags:
+        - Trash
+      summary: List trashed tasks
+      description: List all tasks currently in the trash
+      operationId: listTrashedTasks
+      responses:
+        '200':
+          description: Trashed tasks
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListWithMessage'
+
+  /tasks/trash:
+    delete:
+      tags:
+        - Trash
+      summary: Empty trash
+      description: Permanently delete all trashed tasks
+      operationId: emptyTrash
+      responses:
+        '200':
+          description: Trash emptied
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  deletedCount:
+                    type: integer
+                  message:
+                    type: string
+                required:
+                  - ok
+                  - deletedCount
+                  - message
+
+  # ==========================================================================
+  # Archive Management
+  # ==========================================================================
+  /tasks/{id}/archive:
+    post:
+      tags:
+        - Archive
+      summary: Archive task
+      description: Archive a completed task
+      operationId: archiveTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task archived
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '400':
+          description: Task is already archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/archived:
+    get:
+      tags:
+        - Archive
+      summary: List archived tasks
+      description: List all archived tasks
+      operationId: listArchivedTasks
+      responses:
+        '200':
+          description: Archived tasks
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListWithMessage'
+
+  # ==========================================================================
+  # Subtasks
+  # ==========================================================================
+  /tasks/{id}/decompose:
+    post:
+      tags:
+        - Subtasks
+      summary: Decompose task into subtasks
+      description: Break a parent task into multiple subtasks with a given execution strategy
+      operationId: decomposeTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecomposeTaskRequest'
+      responses:
+        '200':
+          description: Task decomposed
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecomposeTaskResponse'
+        '400':
+          description: Invalid subtask definitions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/subtasks:
+    get:
+      tags:
+        - Subtasks
+      summary: List subtasks
+      description: Get all subtasks for a parent task
+      operationId: listSubtasks
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Subtasks list
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  parentTaskId:
+                    type: string
+                  subtasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+                  count:
+                    type: integer
+                required:
+                  - parentTaskId
+                  - subtasks
+                  - count
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/subtasks/status:
+    get:
+      tags:
+        - Subtasks
+      summary: Subtask status summary
+      description: Get an aggregate status summary of all subtasks for a parent task
+      operationId: getSubtaskStatus
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Subtask status summary
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  parentTaskId:
+                    type: string
+                additionalProperties: true
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/subtasks/execute:
+    post:
+      tags:
+        - Subtasks
+      summary: Execute subtasks
+      description: Start executing all pending subtasks for a parent task in the background
+      operationId: executeSubtasks
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Subtask execution started
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  parentTaskId:
+                    type: string
+                required:
+                  - ok
+                  - message
+                  - parentTaskId
+        '400':
+          description: Task has no subtasks to execute
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/parent:
+    get:
+      tags:
+        - Subtasks
+      summary: Get parent task
+      description: Get the parent task of a subtask
+      operationId: getParentTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Parent task
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Task not found or not a subtask
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/{id}/is-subtask:
+    get:
+      tags:
+        - Subtasks
+      summary: Check if task is a subtask
+      description: Check whether a task is a subtask and return its parent ID if so
+      operationId: isSubtask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Subtask check result
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskId:
+                    type: string
+                  isSubtask:
+                    type: boolean
+                  parentTaskId:
+                    type: string
+                    nullable: true
+                required:
+                  - taskId
+                  - isSubtask
+                  - parentTaskId
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # Gates
+  # ==========================================================================
+  /tasks/{id}/gates:
+    get:
+      tags:
+        - Gates
+      summary: List gates
+      description: Get all approval gates for a task
+      operationId: listGates
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: List of gates
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gates:
+                    type: array
+                    items:
+                      type: object
+                required:
+                  - gates
         '404':
           description: Task not found
           content:
@@ -203,12 +982,7 @@ paths:
       description: Check the status of an approval gate
       operationId: getGateStatus
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Task ID
-          schema:
-            type: string
+        - $ref: '#/components/parameters/TaskId'
         - name: gateName
           in: path
           required: true
@@ -218,6 +992,11 @@ paths:
       responses:
         '200':
           description: Gate status
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
@@ -237,12 +1016,7 @@ paths:
       description: Approve a gate to continue task execution
       operationId: approveGate
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Task ID
-          schema:
-            type: string
+        - $ref: '#/components/parameters/TaskId'
         - name: gateName
           in: path
           required: true
@@ -257,6 +1031,11 @@ paths:
       responses:
         '200':
           description: Gate approved
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
@@ -268,6 +1047,247 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /tasks/{id}/gates/{gateName}/reject:
+    post:
+      tags:
+        - Gates
+      summary: Reject gate
+      description: Reject a gate to block task execution
+      operationId: rejectGate
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - name: gateName
+          in: path
+          required: true
+          description: Gate name
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveGateRequest'
+      responses:
+        '200':
+          description: Gate rejected
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # Approvals
+  # ==========================================================================
+  /api/approvals:
+    get:
+      tags:
+        - Approvals
+      summary: List pending approvals
+      description: List all pending approval requests across all tasks
+      operationId: listPendingApprovals
+      responses:
+        '200':
+          description: Pending approvals
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      type: object
+                  count:
+                    type: integer
+                  message:
+                    type: string
+                required:
+                  - approvals
+                  - count
+                  - message
+
+  /api/approvals/{id}/approve:
+    post:
+      tags:
+        - Approvals
+      summary: Approve request
+      description: Grant an approval request. Requires an approver identifier.
+      operationId: approveRequest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Approval request ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Approval granted
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionResponse'
+        '400':
+          description: Missing required fields or approval failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/approvals/{id}/deny:
+    post:
+      tags:
+        - Approvals
+      summary: Deny request
+      description: Deny an approval request. Requires an approver and comments (reason).
+      operationId: denyRequest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Approval request ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Approval denied
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionResponse'
+        '400':
+          description: Missing required fields or denial failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # Confirmations
+  # ==========================================================================
+  /confirmations/{id}/respond:
+    post:
+      tags:
+        - Confirmations
+      summary: Respond to confirmation (POST)
+      description: >
+        Accept or reject a confirmation request. When rejecting, comments
+        are required.
+      operationId: respondToConfirmation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Confirmation ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmationRespondRequest'
+      responses:
+        '200':
+          description: Confirmation processed
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmationRespondResponse'
+        '400':
+          description: Invalid request or confirmation processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - Confirmations
+      summary: Accept confirmation (PUT)
+      description: Accept a confirmation request (shorthand that always accepts)
+      operationId: acceptConfirmation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Confirmation ID
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approver:
+                  type: string
+                comments:
+                  type: string
+      responses:
+        '200':
+          description: Confirmation accepted
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmationRespondResponse'
+        '400':
+          description: Acceptance failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # Agents
+  # ==========================================================================
   /agents:
     get:
       tags:
@@ -278,11 +1298,161 @@ paths:
       responses:
         '200':
           description: List of agents
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentsResponse'
+    post:
+      tags:
+        - Agents
+      summary: Create agent
+      description: >
+        Create a new agent definition. Name must start with a lowercase letter
+        and contain only lowercase letters, numbers, hyphens, and underscores.
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentDefinition'
+      responses:
+        '201':
+          description: Agent created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDefinition'
+        '400':
+          description: Invalid agent definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Agent already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
+  /agents/{name}:
+    get:
+      tags:
+        - Agents
+      summary: Get agent
+      description: Get a single agent by name
+      operationId: getAgent
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Agent name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Agent details
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDefinition'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - Agents
+      summary: Update agent
+      description: Update an existing agent by name
+      operationId: updateAgent
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Agent name
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentDefinitionUpdate'
+      responses:
+        '200':
+          description: Agent updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDefinition'
+        '400':
+          description: Invalid update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Agents
+      summary: Delete agent
+      description: Delete an agent by name
+      operationId: deleteAgent
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Agent name
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Agent deleted
+        '400':
+          description: Invalid agent name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # Configuration
+  # ==========================================================================
   /config:
     get:
       tags:
@@ -293,13 +1463,838 @@ paths:
       responses:
         '200':
           description: Configuration
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConfigResponse'
 
+  # ==========================================================================
+  # Templates
+  # ==========================================================================
+  /templates:
+    get:
+      tags:
+        - Templates
+      summary: List templates
+      description: List all task templates
+      operationId: listTemplates
+      responses:
+        '200':
+          description: List of templates
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaskTemplate'
+                  count:
+                    type: integer
+                required:
+                  - templates
+                  - count
+    post:
+      tags:
+        - Templates
+      summary: Create template
+      description: Create a new task template
+      operationId: createTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: Template created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskTemplate'
+        '400':
+          description: Invalid template definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /templates/{id}:
+    get:
+      tags:
+        - Templates
+      summary: Get template
+      description: Get a template by ID
+      operationId: getTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Template ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Template details
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskTemplate'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - Templates
+      summary: Update template
+      description: Update an existing template. At least one field must be provided.
+      operationId: updateTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Template ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTemplateRequest'
+      responses:
+        '200':
+          description: Template updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskTemplate'
+        '400':
+          description: Invalid update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Templates
+      summary: Delete template
+      description: Delete a template by ID
+      operationId: deleteTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Template ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Template deleted
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /templates/{id}/create-task:
+    post:
+      tags:
+        - Templates
+      summary: Create task from template
+      description: Instantiate a new task from a template with optional field overrides
+      operationId: createTaskFromTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Template ID
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Task created from template
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # MCP Marketplace
+  # ==========================================================================
+  /mcp/marketplace:
+    get:
+      tags:
+        - MCP Marketplace
+      summary: Browse marketplace
+      description: Browse MCP server marketplace entries with optional filtering
+      operationId: getMcpMarketplace
+      parameters:
+        - name: category
+          in: query
+          description: Filter by category
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Free-text search
+          schema:
+            type: string
+        - name: featured
+          in: query
+          description: Filter for featured entries only
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+        - name: verified
+          in: query
+          description: Filter by verification status
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+      responses:
+        '200':
+          description: Marketplace entries
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                required:
+                  - entries
+
+  /mcp/marketplace/categories:
+    get:
+      tags:
+        - MCP Marketplace
+      summary: List categories
+      description: Get all marketplace categories
+      operationId: getMcpMarketplaceCategories
+      responses:
+        '200':
+          description: Marketplace categories
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - categories
+
+  /mcp/marketplace/featured:
+    get:
+      tags:
+        - MCP Marketplace
+      summary: Featured entries
+      description: Get featured marketplace entries
+      operationId: getMcpFeatured
+      responses:
+        '200':
+          description: Featured entries
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                required:
+                  - entries
+
+  /mcp/recommendations:
+    get:
+      tags:
+        - MCP Marketplace
+      summary: Get recommendations
+      description: Get MCP server installation recommendations based on project context
+      operationId: getMcpRecommendations
+      responses:
+        '200':
+          description: Recommendations
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Recommendation results with suggested MCP servers
+
+  # ==========================================================================
+  # MCP Management
+  # ==========================================================================
+  /mcp/servers:
+    get:
+      tags:
+        - MCP Management
+      summary: List MCP servers
+      description: List all installed MCP servers and their configurations
+      operationId: listMcpServers
+      responses:
+        '200':
+          description: Installed MCP servers
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Map of server names to their configurations
+
+  /mcp/servers/{id}:
+    get:
+      tags:
+        - MCP Management
+      summary: Get MCP server details
+      description: Get detailed information about an installed MCP server
+      operationId: getMcpServerDetails
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: MCP server ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server details
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /mcp/servers/{serverName}/install:
+    post:
+      tags:
+        - MCP Management
+      summary: Install MCP server
+      description: Install an MCP server by name
+      operationId: installMcpServer
+      parameters:
+        - name: serverName
+          in: path
+          required: true
+          description: MCP server name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server installed
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  serverConfig:
+                    type: object
+                required:
+                  - ok
+                  - message
+        '400':
+          description: Server name required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Installation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /mcp/servers/{serverName}:
+    delete:
+      tags:
+        - MCP Management
+      summary: Uninstall MCP server
+      description: Uninstall an MCP server by name
+      operationId: uninstallMcpServer
+      parameters:
+        - name: serverName
+          in: path
+          required: true
+          description: MCP server name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server uninstalled
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '500':
+          description: Uninstallation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /mcp/servers/{serverName}/status:
+    get:
+      tags:
+        - MCP Management
+      summary: Get MCP server status
+      description: Get the running status of an MCP server
+      operationId: getMcpServerStatus
+      parameters:
+        - name: serverName
+          in: path
+          required: true
+          description: MCP server name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server status
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /mcp/servers/{serverName}/start:
+    post:
+      tags:
+        - MCP Management
+      summary: Start MCP server
+      description: Start a stopped MCP server
+      operationId: startMcpServer
+      parameters:
+        - name: serverName
+          in: path
+          required: true
+          description: MCP server name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server started
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '500':
+          description: Start failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /mcp/servers/{serverName}/stop:
+    post:
+      tags:
+        - MCP Management
+      summary: Stop MCP server
+      description: Stop a running MCP server
+      operationId: stopMcpServer
+      parameters:
+        - name: serverName
+          in: path
+          required: true
+          description: MCP server name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server stopped
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '500':
+          description: Stop failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /mcp/installed:
+    get:
+      tags:
+        - MCP Management
+      summary: List installed MCP servers (detailed)
+      description: List installed MCP servers as MCPInstallation objects with full metadata
+      operationId: listMcpInstalled
+      responses:
+        '200':
+          description: Installed MCP servers
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MCPInstallation'
+                required:
+                  - installations
+
+  /mcp/install/{id}:
+    post:
+      tags:
+        - MCP Management
+      summary: Install MCP server (by ID)
+      description: >
+        Install an MCP server by marketplace ID. Broadcasts WebSocket
+        events for installation progress tracking.
+      operationId: installMcpServerById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: MCP server marketplace ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server installed
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  serverConfig:
+                    type: object
+                required:
+                  - ok
+                  - message
+        '500':
+          description: Installation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /mcp/uninstall/{id}:
+    delete:
+      tags:
+        - MCP Management
+      summary: Uninstall MCP server (by ID)
+      description: >
+        Uninstall an MCP server by marketplace ID. Broadcasts WebSocket
+        events for uninstallation progress tracking.
+      operationId: uninstallMcpServerById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: MCP server marketplace ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server uninstalled
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessageResponse'
+        '500':
+          description: Uninstallation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /mcp/auto-configure:
+    post:
+      tags:
+        - MCP Management
+      summary: Auto-configure MCP tools
+      description: >
+        Automatically configure standard MCP tools based on project context.
+        Optionally specify which tool categories to configure.
+      operationId: autoConfigureMcp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoConfigureRequest'
+      responses:
+        '200':
+          description: Auto-configuration completed
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutoConfigureResponse'
+        '500':
+          description: Auto-configuration failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================================================
+  # WebSocket
+  # ==========================================================================
+  /ws:
+    get:
+      tags:
+        - WebSocket
+      summary: Global WebSocket
+      description: >
+        WebSocket endpoint for receiving all task events globally. On connect,
+        the server sends the current task list as a `task:state` message.
+        Supports ping/pong health checks. Authentication via `x-api-key`
+        header or query parameter.
+      operationId: globalWebSocket
+      security: []
+      responses:
+        '101':
+          description: WebSocket upgrade
+        '401':
+          description: Unauthorized (when auth is enabled and no valid API key)
+
+  /stream/{taskId}:
+    get:
+      tags:
+        - WebSocket
+      summary: Task-specific WebSocket
+      description: >
+        WebSocket endpoint for streaming events for a specific task.
+        Supports optional event type filtering via the `events` query parameter
+        (comma-separated list). On connect, sends the current task state.
+        Authentication via `x-api-key` header or query parameter.
+      operationId: taskWebSocket
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: Task ID to stream events for
+          schema:
+            type: string
+        - name: events
+          in: query
+          description: Comma-separated list of event types to subscribe to
+          schema:
+            type: string
+            example: "task:started,task:completed,log:entry"
+      responses:
+        '101':
+          description: WebSocket upgrade
+        '401':
+          description: Unauthorized (when auth is enabled and no valid API key)
+
+  # ==========================================================================
+  # Screenshots
+  # ==========================================================================
+  /screenshot/health:
+    get:
+      tags:
+        - Screenshots
+      summary: Screenshot service health
+      description: Health check for the browser screenshot service
+      operationId: screenshotHealth
+      responses:
+        '200':
+          description: Screenshot service status
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: >
+        API key for authentication. Configure keys in `.apex/config.yaml`
+        under `api.auth.apiKeys`. Can also be passed as a query parameter
+        for WebSocket connections.
+
+  headers:
+    X-RateLimit-Limit:
+      description: Maximum number of requests allowed in the current time window
+      schema:
+        type: integer
+        example: 100
+    X-RateLimit-Remaining:
+      description: Number of requests remaining in the current time window
+      schema:
+        type: integer
+        example: 97
+
+  parameters:
+    TaskId:
+      name: id
+      in: path
+      required: true
+      description: Task ID
+      schema:
+        type: string
+
   schemas:
+    # ========================================================================
+    # Health schemas
+    # ========================================================================
     HealthResponse:
       type: object
       properties:
@@ -313,6 +2308,102 @@ components:
         - status
         - version
 
+    DaemonHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+        metrics:
+          $ref: '#/components/schemas/HealthMetrics'
+        daemon:
+          type: object
+          properties:
+            isRunning:
+              type: boolean
+            pid:
+              type: integer
+            startedAt:
+              type: string
+              format: date-time
+            uptime:
+              type: number
+              description: Uptime in milliseconds
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - status
+        - metrics
+        - daemon
+        - timestamp
+
+    DaemonUnavailableResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        status:
+          type: string
+          example: unavailable
+        metrics:
+          nullable: true
+        message:
+          type: string
+      required:
+        - error
+        - status
+
+    HealthMetrics:
+      type: object
+      properties:
+        uptime:
+          type: number
+        memoryUsage:
+          type: object
+          properties:
+            rss:
+              type: integer
+            heapTotal:
+              type: integer
+            heapUsed:
+              type: integer
+            external:
+              type: integer
+        taskCounts:
+          type: object
+          properties:
+            processed:
+              type: integer
+            succeeded:
+              type: integer
+            failed:
+              type: integer
+            active:
+              type: integer
+        lastHealthCheck:
+          type: string
+          format: date-time
+        healthChecksPassed:
+          type: integer
+        healthChecksFailed:
+          type: integer
+        restartHistory:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              reason:
+                type: string
+
+    # ========================================================================
+    # Enums
+    # ========================================================================
     TaskStatus:
       type: string
       enum:
@@ -342,6 +2433,15 @@ components:
         - high
         - urgent
 
+    Effort:
+      type: string
+      enum:
+        - xs
+        - small
+        - medium
+        - large
+        - xl
+
     LogLevel:
       type: string
       enum:
@@ -350,6 +2450,16 @@ components:
         - warn
         - error
 
+    SubtaskStrategy:
+      type: string
+      enum:
+        - sequential
+        - parallel
+        - adaptive
+
+    # ========================================================================
+    # Task schemas
+    # ========================================================================
     TaskUsage:
       type: object
       properties:
@@ -388,6 +2498,23 @@ components:
         - level
         - message
 
+    LogPagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        hasMore:
+          type: boolean
+      required:
+        - total
+        - limit
+        - offset
+        - hasMore
+
     Task:
       type: object
       properties:
@@ -417,6 +2544,21 @@ components:
           type: string
         prUrl:
           type: string
+        parentTaskId:
+          type: string
+          nullable: true
+        subtaskIds:
+          type: array
+          items:
+            type: string
+        trashedAt:
+          type: string
+          format: date-time
+          nullable: true
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -444,6 +2586,9 @@ components:
         - updatedAt
         - usage
 
+    # ========================================================================
+    # Request schemas
+    # ========================================================================
     CreateTaskRequest:
       type: object
       properties:
@@ -461,33 +2606,6 @@ components:
           $ref: '#/components/schemas/AutonomyLevel'
       required:
         - description
-
-    CreateTaskResponse:
-      type: object
-      properties:
-        taskId:
-          type: string
-        status:
-          $ref: '#/components/schemas/TaskStatus'
-        message:
-          type: string
-      required:
-        - taskId
-        - status
-        - message
-
-    TaskListResponse:
-      type: object
-      properties:
-        tasks:
-          type: array
-          items:
-            $ref: '#/components/schemas/Task'
-        count:
-          type: integer
-      required:
-        - tasks
-        - count
 
     UpdateTaskStatusRequest:
       type: object
@@ -513,6 +2631,310 @@ components:
       required:
         - message
 
+    InjectContextRequest:
+      type: object
+      properties:
+        context:
+          type: string
+          description: Context string to inject (max 100,000 characters)
+          maxLength: 100000
+        source:
+          type: string
+          description: Source identifier (max 50 characters)
+          maxLength: 50
+        priority:
+          type: string
+          description: Context priority
+          enum:
+            - low
+            - normal
+            - high
+          default: normal
+      required:
+        - context
+
+    ApproveGateRequest:
+      type: object
+      properties:
+        approver:
+          type: string
+        comment:
+          type: string
+
+    ApprovalDecisionRequest:
+      type: object
+      properties:
+        approver:
+          type: string
+          description: Identifier of the person making the decision
+        comments:
+          type: string
+          description: Optional comments (required when denying)
+      required:
+        - approver
+
+    ConfirmationRespondRequest:
+      type: object
+      properties:
+        response:
+          type: string
+          enum:
+            - accept
+            - reject
+          description: Accept or reject the confirmation
+        approver:
+          type: string
+          description: Identifier of the responder
+        comments:
+          type: string
+          description: Optional comments (required when rejecting)
+      required:
+        - response
+
+    DecomposeTaskRequest:
+      type: object
+      properties:
+        subtasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubtaskDefinition'
+          minItems: 1
+        strategy:
+          $ref: '#/components/schemas/SubtaskStrategy'
+      required:
+        - subtasks
+
+    SubtaskDefinition:
+      type: object
+      properties:
+        description:
+          type: string
+        acceptanceCriteria:
+          type: string
+        workflow:
+          type: string
+        priority:
+          $ref: '#/components/schemas/Priority'
+      required:
+        - description
+
+    CreateTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Template name (max 100 characters)
+          maxLength: 100
+        description:
+          type: string
+          description: Description of what this template does
+        workflow:
+          type: string
+          description: Workflow to use for tasks created from this template
+        priority:
+          $ref: '#/components/schemas/Priority'
+        effort:
+          $ref: '#/components/schemas/Effort'
+        acceptanceCriteria:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+      required:
+        - name
+        - description
+        - workflow
+
+    UpdateTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+        workflow:
+          type: string
+        priority:
+          $ref: '#/components/schemas/Priority'
+        effort:
+          $ref: '#/components/schemas/Effort'
+        acceptanceCriteria:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    AutoConfigureRequest:
+      type: object
+      properties:
+        developmentTools:
+          type: boolean
+          description: Configure development-related MCP tools
+        productivityTools:
+          type: boolean
+          description: Configure productivity-related MCP tools
+        devopsTools:
+          type: boolean
+          description: Configure DevOps-related MCP tools
+        customServers:
+          type: array
+          items:
+            type: string
+          description: List of custom server names to configure
+
+    # ========================================================================
+    # Response schemas
+    # ========================================================================
+    CreateTaskResponse:
+      type: object
+      properties:
+        taskId:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        message:
+          type: string
+      required:
+        - taskId
+        - status
+        - message
+
+    TaskListResponse:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        count:
+          type: integer
+          description: Number of tasks in this response
+        total:
+          type: integer
+          description: Total number of matching tasks
+        limit:
+          type: integer
+        offset:
+          type: integer
+      required:
+        - tasks
+        - count
+        - total
+        - limit
+        - offset
+
+    TaskListWithMessage:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        count:
+          type: integer
+        message:
+          type: string
+      required:
+        - tasks
+        - count
+        - message
+
+    InjectContextResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        taskId:
+          type: string
+        contextInjected:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - ok
+        - taskId
+        - contextInjected
+        - timestamp
+
+    ApprovalDecisionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        approvalState:
+          type: object
+          nullable: true
+        willProceed:
+          type: boolean
+      required:
+        - success
+        - willProceed
+
+    ConfirmationRespondResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        confirmationId:
+          type: string
+        response:
+          type: string
+          enum:
+            - accept
+            - reject
+        approver:
+          type: string
+        comments:
+          type: string
+        forwarded:
+          type: boolean
+        confirmationState:
+          type: object
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - success
+        - confirmationId
+        - response
+        - forwarded
+        - timestamp
+
+    DecomposeTaskResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        parentTaskId:
+          type: string
+        subtasks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              description:
+                type: string
+              status:
+                $ref: '#/components/schemas/TaskStatus'
+            required:
+              - id
+              - description
+              - status
+        strategy:
+          $ref: '#/components/schemas/SubtaskStrategy'
+      required:
+        - ok
+        - parentTaskId
+        - subtasks
+        - strategy
+
     GateStatusResponse:
       type: object
       properties:
@@ -526,21 +2948,52 @@ components:
       required:
         - status
 
-    ApproveGateRequest:
+    AutoConfigureResponse:
       type: object
       properties:
-        approver:
+        ok:
+          type: boolean
+        message:
           type: string
-        comment:
-          type: string
+        configured:
+          type: array
+          items:
+            type: string
+          description: Server names that were successfully configured
+        skipped:
+          type: array
+          items:
+            type: string
+          description: Server names that were skipped
+        errors:
+          type: array
+          items:
+            type: string
+          description: Error messages for servers that failed
+      required:
+        - ok
+        - message
+        - configured
+        - skipped
+        - errors
 
-    Agent:
+    # ========================================================================
+    # Agent schemas
+    # ========================================================================
+    AgentDefinition:
       type: object
       properties:
         name:
           type: string
+          description: >
+            Agent name. Must start with lowercase letter, containing only
+            lowercase letters, numbers, hyphens, and underscores.
+          pattern: '^[a-z][a-z0-9-_]*$'
         description:
           type: string
+        prompt:
+          type: string
+          description: System prompt for the agent
         tools:
           type: array
           items:
@@ -554,6 +3007,25 @@ components:
       required:
         - name
         - description
+        - prompt
+
+    AgentDefinitionUpdate:
+      type: object
+      properties:
+        description:
+          type: string
+        prompt:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+          enum:
+            - opus
+            - sonnet
+            - haiku
 
     AgentsResponse:
       type: object
@@ -561,10 +3033,71 @@ components:
         agents:
           type: object
           additionalProperties:
-            $ref: '#/components/schemas/Agent'
+            $ref: '#/components/schemas/AgentDefinition'
       required:
         - agents
 
+    # ========================================================================
+    # Template schemas
+    # ========================================================================
+    TaskTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        workflow:
+          type: string
+        priority:
+          $ref: '#/components/schemas/Priority'
+        effort:
+          $ref: '#/components/schemas/Effort'
+        acceptanceCriteria:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - description
+        - workflow
+        - createdAt
+        - updatedAt
+
+    # ========================================================================
+    # MCP schemas
+    # ========================================================================
+    MCPInstallation:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        status:
+          type: string
+        installedAt:
+          type: string
+          format: date-time
+        config:
+          type: object
+
+    # ========================================================================
+    # Config schemas
+    # ========================================================================
     ConfigResponse:
       type: object
       properties:
@@ -602,7 +3135,22 @@ components:
               type: number
             dailyBudget:
               type: number
+        api:
+          type: object
+          properties:
+            auth:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                apiKeys:
+                  type: array
+                  items:
+                    type: string
 
+    # ========================================================================
+    # Generic response schemas
+    # ========================================================================
     SuccessResponse:
       type: object
       properties:
@@ -611,10 +3159,25 @@ components:
       required:
         - ok
 
+    SuccessMessageResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+      required:
+        - ok
+        - message
+
     ErrorResponse:
       type: object
       properties:
         error:
+          type: string
+        statusCode:
+          type: integer
+        message:
           type: string
       required:
         - error
