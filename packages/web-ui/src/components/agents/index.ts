@@ -1,4 +1,6 @@
 export { ParallelAgentView } from './ParallelAgentView'
+export { ParallelAgentTerminalView } from './ParallelAgentTerminalView'
+export { ParallelAgentGrid } from './ParallelAgentGrid'
 export { AgentLane } from './AgentLane'
 export { AgentExecutionCard } from './AgentExecutionCard'
 export { AgentTerminalPanel } from './AgentTerminalPanel'
@@ -18,6 +20,14 @@ export {
 } from './constants'
 
 export type { ParallelAgentViewProps } from '@/types/parallel-agent-view'
+export type {
+  ParallelAgentTerminalViewProps,
+  ParallelAgentTerminalViewRef,
+  AgentTerminalPanelConfig,
+  GridGap,
+  PanelDisplayMode
+} from './ParallelAgentTerminalView.types'
+export type { ParallelAgentGridProps, ParallelAgentGridPanelConfig } from './ParallelAgentGrid'
 export type { AgentLaneProps } from './AgentLane'
 export type { AgentExecutionCardProps } from './AgentExecutionCard'
 export type { AgentTerminalPanelProps } from '@/types/agent-log-stream'

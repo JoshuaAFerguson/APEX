@@ -183,7 +183,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   });
 
   // Register plugins
-  await app.register(cors, { origin: true });
+  await app.register(cors as any, { origin: true });
   await app.register(websocket);
 
   // Initialize orchestrator to get config for auth middleware
@@ -193,7 +193,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   const config = await orchestrator.getConfig();
 
   // Register auth middleware with configuration
-  await app.register(authPlugin, {
+  await app.register(authPlugin as any, {
     enabled: config.api?.auth?.enabled ?? false,
     apiKeys: config.api?.auth?.apiKeys ?? [],
     publicRoutes: ['/health', '/status', '/metrics', '/ws']

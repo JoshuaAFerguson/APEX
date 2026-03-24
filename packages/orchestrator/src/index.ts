@@ -1786,7 +1786,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
 
   private async initializeVeriSwarmIntegration(): Promise<void> {
     try {
-      const { initializeVeriSwarm } = await import('./veriswarm-hook.js');
+      const vsHook = await import('./veriswarm-hook.js');
       const vsConfigInput = (this.config as any)?.veriswarm as Partial<import('./veriswarm-hook').VeriSwarmConfig> | undefined;
 
       const hookContext: import('./hooks').HookContext = {
@@ -1795,12 +1795,57 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
         projectPath: this.projectPath,
       };
 
-      const { config: vsConfig } = await initializeVeriSwarm(hookContext, {
+      const { config: vsConfig } = await vsHook.initializeVeriSwarm(hookContext, {
         ...vsConfigInput,
         projectPath: this.projectPath,
       });
 
       this.veriswarmConfig = vsConfig;
+
+      if (!vsConfig.enabled || !vsConfig.agentId) return;
+
+      // ── Product 1: Events — wire task lifecycle into VeriSwarm event reporting
+      this.on('task:started', (task) => {
+        vsHook.reportTaskStarted(vsConfig, task.id, task.workflow || 'default').catch(() => {});
+      });
+
+      this.on('task:completed', (task) => {
+        const durationMs = task.completedAt && task.createdAt
+          ? new Date(task.completedAt).getTime() - new Date(task.createdAt).getTime()
+          : undefined;
+        vsHook.reportTaskCompleted(vsConfig, task.id, task.workflow || 'default', durationMs).catch(() => {});
+      });
+
+      this.on('task:failed', (task, error) => {
+        vsHook.reportTaskFailed(vsConfig, task.id, task.workflow || 'default', error?.message || 'unknown').catch(() => {});
+      });
+
+      // ── Product 2: Decisions — always register PreToolUse for decision logging
+      //    (enforce mode controls whether denials block or just log)
+
+      // ── Product 3: Credentials — issue a fresh trust credential at startup for cross-platform use
+      vsHook.issueCredential(vsConfig).then((cred) => {
+        if (cred) {
+          console.log(`🐝 VeriSwarm Credential: issued (TTL ${cred.ttl_seconds}s)`);
+        }
+      }).catch(() => {});
+
+      // ── Product 4: Guard — periodic kill switch check (every 5 minutes)
+      const guardInterval = setInterval(async () => {
+        try {
+          const killed = await vsHook.isAgentKilled(vsConfig);
+          if (killed) {
+            console.log(`\n🐝 VeriSwarm Guard: Agent KILLED — stopping daemon.\n`);
+            clearInterval(guardInterval);
+            // Emit a signal so the daemon runner can shut down
+            this.emit('veriswarm:killed' as any);
+          }
+        } catch { /* non-fatal */ }
+      }, 5 * 60 * 1000);
+
+      // Clean up interval on shutdown
+      this.on('shutdown' as any, () => clearInterval(guardInterval));
+
     } catch (err) {
       // Non-fatal: VeriSwarm is optional
       console.log(`🐝 VeriSwarm: initialization skipped (${err instanceof Error ? err.message : 'unknown error'})`);

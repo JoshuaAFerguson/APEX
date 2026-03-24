@@ -155,9 +155,9 @@ const authMiddleware: FastifyPluginAsync<AuthMiddlewareOptions> = async (
   });
 };
 
-const authPlugin = fp(authMiddleware, {
+const authPlugin = fp(authMiddleware as any, {
   name: 'auth-middleware',
-  fastify: '4.x'
+  fastify: '>=4.x'
 });
 
 export default authPlugin;

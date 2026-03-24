@@ -297,7 +297,7 @@ async function veriswarmPreToolCheck(
   context: HookContext,
   vsConfig: VeriSwarmConfig,
 ): Promise<HookJSONOutput> {
-  if (!vsConfig.enforce || !vsConfig.agentId) {
+  if (!vsConfig.agentId) {
     return { decision: 'approve' };
   }
 
@@ -318,21 +318,21 @@ async function veriswarmPreToolCheck(
   if (decision === 'deny') {
     const reason = result.reason_code as string ?? 'unknown';
 
-    if (vsConfig.onDeny === 'block') {
+    // When enforce=true and onDeny=block, actually block the tool call
+    if (vsConfig.enforce && vsConfig.onDeny === 'block') {
       return {
         decision: 'block',
         reason: `VeriSwarm denied tool '${toolName}': ${reason}`,
       };
     }
 
-    if (vsConfig.onDeny === 'log') {
-      context.eventEmitter?.emit('veriswarm:denied', {
-        toolName,
-        toolUseId,
-        reason,
-        decision: 'allowed (onDeny=log)',
-      });
-    }
+    // Otherwise just emit an event for logging/observability
+    context.eventEmitter?.emit('veriswarm:denied', {
+      toolName,
+      toolUseId,
+      reason,
+      decision: vsConfig.enforce ? `denied (onDeny=${vsConfig.onDeny})` : 'allowed (enforce=false)',
+    });
   }
 
   return { decision: 'approve' };
@@ -625,15 +625,17 @@ export function createVeriSwarmHooks(
 
   const hooks: HooksConfig = {};
 
-  if (vsConfig.enforce) {
-    hooks.PreToolUse = [
-      {
-        hooks: [preHook],
-        timeout: 11, // Slightly longer than the 10s fetch timeout
-      },
-    ];
-  }
+  // Always register PreToolUse for decision checks.
+  // When enforce=false, denials are logged but not blocked.
+  // When enforce=true, denials block the tool call.
+  hooks.PreToolUse = [
+    {
+      hooks: [preHook],
+      timeout: 11, // Slightly longer than the 10s fetch timeout
+    },
+  ];
 
+  // Always register PostToolUse for event reporting when enabled
   if (vsConfig.reportEvents) {
     hooks.PostToolUse = [
       {
