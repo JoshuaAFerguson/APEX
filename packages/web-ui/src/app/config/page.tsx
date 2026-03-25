@@ -1,76 +1,335 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { apiClient } from '@/lib/api-client'
-import { formatCost } from '@/lib/utils'
 import { getApiUrl, setApiUrl, clearApiUrl } from '@/lib/config'
 
-// Use a more flexible type to match actual API response
-interface ConfigResponse {
-  version?: string
-  project?: {
-    name?: string
-    language?: string
-    framework?: string
-    testCommand?: string
-    lintCommand?: string
-    buildCommand?: string
+type ConfigValue = string | number | boolean | string[] | Record<string, unknown> | null | undefined
+
+interface FieldDef {
+  key: string
+  label: string
+  type: 'text' | 'number' | 'boolean' | 'select' | 'tags'
+  options?: string[]
+  placeholder?: string
+  description?: string
+}
+
+interface SectionDef {
+  title: string
+  path: string
+  fields: FieldDef[]
+}
+
+const CONFIG_SECTIONS: SectionDef[] = [
+  {
+    title: 'Project',
+    path: 'project',
+    fields: [
+      { key: 'name', label: 'Project Name', type: 'text', placeholder: 'my-project' },
+      { key: 'testCommand', label: 'Test Command', type: 'text', placeholder: 'npm test' },
+      { key: 'lintCommand', label: 'Lint Command', type: 'text', placeholder: 'npm run lint' },
+      { key: 'buildCommand', label: 'Build Command', type: 'text', placeholder: 'npm run build' },
+      { key: 'typecheckCommand', label: 'Typecheck Command', type: 'text', placeholder: 'npm run typecheck' },
+    ],
+  },
+  {
+    title: 'Autonomy',
+    path: 'autonomy',
+    fields: [
+      { key: 'level', label: 'Autonomy Level', type: 'select', options: ['full-auto', 'review-before-commit', 'review-all'] },
+      { key: 'rejectionBehavior', label: 'Rejection Behavior', type: 'select', options: ['abort', 'retry', 'skip'] },
+    ],
+  },
+  {
+    title: 'Agents',
+    path: 'agents',
+    fields: [
+      { key: 'enabled', label: 'Enabled Agents', type: 'tags', placeholder: 'planner, architect, developer, tester, reviewer, devops' },
+    ],
+  },
+  {
+    title: 'Models',
+    path: 'models',
+    fields: [
+      { key: 'planning', label: 'Planning Model', type: 'select', options: ['opus', 'sonnet', 'haiku'] },
+      { key: 'implementation', label: 'Implementation Model', type: 'select', options: ['opus', 'sonnet', 'haiku'] },
+      { key: 'review', label: 'Review Model', type: 'select', options: ['opus', 'sonnet', 'haiku'] },
+    ],
+  },
+  {
+    title: 'Providers',
+    path: 'providers',
+    fields: [
+      { key: 'primary', label: 'Primary Provider', type: 'select', options: ['anthropic', 'openai', 'gemini', 'agnostic'] },
+    ],
+  },
+  {
+    title: 'Git',
+    path: 'git',
+    fields: [
+      { key: 'branchPrefix', label: 'Branch Prefix', type: 'text', placeholder: 'apex/' },
+      { key: 'commitFormat', label: 'Commit Format', type: 'select', options: ['conventional', 'simple'] },
+      { key: 'defaultBranch', label: 'Default Branch', type: 'text', placeholder: 'main' },
+      { key: 'autoPush', label: 'Auto Push', type: 'boolean' },
+      { key: 'commitAfterSubtask', label: 'Commit After Subtask', type: 'boolean' },
+      { key: 'pushAfterTask', label: 'Push After Task', type: 'boolean' },
+      { key: 'createPR', label: 'Create PR', type: 'select', options: ['always', 'never', 'ask'] },
+      { key: 'prDraft', label: 'Draft PRs', type: 'boolean' },
+      { key: 'autoWorktree', label: 'Auto Worktree', type: 'boolean' },
+    ],
+  },
+  {
+    title: 'Limits',
+    path: 'limits',
+    fields: [
+      { key: 'maxTokensPerTask', label: 'Max Tokens per Task', type: 'number', placeholder: '5000000' },
+      { key: 'maxCostPerTask', label: 'Max Cost per Task ($)', type: 'number', placeholder: '25' },
+      { key: 'maxExecutionTime', label: 'Max Execution Time (ms)', type: 'number', placeholder: '0', description: '0 = unlimited' },
+      { key: 'maxFileChanges', label: 'Max File Changes', type: 'number', placeholder: '0', description: '0 = unlimited' },
+      { key: 'dailyBudget', label: 'Daily Budget ($)', type: 'number', placeholder: '1000' },
+      { key: 'maxTurns', label: 'Max Turns', type: 'number', placeholder: '1000' },
+      { key: 'maxConcurrentTasks', label: 'Max Concurrent Tasks', type: 'number', placeholder: '3' },
+      { key: 'maxRetries', label: 'Max Retries', type: 'number', placeholder: '20' },
+      { key: 'retryDelayMs', label: 'Retry Delay (ms)', type: 'number', placeholder: '100000' },
+      { key: 'retryBackoffFactor', label: 'Retry Backoff Factor', type: 'number', placeholder: '2' },
+    ],
+  },
+  {
+    title: 'API Server',
+    path: 'api',
+    fields: [
+      { key: 'url', label: 'API URL', type: 'text', placeholder: 'http://localhost:4000' },
+      { key: 'port', label: 'Port', type: 'number', placeholder: '4000' },
+      { key: 'autoStart', label: 'Auto Start', type: 'boolean' },
+    ],
+  },
+  {
+    title: 'Web UI',
+    path: 'webUI',
+    fields: [
+      { key: 'port', label: 'Port', type: 'number', placeholder: '4001' },
+      { key: 'autoStart', label: 'Auto Start', type: 'boolean' },
+    ],
+  },
+  {
+    title: 'Daemon',
+    path: 'daemon',
+    fields: [
+      { key: 'pollInterval', label: 'Poll Interval (ms)', type: 'number', placeholder: '5000' },
+      { key: 'autoStart', label: 'Auto Start', type: 'boolean' },
+      { key: 'logLevel', label: 'Log Level', type: 'select', options: ['debug', 'info', 'warn', 'error'] },
+      { key: 'installAsService', label: 'Install as Service', type: 'boolean' },
+      { key: 'serviceName', label: 'Service Name', type: 'text', placeholder: 'apex-daemon' },
+    ],
+  },
+  {
+    title: 'Slack Integration',
+    path: 'slack',
+    fields: [
+      { key: 'enabled', label: 'Enabled', type: 'boolean' },
+      { key: 'mode', label: 'Mode', type: 'select', options: ['socket', 'webhook'] },
+      { key: 'defaultChannel', label: 'Default Channel', type: 'text', placeholder: '#apex' },
+      { key: 'threadUpdates', label: 'Thread Updates', type: 'boolean' },
+      { key: 'useBlocks', label: 'Use Block Kit', type: 'boolean' },
+    ],
+  },
+  {
+    title: 'Permissions',
+    path: 'permissions',
+    fields: [
+      { key: 'preset', label: 'Preset', type: 'select', options: ['autonomous', 'standard', 'read-only', 'admin'] },
+    ],
+  },
+]
+
+function getNestedValue(obj: Record<string, unknown>, path: string, key: string): ConfigValue {
+  const section = obj[path] as Record<string, unknown> | undefined
+  if (!section) return undefined
+  return section[key] as ConfigValue
+}
+
+function setNestedValue(obj: Record<string, unknown>, path: string, key: string, value: ConfigValue): Record<string, unknown> {
+  const clone = JSON.parse(JSON.stringify(obj))
+  if (!clone[path]) clone[path] = {}
+  ;(clone[path] as Record<string, unknown>)[key] = value
+  return clone
+}
+
+function ConfigField({
+  field,
+  value,
+  onChange,
+}: {
+  field: FieldDef
+  value: ConfigValue
+  onChange: (value: ConfigValue) => void
+}) {
+  const baseClass = 'w-full bg-background-tertiary px-3 py-2 rounded border border-border focus:border-apex-500 outline-none text-sm'
+
+  if (field.type === 'boolean') {
+    return (
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={value === true}
+          onChange={(e) => onChange(e.target.checked)}
+          className="w-4 h-4 rounded border-border accent-apex-600"
+        />
+        <span className="text-sm text-foreground">{field.label}</span>
+      </label>
+    )
   }
-  autonomy?: {
-    default?: string
+
+  if (field.type === 'select') {
+    return (
+      <div>
+        <label className="text-sm text-foreground-secondary block mb-1">{field.label}</label>
+        <select
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value || undefined)}
+          className={baseClass}
+        >
+          <option value="">— not set —</option>
+          {field.options?.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      </div>
+    )
   }
-  agents?: {
-    enabled?: string[]
+
+  if (field.type === 'tags') {
+    const tags = Array.isArray(value) ? value : []
+    return (
+      <div>
+        <label className="text-sm text-foreground-secondary block mb-1">{field.label}</label>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {tags.map((tag, i) => (
+            <span key={i} className="text-xs bg-apex-600/20 text-apex-400 px-2 py-1 rounded flex items-center gap-1">
+              {tag}
+              <button
+                onClick={() => onChange(tags.filter((_, j) => j !== i))}
+                className="hover:text-red-400 ml-1"
+              >
+                x
+              </button>
+            </span>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder={field.placeholder}
+          className={baseClass}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+              onChange([...tags, e.currentTarget.value.trim()])
+              e.currentTarget.value = ''
+              e.preventDefault()
+            }
+          }}
+        />
+        <p className="text-xs text-foreground-secondary mt-1">Press Enter to add</p>
+      </div>
+    )
   }
-  models?: {
-    planning?: string
-    implementation?: string
-    review?: string
+
+  if (field.type === 'number') {
+    return (
+      <div>
+        <label className="text-sm text-foreground-secondary block mb-1">{field.label}</label>
+        <input
+          type="number"
+          value={value !== undefined && value !== null ? String(value) : ''}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+          placeholder={field.placeholder}
+          className={baseClass}
+        />
+        {field.description && <p className="text-xs text-foreground-secondary mt-1">{field.description}</p>}
+      </div>
+    )
   }
-  git?: {
-    branchPrefix?: string
-    commitFormat?: string
-    autoPush?: boolean
-    defaultBranch?: string
-  }
-  limits?: {
-    maxTokensPerTask?: number
-    maxCostPerTask?: number
-    dailyBudget?: number
-    maxTurns?: number
-    maxConcurrentTasks?: number
-    maxRetries?: number
-  }
+
+  return (
+    <div>
+      <label className="text-sm text-foreground-secondary block mb-1">{field.label}</label>
+      <input
+        type="text"
+        value={(value as string) ?? ''}
+        onChange={(e) => onChange(e.target.value || undefined)}
+        placeholder={field.placeholder}
+        className={baseClass}
+      />
+      {field.description && <p className="text-xs text-foreground-secondary mt-1">{field.description}</p>}
+    </div>
+  )
 }
 
 export default function ConfigPage() {
-  const [config, setConfig] = useState<ConfigResponse | null>(null)
+  const [config, setConfig] = useState<Record<string, unknown> | null>(null)
+  const [originalConfig, setOriginalConfig] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [rawExpanded, setRawExpanded] = useState(false)
   const [currentApiUrl, setCurrentApiUrl] = useState('')
   const [newApiUrl, setNewApiUrl] = useState('')
 
-  useEffect(() => {
-    // Get current API URL on mount
-    setCurrentApiUrl(getApiUrl())
-    setNewApiUrl(getApiUrl())
-    loadConfig()
-  }, [])
-
-  async function loadConfig() {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
       const response = await apiClient.getConfig()
-      setConfig(response as ConfigResponse)
+      const configData = response as Record<string, unknown>
+      setConfig(configData)
+      setOriginalConfig(JSON.stringify(configData))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load config')
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    setCurrentApiUrl(getApiUrl())
+    setNewApiUrl(getApiUrl())
+    loadConfig()
+  }, [loadConfig])
+
+  const hasChanges = config && JSON.stringify(config) !== originalConfig
+
+  async function handleSave() {
+    if (!config) return
+    try {
+      setSaving(true)
+      setSaveMessage(null)
+      // POST the config to the API
+      const response = await fetch(`${getApiUrl()}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ message: 'Save failed' }))
+        throw new Error(err.message || `HTTP ${response.status}`)
+      }
+      setOriginalConfig(JSON.stringify(config))
+      setSaveMessage('Configuration saved successfully')
+      setTimeout(() => setSaveMessage(null), 3000)
+    } catch (err) {
+      setSaveMessage(`Error: ${err instanceof Error ? err.message : 'Save failed'}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleFieldChange(sectionPath: string, fieldKey: string, value: ConfigValue) {
+    if (!config) return
+    setConfig(setNestedValue(config, sectionPath, fieldKey, value))
   }
 
   if (loading) {
@@ -81,72 +340,33 @@ export default function ConfigPage() {
     )
   }
 
-  function handleApiUrlChange() {
-    if (newApiUrl && newApiUrl !== currentApiUrl) {
-      setApiUrl(newApiUrl)
-      // Page will reload automatically
-    }
-  }
-
-  function handleResetApiUrl() {
-    clearApiUrl()
-    // Page will reload automatically
-  }
-
   if (error) {
     return (
       <div className="p-6">
         <Card className="mb-6">
-          <CardHeader>
-            <h2 className="font-semibold">API Connection</h2>
-          </CardHeader>
+          <CardHeader><h2 className="font-semibold">API Connection</h2></CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-foreground-secondary block mb-1">
-                  Current API URL
-                </label>
-                <div className="font-mono text-sm bg-background-tertiary px-3 py-2 rounded">
-                  {currentApiUrl}
-                </div>
-              </div>
-              <div>
-                <label className="text-sm text-foreground-secondary block mb-1">
-                  Change API URL
-                </label>
+                <label className="text-sm text-foreground-secondary block mb-1">API URL</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={newApiUrl}
                     onChange={(e) => setNewApiUrl(e.target.value)}
                     className="flex-1 bg-background-tertiary px-3 py-2 rounded border border-border focus:border-apex-500 outline-none"
-                    placeholder="http://localhost:3000"
                   />
-                  <Button onClick={handleApiUrlChange} disabled={newApiUrl === currentApiUrl}>
-                    Update
-                  </Button>
-                  <Button variant="secondary" onClick={handleResetApiUrl}>
-                    Reset
-                  </Button>
+                  <Button onClick={() => { setApiUrl(newApiUrl) }} disabled={newApiUrl === currentApiUrl}>Update</Button>
+                  <Button variant="secondary" onClick={() => clearApiUrl()}>Reset</Button>
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-red-500 mb-4">{error}</p>
-              <p className="text-foreground-secondary text-sm mb-4">
-                Make sure the APEX API server is running. Update the API URL above if needed.
-              </p>
-              <code className="bg-background-tertiary px-3 py-1 rounded text-sm">
-                apex serve
-              </code>
-              <div className="mt-4">
-                <Button onClick={loadConfig}>Retry</Button>
-              </div>
-            </div>
+          <CardContent className="pt-6 text-center">
+            <p className="text-red-500 mb-4">{error}</p>
+            <Button onClick={loadConfig}>Retry</Button>
           </CardContent>
         </Card>
       </div>
@@ -159,244 +379,73 @@ export default function ConfigPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Configuration</h1>
-        <Button onClick={loadConfig}>Refresh</Button>
+        <div className="flex items-center gap-3">
+          {saveMessage && (
+            <span className={`text-sm ${saveMessage.startsWith('Error') ? 'text-red-500' : 'text-green-500'}`}>
+              {saveMessage}
+            </span>
+          )}
+          <Button onClick={loadConfig} variant="secondary">Refresh</Button>
+          <Button onClick={handleSave} disabled={!hasChanges || saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
       </div>
 
-      {/* API Connection Settings */}
+      {/* API Connection */}
       <Card className="mb-6">
-        <CardHeader>
-          <h2 className="font-semibold">API Connection</h2>
-        </CardHeader>
+        <CardHeader><h2 className="font-semibold">API Connection</h2></CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm text-foreground-secondary block mb-1">
-                Current API URL
-              </label>
-              <div className="flex items-center gap-2">
-                <div className="font-mono text-sm bg-background-tertiary px-3 py-2 rounded flex-1">
-                  {currentApiUrl}
-                </div>
-                <span className="text-green-500 text-sm">Connected</span>
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="font-mono text-sm bg-background-tertiary px-3 py-2 rounded flex-1">
+              {currentApiUrl}
             </div>
-            <div>
-              <label className="text-sm text-foreground-secondary block mb-1">
-                Change API URL
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newApiUrl}
-                  onChange={(e) => setNewApiUrl(e.target.value)}
-                  className="flex-1 bg-background-tertiary px-3 py-2 rounded border border-border focus:border-apex-500 outline-none"
-                  placeholder="http://localhost:3000"
-                />
-                <Button onClick={handleApiUrlChange} disabled={newApiUrl === currentApiUrl}>
-                  Update
-                </Button>
-                <Button variant="secondary" onClick={handleResetApiUrl}>
-                  Reset
-                </Button>
-              </div>
-              <p className="text-xs text-foreground-secondary mt-1">
-                Changing the URL will reload the page
-              </p>
-            </div>
+            <span className="text-green-500 text-sm">Connected</span>
           </div>
         </CardContent>
       </Card>
 
+      {/* Config Sections */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Project Info */}
-        <Card>
-          <CardHeader>
-            <h2 className="font-semibold">Project</h2>
-          </CardHeader>
-          <CardContent>
-            <dl className="space-y-3">
-              <div>
-                <dt className="text-sm text-foreground-secondary">Name</dt>
-                <dd className="font-medium">{config.project?.name || 'N/A'}</dd>
-              </div>
-              {config.project?.language && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Language</dt>
-                  <dd className="font-medium">{config.project.language}</dd>
-                </div>
-              )}
-              {config.project?.framework && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Framework</dt>
-                  <dd className="font-medium">{config.project.framework}</dd>
-                </div>
-              )}
-              {config.project?.testCommand && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Test Command</dt>
-                  <dd className="font-medium font-mono text-sm">{config.project.testCommand}</dd>
-                </div>
-              )}
-            </dl>
-          </CardContent>
-        </Card>
-
-        {/* Limits */}
-        <Card>
-          <CardHeader>
-            <h2 className="font-semibold">Limits</h2>
-          </CardHeader>
-          <CardContent>
-            <dl className="space-y-3">
-              {config.limits?.maxCostPerTask !== undefined && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Max Cost per Task</dt>
-                  <dd className="font-medium">{formatCost(config.limits.maxCostPerTask)}</dd>
-                </div>
-              )}
-              {config.limits?.dailyBudget !== undefined && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Daily Budget</dt>
-                  <dd className="font-medium">{formatCost(config.limits.dailyBudget)}</dd>
-                </div>
-              )}
-              {config.limits?.maxTurns !== undefined && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Max Turns</dt>
-                  <dd className="font-medium">{config.limits.maxTurns}</dd>
-                </div>
-              )}
-              {config.limits?.maxConcurrentTasks !== undefined && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Max Concurrent Tasks</dt>
-                  <dd className="font-medium">{config.limits.maxConcurrentTasks}</dd>
-                </div>
-              )}
-              {config.limits?.maxTokensPerTask !== undefined && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Max Tokens per Task</dt>
-                  <dd className="font-medium">{config.limits.maxTokensPerTask.toLocaleString()}</dd>
-                </div>
-              )}
-            </dl>
-          </CardContent>
-        </Card>
-
-        {/* Git */}
-        <Card>
-          <CardHeader>
-            <h2 className="font-semibold">Git</h2>
-          </CardHeader>
-          <CardContent>
-            <dl className="space-y-3">
-              {config.git?.branchPrefix && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Branch Prefix</dt>
-                  <dd className="font-medium font-mono text-sm">{config.git.branchPrefix}</dd>
-                </div>
-              )}
-              {config.git?.commitFormat && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Commit Format</dt>
-                  <dd className="font-medium">{config.git.commitFormat}</dd>
-                </div>
-              )}
-              {config.git?.defaultBranch && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Default Branch</dt>
-                  <dd className="font-medium font-mono text-sm">{config.git.defaultBranch}</dd>
-                </div>
-              )}
-              {config.git?.autoPush !== undefined && (
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Auto Push</dt>
-                  <dd className="font-medium">{config.git.autoPush ? 'Yes' : 'No'}</dd>
-                </div>
-              )}
-            </dl>
-          </CardContent>
-        </Card>
-
-        {/* Models */}
-        {config.models && (
-          <Card>
+        {CONFIG_SECTIONS.map((section) => (
+          <Card key={section.path}>
             <CardHeader>
-              <h2 className="font-semibold">Models</h2>
+              <h2 className="font-semibold">{section.title}</h2>
             </CardHeader>
             <CardContent>
-              <dl className="space-y-3">
-                {config.models.planning && (
-                  <div>
-                    <dt className="text-sm text-foreground-secondary">Planning</dt>
-                    <dd className="font-medium">{config.models.planning}</dd>
-                  </div>
-                )}
-                {config.models.implementation && (
-                  <div>
-                    <dt className="text-sm text-foreground-secondary">Implementation</dt>
-                    <dd className="font-medium">{config.models.implementation}</dd>
-                  </div>
-                )}
-                {config.models.review && (
-                  <div>
-                    <dt className="text-sm text-foreground-secondary">Review</dt>
-                    <dd className="font-medium">{config.models.review}</dd>
-                  </div>
-                )}
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Autonomy */}
-        {config.autonomy && (
-          <Card>
-            <CardHeader>
-              <h2 className="font-semibold">Autonomy</h2>
-            </CardHeader>
-            <CardContent>
-              <dl className="space-y-3">
-                <div>
-                  <dt className="text-sm text-foreground-secondary">Default Level</dt>
-                  <dd className="font-medium">{config.autonomy.default || 'N/A'}</dd>
-                </div>
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Enabled Agents */}
-        {config.agents?.enabled && config.agents.enabled.length > 0 && (
-          <Card>
-            <CardHeader>
-              <h2 className="font-semibold">Enabled Agents</h2>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {config.agents.enabled.map((agent) => (
-                  <span
-                    key={agent}
-                    className="text-sm bg-background-tertiary px-3 py-1 rounded capitalize"
-                  >
-                    {agent}
-                  </span>
+              <div className="space-y-4">
+                {section.fields.map((field) => (
+                  <ConfigField
+                    key={field.key}
+                    field={field}
+                    value={getNestedValue(config, section.path, field.key)}
+                    onChange={(value) => handleFieldChange(section.path, field.key, value)}
+                  />
                 ))}
               </div>
             </CardContent>
           </Card>
-        )}
+        ))}
       </div>
 
-      {/* Raw JSON */}
+      {/* Raw Configuration — collapsed by default */}
       <Card className="mt-6">
         <CardHeader>
-          <h2 className="font-semibold">Raw Configuration</h2>
+          <button
+            onClick={() => setRawExpanded(!rawExpanded)}
+            className="flex items-center gap-2 font-semibold w-full text-left"
+          >
+            <span className={`transition-transform ${rawExpanded ? 'rotate-90' : ''}`}>&#9654;</span>
+            Raw Configuration (YAML)
+          </button>
         </CardHeader>
-        <CardContent>
-          <pre className="bg-background-tertiary p-4 rounded-lg overflow-x-auto text-sm">
-            {JSON.stringify(config, null, 2)}
-          </pre>
-        </CardContent>
+        {rawExpanded && (
+          <CardContent>
+            <pre className="bg-background-tertiary p-4 rounded-lg overflow-x-auto text-sm max-h-96 overflow-y-auto">
+              {JSON.stringify(config, null, 2)}
+            </pre>
+          </CardContent>
+        )}
       </Card>
     </div>
   )

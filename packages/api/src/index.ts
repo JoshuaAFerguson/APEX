@@ -1526,6 +1526,20 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     return config;
   });
 
+  app.put('/config', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { saveConfig } = await import('@apexcli/core');
+      const newConfig = request.body as Record<string, unknown>;
+      await saveConfig(projectPath, newConfig as any);
+      return { status: 'ok', message: 'Configuration saved' };
+    } catch (error) {
+      return reply.code(400).send({
+        error: 'Save failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // ============================================================================
   // MCP (Model Context Protocol) API
   // ============================================================================
