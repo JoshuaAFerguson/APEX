@@ -44,13 +44,8 @@ const CONFIG_SECTIONS: SectionDef[] = [
       { key: 'rejectionBehavior', label: 'Rejection Behavior', type: 'select', options: ['abort', 'retry', 'skip'] },
     ],
   },
-  {
-    title: 'Agents',
-    path: 'agents',
-    fields: [
-      { key: 'enabled', label: 'Enabled Agents', type: 'tags', placeholder: 'planner, architect, developer, tester, reviewer, devops' },
-    ],
-  },
+  // Agents section is rendered separately with dynamic agent list
+
   {
     title: 'Models',
     path: 'models',
@@ -276,6 +271,7 @@ export default function ConfigPage() {
   const [error, setError] = useState<string | null>(null)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [rawExpanded, setRawExpanded] = useState(false)
+  const [allAgents, setAllAgents] = useState<Array<{ name: string; role?: string; description?: string }>>([])
   const [currentApiUrl, setCurrentApiUrl] = useState('')
   const [newApiUrl, setNewApiUrl] = useState('')
 
@@ -287,6 +283,14 @@ export default function ConfigPage() {
       const configData = response as Record<string, unknown>
       setConfig(configData)
       setOriginalConfig(JSON.stringify(configData))
+      // Fetch all available agents
+      try {
+        const agentsResp = await fetch(`${getApiUrl()}/agents`)
+        if (agentsResp.ok) {
+          const agents = await agentsResp.json()
+          setAllAgents(Array.isArray(agents) ? agents : [])
+        }
+      } catch { /* agents list is optional */ }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load config')
     } finally {
@@ -402,6 +406,55 @@ export default function ConfigPage() {
             </div>
             <span className="text-green-500 text-sm">Connected</span>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Agents Section */}
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="font-semibold">Agents ({allAgents.length} available)</h2>
+        </CardHeader>
+        <CardContent>
+          {allAgents.length === 0 ? (
+            <p className="text-sm text-foreground-secondary">Loading agents...</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {allAgents.map((agent) => {
+                const enabledAgents = ((config?.agents as Record<string, unknown>)?.enabled as string[]) || []
+                const isEnabled = enabledAgents.includes(agent.name)
+                return (
+                  <label
+                    key={agent.name}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      isEnabled
+                        ? 'border-apex-600 bg-apex-600/10'
+                        : 'border-border bg-background-tertiary hover:border-foreground-secondary'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={() => {
+                        const current = [...enabledAgents]
+                        if (isEnabled) {
+                          handleFieldChange('agents', 'enabled', current.filter(a => a !== agent.name))
+                        } else {
+                          handleFieldChange('agents', 'enabled', [...current, agent.name])
+                        }
+                      }}
+                      className="mt-1 w-4 h-4 rounded border-border accent-apex-600"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm capitalize">{agent.name}</div>
+                      {agent.role && (
+                        <div className="text-xs text-foreground-secondary truncate">{agent.role}</div>
+                      )}
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
