@@ -198,9 +198,15 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   const config = await orchestrator.getConfig();
 
   // Register auth middleware with configuration
-  const authEnabled = config.api?.auth?.enabled ?? true;
+  // Auth defaults to disabled for localhost (dev), enabled for non-localhost (production)
+  const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  const authEnabled = config.api?.auth?.enabled ?? !isLocalhost;
   if (!authEnabled) {
-    app.log.warn('⚠️  API authentication is DISABLED. Set api.auth.enabled=true in .apex/config.yaml for production use.');
+    if (!isLocalhost) {
+      app.log.warn('⚠️  API authentication is DISABLED on a non-localhost binding. Set api.auth.enabled=true in .apex/config.yaml for production use.');
+    } else {
+      app.log.info('API authentication disabled (localhost binding). Set api.auth.enabled=true to require API keys.');
+    }
   }
   await app.register(authPlugin as any, {
     enabled: authEnabled,
