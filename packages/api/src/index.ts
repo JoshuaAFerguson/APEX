@@ -30,6 +30,9 @@ import {
   truncatePayload,
   serializeMCPError,
   AgentDefinition,
+  formatTasksToJSON,
+  formatTasksToCSV,
+  formatTasksToMarkdown,
 } from '@apexcli/core';
 import {
   ApexOrchestrator,
@@ -543,6 +546,145 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       const counts = await orchestrator.countTasks({ status });
 
       return { tasks, count: tasks.length, total: counts.total, limit: parsedLimit, offset: parsedOffset };
+    }
+  );
+
+  // Export tasks endpoint
+  app.get<{ Querystring: { format: 'json' | 'csv' | 'markdown'; startDate?: string; endDate?: string; taskIds?: string | string[] } }>(
+    '/tasks/export',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          required: ['format'],
+          properties: {
+            format: {
+              type: 'string',
+              enum: ['json', 'csv', 'markdown'],
+              description: 'Export format'
+            },
+            startDate: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Filter tasks created on or after this date (ISO 8601)'
+            },
+            endDate: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Filter tasks created on or before this date (ISO 8601)'
+            },
+            taskIds: {
+              type: 'string',
+              description: 'Specific task IDs to export (comma-separated for multiple IDs)'
+            }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const { format, startDate, endDate, taskIds } = request.query;
+
+      // Validate format
+      const validFormats = ['json', 'csv', 'markdown'] as const;
+      if (!validFormats.includes(format)) {
+        return reply.status(400).send({
+          error: 'Invalid format',
+          message: `Format must be one of: ${validFormats.join(', ')}`
+        });
+      }
+
+      // Parse and validate dates
+      let startDateParsed: Date | undefined;
+      let endDateParsed: Date | undefined;
+
+      if (startDate) {
+        startDateParsed = new Date(startDate);
+        if (isNaN(startDateParsed.getTime())) {
+          return reply.status(400).send({
+            error: 'Invalid startDate',
+            message: 'startDate must be a valid ISO 8601 date string'
+          });
+        }
+      }
+
+      if (endDate) {
+        endDateParsed = new Date(endDate);
+        if (isNaN(endDateParsed.getTime())) {
+          return reply.status(400).send({
+            error: 'Invalid endDate',
+            message: 'endDate must be a valid ISO 8601 date string'
+          });
+        }
+      }
+
+      // Parse taskIds (handle both comma-separated string and array)
+      let taskIdArray: string[] | undefined;
+      if (taskIds) {
+        if (Array.isArray(taskIds)) {
+          taskIdArray = taskIds;
+        } else {
+          taskIdArray = taskIds.split(',').map(id => id.trim()).filter(Boolean);
+        }
+      }
+
+      try {
+        // Fetch all tasks (not lightweight - need full data for export)
+        let tasks = await orchestrator.listTasks({ lightweight: false });
+
+        // Apply filters
+        if (taskIdArray && taskIdArray.length > 0) {
+          const taskIdSet = new Set(taskIdArray);
+          tasks = tasks.filter(task => taskIdSet.has(task.id));
+        }
+
+        if (startDateParsed) {
+          tasks = tasks.filter(task => task.createdAt >= startDateParsed!);
+        }
+
+        if (endDateParsed) {
+          tasks = tasks.filter(task => task.createdAt <= endDateParsed!);
+        }
+
+        // Format tasks based on requested format
+        let content: string;
+        let contentType: string;
+        let fileExtension: string;
+
+        switch (format) {
+          case 'json':
+            content = formatTasksToJSON(tasks);
+            contentType = 'application/json';
+            fileExtension = 'json';
+            break;
+          case 'csv':
+            content = formatTasksToCSV(tasks);
+            contentType = 'text/csv';
+            fileExtension = 'csv';
+            break;
+          case 'markdown':
+            content = formatTasksToMarkdown(tasks);
+            contentType = 'text/markdown';
+            fileExtension = 'md';
+            break;
+        }
+
+        // Generate filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `tasks-export-${timestamp}.${fileExtension}`;
+
+        // Set headers and return content
+        return reply
+          .type(contentType)
+          .header('Content-Disposition', `attachment; filename="${filename}"`)
+          .send(content);
+
+      } catch (error) {
+        app.log.error({ err: error }, 'Task export error');
+        return reply.status(500).send({
+          error: 'Export failed',
+          message: error instanceof Error ? error.message : 'Unknown error during export'
+        });
+      }
     }
   );
 
