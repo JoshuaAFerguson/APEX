@@ -189,7 +189,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     credentials: true,
   });
   await app.register(rateLimit as any, { max: 100, timeWindow: '1 minute' });
-  await app.register(websocket);
+  await app.register(websocket as any);
 
   // Initialize orchestrator to get config for auth middleware
   const orchestrator = new ApexOrchestrator({ projectPath, apiUrl: `http://${host}:${port}` });
@@ -2139,10 +2139,10 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   };
 
   // Global WebSocket endpoint with health check support
-  app.get(
+  (app as any).get(
     '/ws',
     { websocket: true, preHandler: wsAuthPreHandler },
-    (socket, request) => {
+    (socket: any, request: any) => {
       app.log.info('Global WebSocket client connected')
 
       // Send current tasks state immediately
@@ -2159,7 +2159,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       });
 
       // Handle incoming messages (primarily ping/pong)
-      socket.on('message', (message) => {
+      socket.on('message', (message: any) => {
         try {
           const data = JSON.parse(message.toString());
 
@@ -2187,26 +2187,23 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       });
 
       // Handle errors
-      socket.on('error', (error) => {
+      socket.on('error', (error: any) => {
         app.log.error({ err: new Error(error.message) }, 'Global WebSocket error');
       });
     }
   );
 
-  app.get<{
-    Params: { taskId: string };
-    Querystring: { events?: string; }; // Comma-separated list of event types to subscribe to
-  }>(
+  (app as any).get(
     '/stream/:taskId',
     { websocket: true, preHandler: wsAuthPreHandler },
-    (socket, request) => {
+    (socket: any, request: any) => {
       const { taskId } = request.params;
       const { events } = request.query;
 
       // Parse event filters from query parameter
       let eventFilters: Set<string> | undefined;
       if (events) {
-        eventFilters = new Set(events.split(',').map(e => e.trim()).filter(e => e.length > 0));
+        eventFilters = new Set((events as string).split(',').map((e: string) => e.trim()).filter((e: string) => e.length > 0));
       }
 
       // Register client with filtering capability
@@ -2246,7 +2243,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
       });
 
       // Handle errors
-      socket.on('error', (error) => {
+      socket.on('error', (error: any) => {
         app.log.error(`WebSocket error for task ${taskId}: ${error.message}`);
       });
     }
