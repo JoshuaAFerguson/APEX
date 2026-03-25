@@ -287,8 +287,21 @@ export default function ConfigPage() {
       try {
         const agentsResp = await fetch(`${getApiUrl()}/agents`)
         if (agentsResp.ok) {
-          const agents = await agentsResp.json()
-          setAllAgents(Array.isArray(agents) ? agents : [])
+          const data = await agentsResp.json()
+          // API returns { agents: { name: {...}, ... } } — normalize to array
+          let agentList: Array<{ name: string; role?: string; description?: string }> = []
+          if (data?.agents && typeof data.agents === 'object' && !Array.isArray(data.agents)) {
+            agentList = Object.entries(data.agents).map(([key, val]: [string, any]) => ({
+              name: key,
+              role: val?.role || val?.description?.slice(0, 60),
+              description: val?.description,
+            }))
+          } else if (Array.isArray(data)) {
+            agentList = data
+          } else if (Array.isArray(data?.agents)) {
+            agentList = data.agents
+          }
+          setAllAgents(agentList)
         }
       } catch { /* agents list is optional */ }
     } catch (err) {
