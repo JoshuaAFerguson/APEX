@@ -192,7 +192,9 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
   await app.register(rateLimit as any, { max: 100, timeWindow: '1 minute' });
   await app.register(websocket as any);
 
-  // Initialize orchestrator to get config for auth middleware
+  // Initialize orchestrator in lightweight mode for API service
+  // Skip heavy subsystems (MCP discovery, codebase intelligence, VeriSwarm, etc.)
+  process.env.APEX_API_MODE = '1';
   const orchestrator = new ApexOrchestrator({ projectPath, apiUrl: `http://${host}:${port}` });
   await orchestrator.initialize();
 

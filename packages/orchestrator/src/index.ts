@@ -1529,8 +1529,13 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
     this.effectiveConfig = getEffectiveConfig(this.config);
 
-    // Initialize the AI platform driver (v0.6.0)
-    await this.initializeDriver();
+    // In API mode, skip heavy subsystems that aren't needed for serving requests
+    const isApiMode = process.env.APEX_API_MODE === '1';
+
+    // Initialize the AI platform driver (v0.6.0) — skip in API mode
+    if (!isApiMode) {
+      await this.initializeDriver();
+    }
 
     // Initialize alias resolver with config aliases
     this.aliasResolver = new AliasResolver(this.config.aliases || []);
@@ -1539,27 +1544,30 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Note: MCPInstaller requires this.store, which is initialized later
     this.mcpServerManager = new MCPServerManager(this.projectPath, this.config);
     this.mcpMarketplaceService = new MCPMarketplaceService(this.projectPath, this.config);
-    this.mcpConnectionManager = new MCPConnectionManager({
-      projectPath: this.projectPath,
-      config: this.config
-    });
 
-    // Set up MCP event forwarding
-    this.setupMCPEventForwarding();
-
-    // Initialize multimodal input handler (v0.6.0)
-    this.multimodalInputHandler = new MultimodalInputHandler();
-
-    // Initialize MCP tool registry for tool discovery
-    if (this.mcpConnectionManager) {
-      this.mcpToolRegistry = new MCPToolRegistry({
-        operationTimeoutMs: 30000,
-        autoRefresh: false, // We'll manually refresh during execution
+    if (!isApiMode) {
+      this.mcpConnectionManager = new MCPConnectionManager({
+        projectPath: this.projectPath,
+        config: this.config
       });
-      this.mcpToolRegistry.setConnectionManager(this.mcpConnectionManager);
 
-      // Connect to enabled servers and discover tools
-      await this.discoverAndRegisterMcpTools();
+      // Set up MCP event forwarding
+      this.setupMCPEventForwarding();
+
+      // Initialize multimodal input handler (v0.6.0)
+      this.multimodalInputHandler = new MultimodalInputHandler();
+
+      // Initialize MCP tool registry for tool discovery
+      if (this.mcpConnectionManager) {
+        this.mcpToolRegistry = new MCPToolRegistry({
+          operationTimeoutMs: 30000,
+          autoRefresh: false,
+        });
+        this.mcpToolRegistry.setConnectionManager(this.mcpConnectionManager);
+
+        // Connect to enabled servers and discover tools
+        await this.discoverAndRegisterMcpTools();
+      }
     }
 
     // Load agent definitions
@@ -1759,7 +1767,7 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     // Initialize codebase intelligence (v0.6.0 - opt-in, non-blocking)
     // Indexing can take a long time on large codebases — run in background
     // so it doesn't block daemon startup or CLI responsiveness
-    if ((this.effectiveConfig as any).codebaseIntelligence?.enabled !== false) {
+    if (!isApiMode && (this.effectiveConfig as any).codebaseIntelligence?.enabled !== false) {
       const ciService = new CodebaseIntelligenceService({
         enableCaching: true,
         enableIncrementalIndexing: true,
@@ -1772,12 +1780,16 @@ export class ApexOrchestrator extends EventEmitter<OrchestratorEvents> {
     }
 
     // Initialize smart context manager (v0.6.0)
-    this.smartContextManager = new SmartContextManager({
-      maxTokensPerTask: this.effectiveConfig.limits.maxTokensPerTask || 100000,
-    });
+    if (!isApiMode) {
+      this.smartContextManager = new SmartContextManager({
+        maxTokensPerTask: this.effectiveConfig.limits.maxTokensPerTask || 100000,
+      });
+    }
 
-    // Initialize VeriSwarm integration (auto-registers agent if needed)
-    await this.initializeVeriSwarmIntegration();
+    // Initialize VeriSwarm integration (auto-registers agent if needed) — skip in API mode
+    if (!isApiMode) {
+      await this.initializeVeriSwarmIntegration();
+    }
 
     this.initialized = true;
   }
