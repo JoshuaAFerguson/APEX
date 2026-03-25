@@ -14,6 +14,48 @@ import { ApexOrchestrator } from '@apexcli/orchestrator';
 import { Task, HealthMetrics, TaskStatus } from '@apexcli/core';
 
 /**
+ * Returns a minimal APEX config.yaml content for test environments.
+ * Disables auth and rate limiting so tests can focus on endpoint behavior.
+ */
+export function getTestConfigYaml(): string {
+  return `version: "1.0"
+project:
+  name: apex-test
+  language: typescript
+  framework: node
+autonomy:
+  level: full-auto
+agents:
+  enabled: []
+models:
+  planning: opus
+  implementation: sonnet
+  review: haiku
+limits:
+  maxTokensPerTask: 100000
+  maxCostPerTask: 10
+  maxRetries: 3
+git:
+  branchPrefix: apex/
+  commitFormat: conventional
+  autoPush: false
+  defaultBranch: main
+api:
+  auth:
+    enabled: false
+    apiKeys: []
+`;
+}
+
+/**
+ * Writes a minimal test config.yaml to the given .apex directory.
+ * Call this after creating the .apex directory in test setup.
+ */
+export async function writeTestConfig(apexDir: string): Promise<void> {
+  await writeFile(path.join(apexDir, 'config.yaml'), getTestConfigYaml());
+}
+
+/**
  * Configuration for test server setup
  */
 export interface TestSetupConfig {
@@ -364,6 +406,9 @@ export async function setupTestServer(config: TestSetupConfig = {}): Promise<Tes
 
   // Ensure .apex directory exists
   await mkdir(apexDir, { recursive: true });
+
+  // Write minimal config.yaml to disable auth in tests
+  await writeFile(path.join(apexDir, 'config.yaml'), getTestConfigYaml());
 
   // Setup file system utilities
   const fsUtils = new FileSystemTestUtils(tempDir);

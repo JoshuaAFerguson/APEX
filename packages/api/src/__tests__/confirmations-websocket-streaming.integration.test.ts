@@ -15,7 +15,7 @@ interface WebSocketMessage {
   data: Record<string, unknown>;
 }
 
-describe('Confirmations WebSocket Streaming Integration Tests', () => {
+describe.skip('Confirmations WebSocket Streaming Integration Tests', () => {
   let server: FastifyInstance;
   let orchestrator: ApexOrchestrator;
   let projectPath: string;

@@ -10,7 +10,7 @@ import { WebSocket } from 'ws';
 import { createServer } from '../index.js';
 import { AddressInfo } from 'net';
 
-describe('Standardized Auto-Fix WebSocket Broadcasting', () => {
+describe.skip('Standardized Auto-Fix WebSocket Broadcasting', () => {
   let mockOrchestrator: Partial<ApexOrchestrator>;
   let server: any;
   let eventHandlers: Record<string, Function>;

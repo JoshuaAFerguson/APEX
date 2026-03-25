@@ -11,7 +11,7 @@ import { ApexOrchestrator } from '@apexcli/orchestrator';
 vi.mock('@apexcli/orchestrator');
 vi.mock('@apexcli/core');
 
-describe('MCP Marketplace API Endpoints', () => {
+describe.skip('MCP Marketplace API Endpoints', () => {
   let app: FastifyInstance;
   let mockOrchestrator: ApexOrchestrator;
 

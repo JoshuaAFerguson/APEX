@@ -8,6 +8,7 @@ import { createServer } from '../index';
 import path from 'path';
 import { tmpdir } from 'os';
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
+import { writeTestConfig } from './setup';
 import { WebSocket } from 'ws';
 import { HealthMetrics, DaemonMemoryUsage, DaemonTaskCounts, RestartRecord } from '@apexcli/core';
 
@@ -66,8 +67,9 @@ describe('/daemon/health endpoint', () => {
     // Create a temporary directory for the project
     tempDir = await mkdtemp(path.join(tmpdir(), 'apex-test-'));
 
-    // Create .apex directory
+    // Create .apex directory with test config
     await mkdir(path.join(tempDir, '.apex'), { recursive: true });
+    await writeTestConfig(path.join(tempDir, '.apex'));
 
     // Create server with test configuration
     app = await createServer({

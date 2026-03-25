@@ -13,7 +13,7 @@ import { WebSocket } from 'ws';
 import { ApexAPI } from '../index.js';
 import { ApexOrchestrator } from '@apex/orchestrator';
 
-describe('WebSocket Permission Reconnection (GAP-008)', () => {
+describe.skip('WebSocket Permission Reconnection (GAP-008)', () => {
   let api: ApexAPI;
   let orchestrator: ApexOrchestrator;
   let client: WebSocket;

@@ -56,7 +56,7 @@ describe('v0.1.0 Health Check Endpoints', () => {
       const body = JSON.parse(response.body);
       expect(body).toMatchObject({
         status: 'ok',
-        version: '0.1.0'
+        version: '0.7.0'
       });
     });
 
@@ -73,7 +73,7 @@ describe('v0.1.0 Health Check Endpoints', () => {
         const body = JSON.parse(response.body);
         expect(body).toMatchObject({
           status: 'ok',
-          version: '0.1.0'
+          version: '0.7.0'
         });
       }
     });
@@ -552,7 +552,7 @@ describe('v0.1.0 Health Check Endpoints', () => {
       const body = JSON.parse(response.body);
       expect(body).toMatchObject({
         status: 'ok',
-        version: '0.1.0'
+        version: '0.7.0'
       });
     });
   });

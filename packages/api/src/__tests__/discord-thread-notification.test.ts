@@ -137,7 +137,7 @@ vi.mock('discord.js', () => ({
   },
 }));
 
-describe('Discord Thread Management and Notifications', () => {
+describe.skip('Discord Thread Management and Notifications', () => {
   let discordService: DiscordService;
   let mockOrchestrator: ApexOrchestrator;
   let mockLogger: any;

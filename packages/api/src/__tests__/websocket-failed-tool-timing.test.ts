@@ -77,7 +77,7 @@ vi.mock('@apexcli/orchestrator', () => {
     async hasPendingSubtasks() { return false; }
     async continuePendingSubtasks() {}
     async getAgents() { return {}; }
-    async getConfig() { return { project: { name: 'test' } }; }
+    async getConfig() { return { project: { name: 'test' }, api: { auth: { enabled: false, apiKeys: [] } } }; }
     async approveGate() {}
     async rejectGate() {}
     async getAllGates() { return []; }

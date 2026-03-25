@@ -105,7 +105,7 @@ export class MockOrchestrator {
     return {};
   }
   async getConfig() {
-    return { project: { name: 'test' } };
+    return { project: { name: 'test' }, api: { auth: { enabled: false, apiKeys: [] } } };
   }
   async approveGate() {}
   async rejectGate() {}

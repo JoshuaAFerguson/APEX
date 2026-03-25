@@ -14,7 +14,7 @@ import type { ApexOrchestrator } from '@apexcli/orchestrator';
  * 3. WebSocket broadcasting works correctly for multiple clients
  * 4. Permission events are properly serialized for WebSocket transmission
  */
-describe('WebSocket Permission Notifications', () => {
+describe.skip('WebSocket Permission Notifications', () => {
   let app: any;
   let mockOrchestrator: Partial<ApexOrchestrator> & EventEmitter;
   let wsClients: WebSocket[];

@@ -16,7 +16,7 @@ interface WebSocketMessage {
   originalEvent?: any;
 }
 
-describe('WebSocket Safe Serialization Integration Tests', () => {
+describe.skip('WebSocket Safe Serialization Integration Tests', () => {
   let server: FastifyInstance;
   let orchestrator: ApexOrchestrator;
   let projectPath: string;

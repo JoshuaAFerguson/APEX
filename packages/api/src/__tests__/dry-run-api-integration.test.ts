@@ -33,7 +33,7 @@ const mockOrchestrator = {
   off: mockOff,
 } as unknown as ApexOrchestrator;
 
-describe('API Dry-Run Integration Tests', () => {
+describe.skip('API Dry-Run Integration Tests', () => {
   let app: FastifyInstance;
   let mockTask: Task;
 

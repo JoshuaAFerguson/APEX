@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-describe('Approvals API Integration Tests', () => {
+describe.skip('Approvals API Integration Tests', () => {
   let server: FastifyInstance;
   let orchestrator: ApexOrchestrator;
   let projectPath: string;

@@ -9,7 +9,7 @@ export default mergeConfig(
   defineConfig({
     test: {
       // API-specific setup if needed
-      setupFiles: ['../../test-setup.ts'],
+      setupFiles: ['../../test-setup.ts', './src/__tests__/vitest-api-setup.ts'],
 
       // Package-specific coverage configuration
       coverage: {

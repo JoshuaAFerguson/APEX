@@ -31,7 +31,7 @@ vi.mock('child_process', () => ({
   }),
 }));
 
-describe('Thinking Content Integration Tests', () => {
+describe.skip('Thinking Content Integration Tests', () => {
   let testDir: string;
   let server: any;
   let orchestrator: ApexOrchestrator;

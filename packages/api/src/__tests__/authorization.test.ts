@@ -39,7 +39,28 @@ async function createTestServerWithAuth(projectPath: string): Promise<Authorizat
   await fs.mkdir(apexDir, { recursive: true });
 
   // Create config with auth enabled
-  const authConfig = `
+  const authConfig = `version: "1.0"
+project:
+  name: apex-auth-test
+  language: typescript
+  framework: node
+autonomy:
+  level: full-auto
+agents:
+  enabled: []
+models:
+  planning: opus
+  implementation: sonnet
+  review: haiku
+limits:
+  maxTokensPerTask: 100000
+  maxCostPerTask: 10
+  maxRetries: 3
+git:
+  branchPrefix: apex/
+  commitFormat: conventional
+  autoPush: false
+  defaultBranch: main
 api:
   auth:
     enabled: true

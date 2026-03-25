@@ -42,20 +42,28 @@ describe('Security Generic Error Messages Tests', () => {
 
     // Create config with auth enabled
     const authConfigPath = path.join(authTempDir, '.apex', 'config.yaml');
-    await writeFile(authConfigPath, `
+    await writeFile(authConfigPath, `version: "1.0"
 project:
   name: test-auth-project
-  version: "1.0.0"
-
+  language: typescript
+  framework: node
 autonomy:
-  level: "supervised"
-  autoApprove: false
-
+  level: full-auto
+agents:
+  enabled: []
+models:
+  planning: opus
+  implementation: sonnet
+  review: haiku
 limits:
-  maxConcurrentTasks: 3
-  maxCostPerTask: 10.0
-  dailyCostLimit: 100.0
-
+  maxTokensPerTask: 100000
+  maxCostPerTask: 10
+  maxRetries: 3
+git:
+  branchPrefix: apex/
+  commitFormat: conventional
+  autoPush: false
+  defaultBranch: main
 api:
   auth:
     enabled: true

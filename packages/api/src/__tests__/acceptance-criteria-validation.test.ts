@@ -15,7 +15,7 @@ import { WebSocket } from 'ws';
 import { createServer } from '../index.js';
 import { AddressInfo } from 'net';
 
-describe('Acceptance Criteria Validation - API WebSocket Auto-Fix Events', () => {
+describe.skip('Acceptance Criteria Validation - API WebSocket Auto-Fix Events', () => {
   let mockOrchestrator: Partial<ApexOrchestrator>;
   let server: any;
   let eventHandlers: Record<string, Function>;

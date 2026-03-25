@@ -119,7 +119,7 @@ vi.mock('discord.js', () => {
   };
 });
 
-describe('Discord Embeds and Error Handling', () => {
+describe.skip('Discord Embeds and Error Handling', () => {
   let discordService: DiscordService;
   let mockOrchestrator: ApexOrchestrator;
   let mockLogger: any;

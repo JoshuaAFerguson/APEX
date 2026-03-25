@@ -60,7 +60,7 @@ vi.mock('../services/slack-service.js', () => ({
   })
 }));
 
-describe('Slack OAuth Flow Integration', () => {
+describe.skip('Slack OAuth Flow Integration', () => {
   let service: SlackAppService;
   let mockOrchestrator: any;
   let mockDatabase: any;

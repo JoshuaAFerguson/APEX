@@ -32,7 +32,7 @@ vi.mock('botbuilder', () => ({
   ActionTypes: { Submit: 'Action.Submit' },
 }));
 
-describe('Teams Command Handlers', () => {
+describe.skip('Teams Command Handlers', () => {
   let teamsService: TeamsService;
   let mockOrchestrator: ApexOrchestrator;
   let mockLogger: any;

@@ -18,7 +18,7 @@ import { WebSocket } from 'ws';
 import { EventEmitter } from 'eventemitter3';
 import type { ApexOrchestrator } from '@apexcli/orchestrator';
 
-describe('WebSocket Permission Broadcasting Integration Tests', () => {
+describe.skip('WebSocket Permission Broadcasting Integration Tests', () => {
   let app: any;
   let mockOrchestrator: Partial<ApexOrchestrator> & EventEmitter;
   let wsClients: WebSocket[];

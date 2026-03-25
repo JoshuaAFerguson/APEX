@@ -47,6 +47,7 @@ vi.mock('@apexcli/orchestrator', () => {
   const mockConfig = {
     version: '1.0',
     project: { name: 'test-project' },
+    api: { auth: { enabled: false, apiKeys: [] } },
   };
 
   const mockTemplate = {
@@ -198,6 +199,17 @@ vi.mock('@apexcli/orchestrator', () => {
 
   return {
     ApexOrchestrator: MockOrchestrator,
+    DaemonManager: class { async getStatus() { return { running: false }; } },
+    HealthMonitor: class { getMetrics() { return {}; } checkHealth() { return { healthy: true }; } },
+    ToolCallStartEvent: class {},
+    ToolCallProgressEvent: class {},
+    ToolCallCompleteEvent: class {},
+    MCPErrorEventData: class {},
+    MCPConnectionEventData: class {},
+    MCPDisconnectionEventData: class {},
+    MCPReconnectingEventData: class {},
+    MCPHealthCheckEventData: class {},
+    MCPStateChangeEventData: class {},
   };
 });
 
@@ -239,7 +251,7 @@ describe('API Server', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.status).toBe('ok');
-      expect(body.version).toBe('0.1.0');
+      expect(body.version).toBe('0.7.0');
     });
   });
 

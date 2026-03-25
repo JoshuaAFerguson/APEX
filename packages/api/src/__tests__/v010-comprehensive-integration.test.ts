@@ -156,7 +156,7 @@ describe('v0.1.0 Comprehensive Integration Test', () => {
       const body = JSON.parse(response.body);
       expect(body).toMatchObject({
         status: 'ok',
-        version: '0.1.0'
+        version: '0.7.0'
       });
     });
 
@@ -536,7 +536,7 @@ describe('v0.1.0 Comprehensive Integration Test', () => {
       const basicBody = JSON.parse(basicHealthResponse.body);
       expect(basicBody).toMatchObject({
         status: 'ok',
-        version: '0.1.0'
+        version: '0.7.0'
       });
 
       // Test daemon health check (might be unavailable in test environment)

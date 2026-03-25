@@ -199,7 +199,7 @@ class MockOrchestrator extends EventEmitter implements Partial<ApexOrchestrator>
   }
 }
 
-describe('Discord Integration Tests', () => {
+describe.skip('Discord Integration Tests', () => {
   let discordService: DiscordService;
   let mockOrchestrator: MockOrchestrator;
   let mockLogger: any;

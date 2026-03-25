@@ -5,9 +5,10 @@ import { MCPInstallation, MCPInstallationStatus } from '@apexcli/core';
 
 // Mock the orchestrator
 vi.mock('@apexcli/orchestrator', () => ({
-  ApexOrchestrator: vi.fn().mockImplementation(() => ({
+  DaemonManager: class { async getStatus() { return { running: false }; } async start() {} async stop() {} }, HealthMonitor: class { getMetrics() { return {}; } checkHealth() { return { healthy: true }; } }, ToolCallStartEvent: class {}, ToolCallProgressEvent: class {}, ToolCallCompleteEvent: class {}, MCPErrorEventData: class {}, MCPConnectionEventData: class {}, MCPDisconnectionEventData: class {}, MCPReconnectingEventData: class {}, MCPHealthCheckEventData: class {}, MCPStateChangeEventData: class {},
+  ApexOrchestrator: vi.fn(function() { return {
     listMcpInstallations: vi.fn(),
-  })),
+  }; }),
 }));
 
 /**

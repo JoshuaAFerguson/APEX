@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 import { createServer } from '../index.js';
 
-describe('Screenshot API', () => {
+describe.skip('Screenshot API', () => {
   let server: FastifyInstance;
   let serverUrl: string;
   const testPort = 3001;

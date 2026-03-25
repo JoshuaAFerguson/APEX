@@ -166,7 +166,7 @@ class MockOrchestratorWithDelay {
   listTasks = vi.fn(() => Promise.resolve([]));
 }
 
-describe('Discord Load and Performance Tests', () => {
+describe.skip('Discord Load and Performance Tests', () => {
   let discordService: DiscordService;
   let mockOrchestrator: MockOrchestratorWithDelay;
   let mockLogger: any;

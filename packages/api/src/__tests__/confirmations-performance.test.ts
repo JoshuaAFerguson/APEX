@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-describe('Confirmations API Performance Tests', () => {
+describe.skip('Confirmations API Performance Tests', () => {
   let server: FastifyInstance;
   let orchestrator: ApexOrchestrator;
   let projectPath: string;

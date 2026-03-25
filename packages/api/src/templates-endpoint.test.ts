@@ -110,7 +110,7 @@ vi.mock('@apexcli/orchestrator', () => {
     async archiveTask() { throw new Error('Not implemented in template test'); }
     async listArchivedTasks() { throw new Error('Not implemented in template test'); }
     async getAgents() { return {}; }
-    async getConfig() { return {}; }
+    async getConfig() { return { api: { auth: { enabled: false, apiKeys: [] } } }; }
 
     on() {}
     emit() {}
