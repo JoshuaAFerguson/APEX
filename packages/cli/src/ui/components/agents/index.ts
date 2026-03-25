@@ -40,6 +40,7 @@ export {
 
 // AgentTerminalPanel component and types
 export { AgentTerminalPanel, defaultProps as AgentTerminalPanelDefaultProps } from './AgentTerminalPanel.js';
+export { PanelStateStatus, type PanelStateStatusProps } from './PanelStateStatus.js';
 export {
   EXECUTION_STATUS_TO_AGENT_STATUS,
   RESPONSIVE_TERMINAL_PANEL_CONFIGS,
@@ -53,6 +54,8 @@ export {
   isValidDisplayMode,
   isValidBorderStyle,
   isValidPanelState,
+  getPanelStateStatusText,
+  shouldShowStatusText,
   type AgentExecution,
   type AgentExecutionStatus,
   type AgentTerminalPanelProps,
@@ -61,4 +64,7 @@ export {
   type ResponsiveTerminalPanelConfig,
   type ExecutionVisualState,
   type ProcessedExecutionData,
+  type PanelStateStatusText,
+  type StatusTextVisibility,
+  type StatusTextDisplayConditions,
 } from './AgentTerminalPanel.types.js';

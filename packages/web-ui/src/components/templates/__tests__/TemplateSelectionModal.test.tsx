@@ -333,7 +333,7 @@ describe('TemplateSelectionModal', () => {
     it('selects a template when clicked', () => {
       render(<TemplateSelectionModal {...defaultProps} />)
 
-      const templateCard = screen.getByTestId('template-card')
+      const templateCard = screen.getAllByTestId('template-card')[0]
       fireEvent.click(templateCard)
 
       // Verify template is selected (preview should show)
@@ -346,7 +346,7 @@ describe('TemplateSelectionModal', () => {
         <TemplateSelectionModal {...defaultProps} onTemplateSelected={mockOnTemplateSelected} />
       )
 
-      const templateCard = screen.getByTestId('template-card')
+      const templateCard = screen.getAllByTestId('template-card')[0]
       fireEvent.doubleClick(templateCard)
 
       expect(mockOnTemplateSelected).toHaveBeenCalledWith(mockTemplates[0])
@@ -362,7 +362,7 @@ describe('TemplateSelectionModal', () => {
       expect(useButton).toBeDisabled()
 
       // Select a template
-      const templateCard = screen.getByTestId('template-card')
+      const templateCard = screen.getAllByTestId('template-card')[0]
       fireEvent.click(templateCard)
 
       // Button should be enabled
@@ -376,7 +376,7 @@ describe('TemplateSelectionModal', () => {
       )
 
       // Select a template
-      const templateCard = screen.getByTestId('template-card')
+      const templateCard = screen.getAllByTestId('template-card')[0]
       fireEvent.click(templateCard)
 
       // Click Use Template button
@@ -419,7 +419,7 @@ describe('TemplateSelectionModal', () => {
         />
       )
 
-      const templateCard = screen.getByTestId('template-card') // Feature template has required variables
+      const templateCard = screen.getAllByTestId('template-card')[0] // Feature template has required variables
       fireEvent.click(templateCard)
 
       // Should not auto-confirm because template has required variables
@@ -525,7 +525,7 @@ describe('TemplateSelectionModal', () => {
       const { rerender } = render(<TemplateSelectionModal {...defaultProps} />)
 
       // Select a template
-      const templateCard = screen.getByTestId('template-card')
+      const templateCard = screen.getAllByTestId('template-card')[0]
       fireEvent.click(templateCard)
       expect(screen.getByText('Preview: Feature Template')).toBeInTheDocument()
 
@@ -557,7 +557,7 @@ describe('TemplateSelectionModal', () => {
       )
 
       // Select a template
-      const templateCard = screen.getByTestId('template-card')
+      const templateCard = screen.getAllByTestId('template-card')[0]
       fireEvent.click(templateCard)
 
       // Press Enter
@@ -628,7 +628,7 @@ describe('TemplateSelectionModal', () => {
       render(<TemplateSelectionModal {...defaultProps} />)
 
       // Select template with required variables
-      const templateCard = screen.getByTestId('template-card')
+      const templateCard = screen.getAllByTestId('template-card')[0]
       fireEvent.click(templateCard)
 
       expect(screen.getByText('Configure & Use')).toBeInTheDocument()
@@ -659,7 +659,7 @@ describe('TemplateSelectionModal', () => {
     it('supports keyboard navigation for template cards', () => {
       render(<TemplateSelectionModal {...defaultProps} />)
 
-      const templateCard = screen.getByTestId('template-card')
+      const templateCard = screen.getAllByTestId('template-card')[0]
       expect(templateCard).toHaveAttribute('data-template-card')
     })
   })

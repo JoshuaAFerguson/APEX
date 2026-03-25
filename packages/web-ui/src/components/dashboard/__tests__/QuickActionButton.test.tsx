@@ -491,8 +491,10 @@ describe('QuickActionButton', () => {
       )
 
       expect(screen.getByText('Empty Description')).toBeInTheDocument()
-      // Should not show empty description text
-      expect(screen.queryByText('')).not.toBeInTheDocument()
+      // Should not render description span for empty description
+      const container = screen.getByText('Empty Description').closest('button')
+      const descriptionSpans = container?.querySelectorAll('span.text-foreground-secondary')
+      expect(descriptionSpans?.length).toBe(0)
     })
 
     it('handles template with very long name', () => {

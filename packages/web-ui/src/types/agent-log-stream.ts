@@ -12,8 +12,8 @@ import type { LogFilter } from './log-viewer'
 import type { AgentStatus } from './agent-metrics'
 import type { WebSocketConnectionStatus } from './websocket-connection'
 
-// Re-export LogLevel for external consumers
-export type { LogLevel } from './log-viewer'
+// Re-export LogLevel and LogFilter for external consumers
+export type { LogLevel, LogFilter } from './log-viewer'
 import type { LogLevel } from './log-viewer'
 
 // ============================================================================

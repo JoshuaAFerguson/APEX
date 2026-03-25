@@ -550,6 +550,317 @@ describe('useAgentTerminalPanelState', () => {
     });
   });
 
+  describe('focus navigation', () => {
+    describe('basic focus functionality', () => {
+      it('should initialize with no focused panel by default', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3']
+        }));
+
+        expect(result.current.focusedPanelId).toBe(null);
+        expect(result.current.focusedIndex).toBe(-1);
+      });
+
+      it('should initialize with specified focused panel', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3'],
+          initialFocusedPanelId: 'panel2'
+        }));
+
+        expect(result.current.focusedPanelId).toBe('panel2');
+        expect(result.current.focusedIndex).toBe(1);
+      });
+
+      it('should focus specific panel by ID', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3']
+        }));
+
+        act(() => {
+          result.current.focusPanel('panel2');
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel2');
+        expect(result.current.focusedIndex).toBe(1);
+        expect(result.current.isPanelFocused('panel2')).toBe(true);
+        expect(result.current.isPanelFocused('panel1')).toBe(false);
+      });
+
+      it('should clear focus', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3'],
+          initialFocusedPanelId: 'panel1'
+        }));
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+
+        act(() => {
+          result.current.clearFocus();
+        });
+
+        expect(result.current.focusedPanelId).toBe(null);
+        expect(result.current.focusedIndex).toBe(-1);
+      });
+    });
+
+    describe('focus navigation', () => {
+      it('should move focus to next panel', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3'],
+          initialFocusedPanelId: 'panel1'
+        }));
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+
+        act(() => {
+          result.current.focusNext();
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel2');
+        expect(result.current.focusedIndex).toBe(1);
+      });
+
+      it('should move focus to previous panel', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3'],
+          initialFocusedPanelId: 'panel2'
+        }));
+
+        expect(result.current.focusedPanelId).toBe('panel2');
+
+        act(() => {
+          result.current.focusPrevious();
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+        expect(result.current.focusedIndex).toBe(0);
+      });
+
+      it('should wrap focus from last to first panel with focusNext', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3'],
+          initialFocusedPanelId: 'panel3'
+        }));
+
+        expect(result.current.focusedPanelId).toBe('panel3');
+
+        act(() => {
+          result.current.focusNext();
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+        expect(result.current.focusedIndex).toBe(0);
+      });
+
+      it('should wrap focus from first to last panel with focusPrevious', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3'],
+          initialFocusedPanelId: 'panel1'
+        }));
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+
+        act(() => {
+          result.current.focusPrevious();
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel3');
+        expect(result.current.focusedIndex).toBe(2);
+      });
+
+      it('should start at first panel when focusing next from no focus', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3']
+        }));
+
+        expect(result.current.focusedPanelId).toBe(null);
+
+        act(() => {
+          result.current.focusNext();
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+        expect(result.current.focusedIndex).toBe(0);
+      });
+
+      it('should start at last panel when focusing previous from no focus', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3']
+        }));
+
+        expect(result.current.focusedPanelId).toBe(null);
+
+        act(() => {
+          result.current.focusPrevious();
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel3');
+        expect(result.current.focusedIndex).toBe(2);
+      });
+    });
+
+    describe('focus callbacks', () => {
+      it('should call onFocusChange when focus changes', () => {
+        const onFocusChange = vi.fn();
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2'],
+          onFocusChange
+        }));
+
+        act(() => {
+          result.current.focusPanel('panel1');
+        });
+
+        expect(onFocusChange).toHaveBeenCalledWith('panel1', null);
+
+        act(() => {
+          result.current.focusPanel('panel2');
+        });
+
+        expect(onFocusChange).toHaveBeenCalledWith('panel2', 'panel1');
+      });
+
+      it('should not call onFocusChange when focusing already focused panel', () => {
+        const onFocusChange = vi.fn();
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2'],
+          initialFocusedPanelId: 'panel1',
+          onFocusChange
+        }));
+
+        onFocusChange.mockClear(); // Clear initial call
+
+        act(() => {
+          result.current.focusPanel('panel1');
+        });
+
+        expect(onFocusChange).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('edge cases', () => {
+      it('should handle empty panel list', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: []
+        }));
+
+        expect(result.current.focusedPanelId).toBe(null);
+        expect(result.current.focusedIndex).toBe(-1);
+
+        act(() => {
+          result.current.focusNext();
+        });
+
+        expect(result.current.focusedPanelId).toBe(null);
+
+        act(() => {
+          result.current.focusPrevious();
+        });
+
+        expect(result.current.focusedPanelId).toBe(null);
+      });
+
+      it('should handle single panel', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1'],
+          initialFocusedPanelId: 'panel1'
+        }));
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+
+        act(() => {
+          result.current.focusNext();
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+
+        act(() => {
+          result.current.focusPrevious();
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+      });
+
+      it('should ignore focusing non-existent panel', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2']
+        }));
+
+        act(() => {
+          result.current.focusPanel('nonexistent');
+        });
+
+        expect(result.current.focusedPanelId).toBe(null);
+      });
+
+      it('should clear focus if focused panel removed from list', () => {
+        let panelIds = ['panel1', 'panel2', 'panel3'];
+        const { result, rerender } = renderHook(
+          ({ ids }) => useAgentTerminalPanelState({ panelIds: ids }),
+          { initialProps: { ids: panelIds } }
+        );
+
+        act(() => {
+          result.current.focusPanel('panel2');
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel2');
+
+        // Remove focused panel from list
+        panelIds = ['panel1', 'panel3'];
+        rerender({ ids: panelIds });
+
+        expect(result.current.focusedPanelId).toBe(null);
+        expect(result.current.focusedIndex).toBe(-1);
+      });
+    });
+
+    describe('integration with panel states', () => {
+      it('should maintain focus when panel states change', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3'],
+          initialFocusedPanelId: 'panel2'
+        }));
+
+        expect(result.current.focusedPanelId).toBe('panel2');
+
+        // Change panel state
+        act(() => {
+          result.current.minimize('panel2');
+        });
+
+        // Focus should remain on panel2
+        expect(result.current.focusedPanelId).toBe('panel2');
+        expect(result.current.getPanelState('panel2')).toBe(PanelState.Minimized);
+      });
+
+      it('should work correctly with maximize mutual exclusivity', () => {
+        const { result } = renderHook(() => useAgentTerminalPanelState({
+          panelIds: ['panel1', 'panel2', 'panel3'],
+          initialFocusedPanelId: 'panel1'
+        }));
+
+        // Maximize focused panel
+        act(() => {
+          result.current.maximize('panel1');
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel1');
+        expect(result.current.getPanelState('panel1')).toBe(PanelState.Maximized);
+
+        // Move focus and maximize another panel
+        act(() => {
+          result.current.focusNext();
+          result.current.maximize('panel2');
+        });
+
+        expect(result.current.focusedPanelId).toBe('panel2');
+        expect(result.current.getPanelState('panel1')).toBe(PanelState.Normal); // Should be restored
+        expect(result.current.getPanelState('panel2')).toBe(PanelState.Maximized);
+      });
+    });
+  });
+
   describe('additional acceptance criteria validation', () => {
     it('should export all required functions from the hook interface', () => {
       const { result } = renderHook(() => useAgentTerminalPanelState());

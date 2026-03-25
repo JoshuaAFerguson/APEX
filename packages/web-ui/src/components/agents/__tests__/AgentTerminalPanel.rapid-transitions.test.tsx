@@ -71,7 +71,7 @@ vi.mock('@/hooks/useAgentLogStream', () => ({
     isConnecting: false,
     isStreaming: false,
     isPaused: false,
-    error: null,
+    error: mockStreamState.error,
     connect: mockConnect,
     disconnect: mockDisconnect,
     pause: vi.fn(),
@@ -155,8 +155,20 @@ vi.mock('../AgentTerminalPanelHeader', () => ({
 }))
 
 vi.mock('../AgentTerminalPanelControls', () => ({
-  AgentTerminalPanelControls: ({ show }: any) => (
-    show ? <div data-testid="controls">Controls</div> : null
+  AgentTerminalPanelControls: ({ show, showSearch, onSearchChange }: any) => (
+    show ? (
+      <div data-testid="controls">
+        <div>Controls</div>
+        {showSearch && (
+          <input
+            type="text"
+            placeholder="Search logs..."
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            data-testid="search-input"
+          />
+        )}
+      </div>
+    ) : null
   ),
 }))
 

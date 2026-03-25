@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 
 /**
  * Panel state enumeration for type safety
@@ -32,6 +32,22 @@ export interface UseAgentTerminalPanelStateOptions {
    * Default state for new panels
    */
   defaultPanelState?: PanelState;
+
+  /**
+   * Ordered list of panel IDs for Tab navigation
+   * Order determines Tab sequence
+   */
+  panelIds?: string[];
+
+  /**
+   * Initially focused panel ID
+   */
+  initialFocusedPanelId?: string | null;
+
+  /**
+   * Callback when focus changes
+   */
+  onFocusChange?: (panelId: string | null, previousPanelId: string | null) => void;
 }
 
 /**
@@ -67,6 +83,41 @@ export interface PanelStateManager {
    * Get all panel states (for debugging/testing)
    */
   getAllPanelStates: () => Record<string, PanelState>;
+
+  /**
+   * Move focus to next panel (wraps around)
+   */
+  focusNext: () => void;
+
+  /**
+   * Move focus to previous panel (wraps around)
+   */
+  focusPrevious: () => void;
+
+  /**
+   * Focus a specific panel by ID
+   */
+  focusPanel: (panelId: string) => void;
+
+  /**
+   * Clear current focus
+   */
+  clearFocus: () => void;
+
+  /**
+   * Check if a specific panel is focused
+   */
+  isPanelFocused: (panelId: string) => boolean;
+
+  /**
+   * Currently focused panel ID
+   */
+  focusedPanelId: string | null;
+
+  /**
+   * Index of focused panel in panel order (-1 if none)
+   */
+  focusedIndex: number;
 }
 
 /**
@@ -92,6 +143,9 @@ export function useAgentTerminalPanelState(
     onPanelStateChange,
     initialPanelStates = {},
     defaultPanelState = PanelState.Normal,
+    panelIds = [],
+    initialFocusedPanelId = null,
+    onFocusChange,
   } = options;
 
   // Internal state for uncontrolled mode
@@ -99,11 +153,27 @@ export function useAgentTerminalPanelState(
     initialPanelStates
   );
 
+  // Focus state management
+  const [focusedPanelId, setFocusedPanelId] = useState<string | null>(initialFocusedPanelId);
+  const [currentPanelIds, setCurrentPanelIds] = useState<string[]>(panelIds);
+
   // Track whether we're in controlled mode
   const isControlled = controlledStates !== undefined;
 
   // Use controlled states if provided, otherwise use internal state
   const currentStates = isControlled ? controlledStates : internalPanelStates;
+
+  // Update panel IDs when they change externally
+  useEffect(() => {
+    setCurrentPanelIds(panelIds);
+  }, [panelIds]);
+
+  // Clear focus if focused panel is no longer in panel list
+  useEffect(() => {
+    if (focusedPanelId && !currentPanelIds.includes(focusedPanelId)) {
+      setFocusedPanelId(null);
+    }
+  }, [focusedPanelId, currentPanelIds]);
 
   // Ref to track current maximized panel for efficiency
   const maximizedPanelRef = useRef<string | null>(null);
@@ -115,6 +185,45 @@ export function useAgentTerminalPanelState(
     );
     maximizedPanelRef.current = maximizedPanel ? maximizedPanel[0] : null;
   }, [currentStates]);
+
+  // Calculate focused index
+  const focusedIndex = useMemo(() => {
+    if (!focusedPanelId || currentPanelIds.length === 0) return -1;
+    return currentPanelIds.indexOf(focusedPanelId);
+  }, [focusedPanelId, currentPanelIds]);
+
+  // Helper function to calculate next index for focus navigation with wrapping
+  const calculateNextIndex = useCallback(
+    (currentIndex: number, direction: 'next' | 'previous'): number => {
+      const totalPanels = currentPanelIds.length;
+      if (totalPanels === 0) return -1;
+      if (currentIndex === -1) {
+        // No current focus, start at first or last
+        return direction === 'next' ? 0 : totalPanels - 1;
+      }
+
+      if (direction === 'next') {
+        // Wrap from last to first
+        return (currentIndex + 1) % totalPanels;
+      } else {
+        // Wrap from first to last
+        return (currentIndex - 1 + totalPanels) % totalPanels;
+      }
+    },
+    [currentPanelIds]
+  );
+
+  // Helper function to handle focus changes
+  const handleFocusChange = useCallback(
+    (newPanelId: string | null) => {
+      const previousPanelId = focusedPanelId;
+      if (previousPanelId !== newPanelId) {
+        setFocusedPanelId(newPanelId);
+        onFocusChange?.(newPanelId, previousPanelId);
+      }
+    },
+    [focusedPanelId, onFocusChange]
+  );
 
   /**
    * Internal state update function that works for both controlled and uncontrolled modes
@@ -264,6 +373,57 @@ export function useAgentTerminalPanelState(
     return { ...currentStates };
   }, [currentStates]);
 
+  /**
+   * Move focus to next panel (wraps around)
+   */
+  const focusNext = useCallback(() => {
+    const nextIndex = calculateNextIndex(focusedIndex, 'next');
+    if (nextIndex >= 0 && nextIndex < currentPanelIds.length) {
+      const nextPanelId = currentPanelIds[nextIndex];
+      handleFocusChange(nextPanelId);
+    }
+  }, [calculateNextIndex, focusedIndex, currentPanelIds, handleFocusChange]);
+
+  /**
+   * Move focus to previous panel (wraps around)
+   */
+  const focusPrevious = useCallback(() => {
+    const prevIndex = calculateNextIndex(focusedIndex, 'previous');
+    if (prevIndex >= 0 && prevIndex < currentPanelIds.length) {
+      const prevPanelId = currentPanelIds[prevIndex];
+      handleFocusChange(prevPanelId);
+    }
+  }, [calculateNextIndex, focusedIndex, currentPanelIds, handleFocusChange]);
+
+  /**
+   * Focus a specific panel by ID
+   */
+  const focusPanel = useCallback(
+    (panelId: string) => {
+      if (currentPanelIds.includes(panelId)) {
+        handleFocusChange(panelId);
+      }
+    },
+    [currentPanelIds, handleFocusChange]
+  );
+
+  /**
+   * Clear current focus
+   */
+  const clearFocus = useCallback(() => {
+    handleFocusChange(null);
+  }, [handleFocusChange]);
+
+  /**
+   * Check if a specific panel is focused
+   */
+  const isPanelFocused = useCallback(
+    (panelId: string): boolean => {
+      return focusedPanelId === panelId;
+    },
+    [focusedPanelId]
+  );
+
   return {
     minimize,
     maximize,
@@ -271,5 +431,12 @@ export function useAgentTerminalPanelState(
     restoreAll,
     getPanelState,
     getAllPanelStates,
+    focusNext,
+    focusPrevious,
+    focusPanel,
+    clearFocus,
+    isPanelFocused,
+    focusedPanelId,
+    focusedIndex,
   };
 }

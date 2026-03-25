@@ -39,6 +39,10 @@ export interface AgentTerminalPanelStateMap {
   panels: Map<string, PanelState>
   /** ID of the currently maximized panel (null if none) */
   maximizedPanelId: string | null
+  /** ID of the currently focused panel (null if none) */
+  focusedPanelId: string | null
+  /** Ordered list for Tab navigation */
+  panelOrder: string[]
 }
 
 /**
@@ -62,6 +66,8 @@ export function createDefaultPanelState(
 export const EMPTY_PANEL_STATE_MAP: AgentTerminalPanelStateMap = {
   panels: new Map(),
   maximizedPanelId: null,
+  focusedPanelId: null,
+  panelOrder: [],
 }
 
 // ============================================================================
@@ -121,6 +127,25 @@ export interface UseAgentTerminalPanelStateOptions {
    * @default false
    */
   debug?: boolean
+
+  /**
+   * Initial panel order for Tab navigation
+   * If not provided, panels are ordered by registration time
+   */
+  initialPanelOrder?: string[]
+
+  /**
+   * Initially focused panel ID
+   */
+  initialFocusedPanelId?: string | null
+
+  /**
+   * Callback when panel focus changes
+   */
+  onFocusChange?: (
+    focusedPanelId: string | null,
+    previousFocusedPanelId: string | null
+  ) => void
 }
 
 /**
@@ -205,6 +230,33 @@ export interface UseAgentTerminalPanelStateReturn {
    * Get the count of registered panels
    */
   panelCount: number
+
+  /** Move focus to next panel (wraps around) */
+  focusNext: () => void
+
+  /** Move focus to previous panel (wraps around) */
+  focusPrevious: () => void
+
+  /** Focus a specific panel by ID */
+  focusPanel: (panelId: string) => void
+
+  /** Clear current focus */
+  clearFocus: () => void
+
+  /** Check if a specific panel is focused */
+  isPanelFocused: (panelId: string) => boolean
+
+  /** Currently focused panel ID (null if none) */
+  focusedPanelId: string | null
+
+  /** Index of focused panel in panel order (-1 if none) */
+  focusedIndex: number
+
+  /** Current panel order for navigation */
+  panelOrder: readonly string[]
+
+  /** Update panel order for Tab navigation */
+  setPanelOrder: (panelIds: string[]) => void
 }
 
 // ============================================================================
@@ -222,6 +274,11 @@ export type PanelStateAction =
   | { type: 'REGISTER'; panelId: string; initialState?: PanelDisplayState }
   | { type: 'UNREGISTER'; panelId: string }
   | { type: 'SYNC_CONTROLLED'; states: Record<string, PanelDisplayState> }
+  | { type: 'FOCUS_NEXT' }
+  | { type: 'FOCUS_PREVIOUS' }
+  | { type: 'FOCUS_PANEL'; panelId: string }
+  | { type: 'CLEAR_FOCUS' }
+  | { type: 'SET_PANEL_ORDER'; panelIds: string[] }
 
 // ============================================================================
 // Validation and Type Guards
@@ -317,7 +374,12 @@ export function recordToPanelStateMap(
     )
   }
 
-  return { panels, maximizedPanelId }
+  return {
+    panels,
+    maximizedPanelId,
+    focusedPanelId: null,
+    panelOrder: Object.keys(record),
+  }
 }
 
 /**
@@ -328,4 +390,27 @@ export function mergePanelStates(
   override: Record<string, PanelDisplayState>
 ): Record<string, PanelDisplayState> {
   return { ...base, ...override }
+}
+
+/**
+ * Calculate next index for focus navigation with wrapping
+ */
+export function calculateNextFocusIndex(
+  currentIndex: number,
+  totalPanels: number,
+  direction: 'next' | 'previous'
+): number {
+  if (totalPanels === 0) return -1
+  if (currentIndex === -1) {
+    // No current focus, start at first or last
+    return direction === 'next' ? 0 : totalPanels - 1
+  }
+
+  if (direction === 'next') {
+    // Wrap from last to first
+    return (currentIndex + 1) % totalPanels
+  } else {
+    // Wrap from first to last
+    return (currentIndex - 1 + totalPanels) % totalPanels
+  }
 }

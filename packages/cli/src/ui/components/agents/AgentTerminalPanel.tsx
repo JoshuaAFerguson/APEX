@@ -18,11 +18,12 @@
  */
 
 import React, { useMemo } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { useStdoutDimensions } from '../../hooks/useStdoutDimensions.js';
 import { useElapsedTime } from '../../hooks/useElapsedTime.js';
 import { useThemeColors } from '../../context/ThemeContext.js';
 import { AgentStatusIndicator } from './AgentStatusIndicator.js';
+import { PanelStateStatus } from './PanelStateStatus.js';
 import { ProgressBar } from '../ProgressIndicators.js';
 import {
   type AgentTerminalPanelProps,
@@ -33,6 +34,7 @@ import {
   processExecutionData,
   getExecutionVisualState,
   mapExecutionStatusToAgentStatus,
+  PanelState,
 } from './AgentTerminalPanel.types.js';
 
 /**
@@ -66,6 +68,9 @@ function HeaderSection({
   indicatorStatus,
   focused,
   animated,
+  panelState,
+  displayMode,
+  showStateStatus,
   onSelect,
 }: {
   execution: AgentExecution;
@@ -74,6 +79,9 @@ function HeaderSection({
   indicatorStatus: any;
   focused: boolean;
   animated: boolean;
+  panelState?: PanelState;
+  displayMode: string;
+  showStateStatus?: 'auto' | 'always' | 'never';
   onSelect?: (execution: AgentExecution) => void;
 }) {
   const colors = useThemeColors();
@@ -95,6 +103,14 @@ function HeaderSection({
       >
         {displayName}
       </Text>
+      {panelState && (
+        <PanelStateStatus
+          panelState={panelState}
+          displayMode={displayMode as any}
+          focused={focused}
+          visibility={showStateStatus}
+        />
+      )}
     </Box>
   );
 }
@@ -261,8 +277,14 @@ export function AgentTerminalPanel({
   borderColor,
   showElapsedTime = DEFAULT_TERMINAL_PANEL_PROPS.showElapsedTime,
   showProgress = DEFAULT_TERMINAL_PANEL_PROPS.showProgress,
+  showStateStatus = DEFAULT_TERMINAL_PANEL_PROPS.showStateStatus,
   onSelect,
   testId,
+  allowKeyboardInput = DEFAULT_TERMINAL_PANEL_PROPS.allowKeyboardInput,
+  onMinimize,
+  onMaximize,
+  onRestore,
+  panelState,
 }: AgentTerminalPanelProps): React.ReactElement {
   // Process execution data for display
   const processedData = useProcessedExecutionData(execution);
@@ -312,6 +334,51 @@ export function AgentTerminalPanel({
     onSelect?.(execution);
   }, [onSelect, execution]);
 
+  // Keyboard accessibility handling
+  const isKeyboardActive = (allowKeyboardInput ?? true) && focused;
+
+  useInput((input, key) => {
+    if (!isKeyboardActive) return;
+
+    // Toggle/Select panel
+    if (key.return || input === ' ') {
+      onSelect?.(execution);
+      return;
+    }
+
+    // Maximize panel
+    if (input === 'm' || input === 'M') {
+      if (panelState !== PanelState.Maximized) {
+        onMaximize?.(execution);
+      }
+      return;
+    }
+
+    // Restore from maximized state
+    if (key.escape) {
+      if (panelState === PanelState.Maximized) {
+        onRestore?.(execution);
+      }
+      return;
+    }
+
+    // Minimize panel
+    if (input === '-' || input === '_') {
+      if (panelState !== PanelState.Minimized) {
+        onMinimize?.(execution);
+      }
+      return;
+    }
+
+    // Restore from minimized state
+    if (input === '+' || input === '=') {
+      if (panelState === PanelState.Minimized) {
+        onRestore?.(execution);
+      }
+      return;
+    }
+  }, { isActive: isKeyboardActive });
+
   // Main content
   const content = (
     <Box flexDirection="column" gap={0}>
@@ -323,6 +390,9 @@ export function AgentTerminalPanel({
         indicatorStatus={indicatorStatus}
         focused={focused}
         animated={animated}
+        panelState={panelState}
+        displayMode={displayMode}
+        showStateStatus={showStateStatus}
         onSelect={onSelect}
       />
 

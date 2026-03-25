@@ -285,7 +285,7 @@ export const AgentTerminalPanel: React.FC<AgentTerminalPanelProps> = ({
   // Dynamic panel height calculation for normal state
   const dynamicPanelHeights = {
     ...PANEL_HEIGHTS,
-    normal: maxHeight === 'none' ? PANEL_HEIGHTS.normal : '', // Use h-80 or custom via style
+    normal: PANEL_HEIGHTS.normal, // Always use h-80 for normal state, custom height via style
   }
 
   // Handle keyboard navigation
@@ -336,37 +336,7 @@ export const AgentTerminalPanel: React.FC<AgentTerminalPanelProps> = ({
     }
   }, [effectivePanelState, handleRestore, handleMinimize, handleMaximize])
 
-  // Render minimized state
-  if (effectivePanelState === 'minimized') {
-    return (
-      <div
-        className={cn(
-          'border border-gray-800 rounded-lg overflow-hidden',
-          dynamicPanelHeights.minimized,
-          PANEL_WIDTHS.minimized,
-          PANEL_TRANSITIONS.height,
-          PANEL_PERFORMANCE.willChange,
-          className
-        )}
-        role="region"
-        aria-label={`Agent terminal panel: ${panelTitle}`}
-        tabIndex={0}
-        onKeyDown={handleKeyDown}
-      >
-        <AgentTerminalPanelHeader
-          title={panelTitle}
-          agentId={agentId}
-          agentStatus={agentStatus}
-          streamingState={streamState.state}
-          panelState={effectivePanelState}
-          onRestore={handleRestore}
-          onClose={handleClose}
-        />
-      </div>
-    )
-  }
-
-  // Normal and maximized states
+  // Unified structure for all states
   return (
     <div
       className={cn(
@@ -387,6 +357,7 @@ export const AgentTerminalPanel: React.FC<AgentTerminalPanelProps> = ({
       }}
       role="region"
       aria-label={`Agent terminal panel: ${panelTitle}`}
+      aria-expanded={effectivePanelState !== 'minimized'}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
@@ -408,15 +379,13 @@ export const AgentTerminalPanel: React.FC<AgentTerminalPanelProps> = ({
       />
 
       {/* Content section with fade animation */}
-      {/* Note: This block only renders for 'normal' and 'maximized' states
-          since 'minimized' state has an early return above */}
       <div
         className={cn(
           PANEL_CONTENT_CLASSES.animate,
-          'opacity-100 visible'
+          effectivePanelState === 'minimized' ? 'opacity-0 invisible' : 'opacity-100 visible'
         )}
-        data-expanded={true}
-        aria-hidden={false}
+        data-expanded={effectivePanelState !== 'minimized'}
+        aria-hidden={effectivePanelState === 'minimized'}
       >
         <div className={PANEL_CONTENT_CLASSES.inner}>
           {/* Controls */}

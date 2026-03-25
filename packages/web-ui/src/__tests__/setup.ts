@@ -67,4 +67,18 @@ afterEach(() => {
 // Global test setup
 beforeAll(() => {
   // Add any global setup here
+
+  // Ensure timer globals are available in test environment
+  if (typeof globalThis.setInterval === 'undefined') {
+    globalThis.setInterval = global.setInterval;
+  }
+  if (typeof globalThis.clearInterval === 'undefined') {
+    globalThis.clearInterval = global.clearInterval;
+  }
+  if (typeof globalThis.setTimeout === 'undefined') {
+    globalThis.setTimeout = global.setTimeout;
+  }
+  if (typeof globalThis.clearTimeout === 'undefined') {
+    globalThis.clearTimeout = global.clearTimeout;
+  }
 });

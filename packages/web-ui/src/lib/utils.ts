@@ -181,6 +181,13 @@ export const GRID_CONFIGS = {
   4: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2',
   5: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2',
   6: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2',
+  // Extended configurations for ParallelAgentTerminalView (7-12 panels)
+  7: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-2',
+  8: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4 gap-2',
+  9: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-2',
+  10: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-2',
+  11: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-6 gap-2',
+  12: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-6 gap-2',
 } as const
 
 /**
@@ -215,7 +222,10 @@ export function getGridLayoutClasses(panelCount: number, isMaximized: boolean): 
     return 'grid grid-cols-1 gap-2'
   }
 
+  // Clamp panel count to supported range (1-12)
+  const clampedCount = Math.max(1, Math.min(12, Math.floor(panelCount)))
+
   // Use responsive grid configuration based on panel count
-  const gridConfig = GRID_CONFIGS[panelCount as keyof typeof GRID_CONFIGS]
-  return gridConfig || GRID_CONFIGS[6] // Default to 6-column layout for higher counts
+  const gridConfig = GRID_CONFIGS[clampedCount as keyof typeof GRID_CONFIGS]
+  return gridConfig || GRID_CONFIGS[12] // Default to 12-panel layout for higher counts
 }

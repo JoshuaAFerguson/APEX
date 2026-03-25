@@ -8,7 +8,8 @@
  */
 
 import type { AgentStatus } from './AgentStatusIndicator.types.js';
-import type { Breakpoint, PanelState } from '../../hooks/index.js';
+import type { Breakpoint } from '../../hooks/index.js';
+import { PanelState } from '../../hooks/index.js';
 
 // Re-export PanelState for convenience when importing from types
 export { PanelState } from '../../hooks/index.js';
@@ -164,6 +165,15 @@ export interface AgentTerminalPanelProps {
    * Test ID for testing purposes
    */
   testId?: string;
+
+  /**
+   * Whether to show status text feedback for panel state
+   * - 'auto': Show based on displayMode and focus state (default)
+   * - 'always': Always show status text
+   * - 'never': Never show status text
+   * @default 'auto'
+   */
+  showStateStatus?: 'auto' | 'always' | 'never';
 
   // ============================================================================
   // Keyboard Accessibility Props
@@ -359,7 +369,7 @@ export function getResponsiveTerminalPanelConfig(breakpoint: Breakpoint): Respon
 export const DEFAULT_TERMINAL_PANEL_PROPS: Required<
   Pick<
     AgentTerminalPanelProps,
-    'displayMode' | 'focused' | 'animated' | 'borderStyle' | 'showElapsedTime' | 'showProgress' | 'allowKeyboardInput'
+    'displayMode' | 'focused' | 'animated' | 'borderStyle' | 'showElapsedTime' | 'showProgress' | 'allowKeyboardInput' | 'showStateStatus'
   >
 > = {
   displayMode: 'normal',
@@ -369,6 +379,7 @@ export const DEFAULT_TERMINAL_PANEL_PROPS: Required<
   showElapsedTime: true,
   showProgress: true,
   allowKeyboardInput: true,
+  showStateStatus: 'auto',
 } as const;
 
 // ============================================================================
@@ -566,4 +577,70 @@ export function processExecutionData(
     indicatorStatus,
     visualState,
   };
+}
+
+// ============================================================================
+// Panel State Feedback Types and Utilities
+// ============================================================================
+
+/**
+ * Status text format for terminal accessibility
+ */
+export type PanelStateStatusText = '[minimized]' | '[maximized]' | '[normal]';
+
+/**
+ * Status text visibility control
+ */
+export type StatusTextVisibility = 'auto' | 'always' | 'never';
+
+/**
+ * Conditions for determining status text visibility
+ */
+export interface StatusTextDisplayConditions {
+  displayMode: TerminalPanelDisplayMode;
+  focused: boolean;
+  panelState?: PanelState;
+}
+
+/**
+ * Get panel state status text for display
+ *
+ * @param state - The current panel state
+ * @returns Formatted status text for terminal display
+ */
+export function getPanelStateStatusText(state: PanelState): PanelStateStatusText {
+  const STATUS_TEXT_MAP: Record<string, PanelStateStatusText> = {
+    'minimized': '[minimized]',
+    'maximized': '[maximized]',
+    'normal': '[normal]',
+  };
+  return STATUS_TEXT_MAP[state] || '[normal]';
+}
+
+/**
+ * Determine if status text should be shown based on display conditions
+ *
+ * @param conditions - Display conditions to evaluate
+ * @returns Whether status text should be visible
+ */
+export function shouldShowStatusText(conditions: StatusTextDisplayConditions): boolean {
+  const { displayMode, focused, panelState } = conditions;
+
+  // Always show in verbose mode
+  if (displayMode === 'verbose') {
+    return true;
+  }
+
+  // Show when focused (regardless of display mode)
+  if (focused) {
+    return true;
+  }
+
+  // In normal mode, only show if state is not 'normal' (changed state)
+  if (displayMode === 'normal' && panelState && panelState !== PanelState.Normal) {
+    return true;
+  }
+
+  // Hide in compact mode unless focused
+  return false;
 }

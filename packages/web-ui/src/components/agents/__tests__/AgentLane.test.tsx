@@ -1,3 +1,4 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AgentLane } from '../AgentLane'
@@ -117,15 +118,18 @@ describe('AgentLane', () => {
     it('applies custom lane color as left border', () => {
       render(<AgentLane lane={mockLane} testId="colored-lane" />)
 
-      const header = screen.getByRole('button') // Lane header is clickable
+      // Lane header is a clickable div (not a button role) - find it by title of collapse button's parent
+      const collapseButton = screen.getByTitle('Collapse lane')
+      const header = collapseButton.closest('[style]') // Lane header has inline style for border color
       expect(header).toHaveStyle({ borderLeftColor: '#3b82f6' })
     })
 
     it('calls onLaneClick when header is clicked', () => {
       render(<AgentLane lane={mockLane} onLaneClick={mockCallbacks.onLaneClick} />)
 
-      const header = screen.getByRole('button')
-      fireEvent.click(header)
+      // Click on the lane title which is in the header
+      const laneTitle = screen.getByText('Development')
+      fireEvent.click(laneTitle)
 
       expect(mockCallbacks.onLaneClick).toHaveBeenCalledWith(mockLane)
     })

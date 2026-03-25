@@ -538,7 +538,9 @@ describe('AgentTerminalPanel - Acceptance Criteria', () => {
       fireEvent.click(minimizeButton)
 
       // Should hide controls but show maximize button
-      expect(screen.queryByTestId('terminal-controls')).not.toBeInTheDocument()
+      const controls = screen.queryByTestId('terminal-controls')
+      expect(controls).toBeInTheDocument() // Controls exist in DOM
+      expect(controls?.closest('[aria-hidden="true"]')).toBeInTheDocument() // But are hidden
       expect(screen.getByTestId('header-maximize')).toBeInTheDocument()
     })
 

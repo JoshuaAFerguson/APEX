@@ -13,7 +13,8 @@ import {
   createDefaultPanelState,
   panelStateMapToRecord,
   recordToPanelStateMap,
-  EMPTY_PANEL_STATE_MAP
+  EMPTY_PANEL_STATE_MAP,
+  calculateNextFocusIndex
 } from '@/types/agent-terminal-panel'
 
 /**
@@ -33,14 +34,21 @@ function panelStateReducer(
       const newPanels = new Map(state.panels)
       newPanels.set(panelId, createDefaultPanelState(panelId, initialState))
 
+      // Add to panel order if not already there
+      const newPanelOrder = state.panelOrder.includes(panelId)
+        ? state.panelOrder
+        : [...state.panelOrder, panelId]
+
       // If registering with maximized state, ensure mutual exclusivity
       const newMaximizedPanelId = initialState === 'maximized'
         ? panelId
         : state.maximizedPanelId
 
       return {
+        ...state,
         panels: newPanels,
         maximizedPanelId: newMaximizedPanelId,
+        panelOrder: newPanelOrder,
       }
     }
 
@@ -53,13 +61,22 @@ function panelStateReducer(
       const newPanels = new Map(state.panels)
       newPanels.delete(panelId)
 
+      // Remove from panel order
+      const newPanelOrder = state.panelOrder.filter(id => id !== panelId)
+
       const newMaximizedPanelId = state.maximizedPanelId === panelId
         ? null
         : state.maximizedPanelId
 
+      const newFocusedPanelId = state.focusedPanelId === panelId
+        ? null
+        : state.focusedPanelId
+
       return {
         panels: newPanels,
         maximizedPanelId: newMaximizedPanelId,
+        focusedPanelId: newFocusedPanelId,
+        panelOrder: newPanelOrder,
       }
     }
 
@@ -85,6 +102,8 @@ function panelStateReducer(
       return {
         panels: newPanels,
         maximizedPanelId: newMaximizedPanelId,
+        focusedPanelId: state.focusedPanelId,
+        panelOrder: state.panelOrder,
       }
     }
 
@@ -121,6 +140,8 @@ function panelStateReducer(
       return {
         panels: newPanels,
         maximizedPanelId: panelId,
+        focusedPanelId: state.focusedPanelId,
+        panelOrder: state.panelOrder,
       }
     }
 
@@ -144,6 +165,7 @@ function panelStateReducer(
         : state.maximizedPanelId
 
       return {
+        ...state,
         panels: newPanels,
         maximizedPanelId: newMaximizedPanelId,
       }
@@ -162,6 +184,7 @@ function panelStateReducer(
       })
 
       return {
+        ...state,
         panels: newPanels,
         maximizedPanelId: null,
       }
@@ -174,6 +197,63 @@ function panelStateReducer(
         console.warn('Failed to sync controlled states:', error)
         return state
       }
+    }
+
+    case 'FOCUS_NEXT': {
+      const currentIndex = state.focusedPanelId
+        ? state.panelOrder.indexOf(state.focusedPanelId)
+        : -1
+      const nextIndex = calculateNextFocusIndex(currentIndex, state.panelOrder.length, 'next')
+
+      return {
+        ...state,
+        focusedPanelId: nextIndex >= 0 ? state.panelOrder[nextIndex] : null,
+      }
+    }
+
+    case 'FOCUS_PREVIOUS': {
+      const currentIndex = state.focusedPanelId
+        ? state.panelOrder.indexOf(state.focusedPanelId)
+        : -1
+      const prevIndex = calculateNextFocusIndex(currentIndex, state.panelOrder.length, 'previous')
+
+      return {
+        ...state,
+        focusedPanelId: prevIndex >= 0 ? state.panelOrder[prevIndex] : null,
+      }
+    }
+
+    case 'FOCUS_PANEL': {
+      const { panelId } = action
+      if (state.panelOrder.includes(panelId)) {
+        return {
+          ...state,
+          focusedPanelId: panelId,
+        }
+      }
+      return state
+    }
+
+    case 'CLEAR_FOCUS': {
+      return {
+        ...state,
+        focusedPanelId: null,
+      }
+    }
+
+    case 'SET_PANEL_ORDER': {
+      const { panelIds } = action
+      const newState = {
+        ...state,
+        panelOrder: [...panelIds],
+      }
+
+      // Clear focus if currently focused panel is not in the new order
+      if (state.focusedPanelId && !panelIds.includes(state.focusedPanelId)) {
+        newState.focusedPanelId = null
+      }
+
+      return newState
     }
 
     default:
@@ -201,19 +281,43 @@ export function useAgentTerminalPanelState(
     onRestore,
     onRestoreAll,
     debug = false,
+    initialPanelOrder = [],
+    initialFocusedPanelId = null,
+    onFocusChange,
   } = options
 
   // Initialize state with any provided initial states
   const initialStateMap = useMemo(() => {
     try {
-      return recordToPanelStateMap(initialStates)
+      const baseState = recordToPanelStateMap(initialStates)
+
+      // Set up focus and panel order
+      const panelOrder = initialPanelOrder.length > 0
+        ? initialPanelOrder
+        : Object.keys(initialStates)
+
+      const focusedPanelId = initialFocusedPanelId && panelOrder.includes(initialFocusedPanelId)
+        ? initialFocusedPanelId
+        : null
+
+      return {
+        ...baseState,
+        panelOrder,
+        focusedPanelId,
+      }
     } catch (error) {
       if (debug) {
         console.warn('Invalid initial states, using empty state:', error)
       }
-      return EMPTY_PANEL_STATE_MAP
+      return {
+        ...EMPTY_PANEL_STATE_MAP,
+        panelOrder: [...initialPanelOrder],
+        focusedPanelId: initialFocusedPanelId && initialPanelOrder.includes(initialFocusedPanelId)
+          ? initialFocusedPanelId
+          : null,
+      }
     }
-  }, [initialStates, debug])
+  }, [initialStates, debug, initialPanelOrder, initialFocusedPanelId])
 
   const [state, dispatch] = useReducer(panelStateReducer, initialStateMap)
 
@@ -346,6 +450,98 @@ export function useAgentTerminalPanelState(
       : state.panels.has(panelId)
   }, [isControlled, currentStates, state.panels])
 
+  // Helper to call onFocusChange if provided
+  const notifyFocusChange = useCallback((
+    newFocusedPanelId: string | null,
+    previousFocusedPanelId: string | null
+  ) => {
+    if (onFocusChange && newFocusedPanelId !== previousFocusedPanelId) {
+      onFocusChange(newFocusedPanelId, previousFocusedPanelId)
+    }
+  }, [onFocusChange])
+
+  const focusNext = useCallback(() => {
+    if (debug) {
+      console.log('[useAgentTerminalPanelState] Focusing next panel')
+    }
+
+    const previousFocusedPanelId = state.focusedPanelId
+    const currentIndex = previousFocusedPanelId
+      ? state.panelOrder.indexOf(previousFocusedPanelId)
+      : -1
+    const nextIndex = calculateNextFocusIndex(currentIndex, state.panelOrder.length, 'next')
+    const nextPanelId = nextIndex >= 0 ? state.panelOrder[nextIndex] : null
+
+    if (!isControlled) {
+      dispatch({ type: 'FOCUS_NEXT' })
+    }
+
+    notifyFocusChange(nextPanelId, previousFocusedPanelId)
+  }, [isControlled, state.focusedPanelId, state.panelOrder, notifyFocusChange, debug])
+
+  const focusPrevious = useCallback(() => {
+    if (debug) {
+      console.log('[useAgentTerminalPanelState] Focusing previous panel')
+    }
+
+    const previousFocusedPanelId = state.focusedPanelId
+    const currentIndex = previousFocusedPanelId
+      ? state.panelOrder.indexOf(previousFocusedPanelId)
+      : -1
+    const prevIndex = calculateNextFocusIndex(currentIndex, state.panelOrder.length, 'previous')
+    const prevPanelId = prevIndex >= 0 ? state.panelOrder[prevIndex] : null
+
+    if (!isControlled) {
+      dispatch({ type: 'FOCUS_PREVIOUS' })
+    }
+
+    notifyFocusChange(prevPanelId, previousFocusedPanelId)
+  }, [isControlled, state.focusedPanelId, state.panelOrder, notifyFocusChange, debug])
+
+  const focusPanel = useCallback((panelId: string) => {
+    if (debug) {
+      console.log(`[useAgentTerminalPanelState] Focusing panel: ${panelId}`)
+    }
+
+    const previousFocusedPanelId = state.focusedPanelId
+
+    if (!isControlled) {
+      dispatch({ type: 'FOCUS_PANEL', panelId })
+    }
+
+    notifyFocusChange(panelId, previousFocusedPanelId)
+  }, [isControlled, state.focusedPanelId, notifyFocusChange, debug])
+
+  const clearFocus = useCallback(() => {
+    if (debug) {
+      console.log('[useAgentTerminalPanelState] Clearing focus')
+    }
+
+    const previousFocusedPanelId = state.focusedPanelId
+
+    if (!isControlled) {
+      dispatch({ type: 'CLEAR_FOCUS' })
+    }
+
+    notifyFocusChange(null, previousFocusedPanelId)
+  }, [isControlled, state.focusedPanelId, notifyFocusChange, debug])
+
+  const isPanelFocused = useCallback((panelId: string): boolean => {
+    return isControlled
+      ? false // Focus state not supported in controlled mode yet
+      : state.focusedPanelId === panelId
+  }, [isControlled, state.focusedPanelId])
+
+  const setPanelOrder = useCallback((panelIds: string[]) => {
+    if (debug) {
+      console.log(`[useAgentTerminalPanelState] Setting panel order:`, panelIds)
+    }
+
+    if (!isControlled) {
+      dispatch({ type: 'SET_PANEL_ORDER', panelIds })
+    }
+  }, [isControlled, debug])
+
   const maximizedPanelId = isControlled
     ? Object.entries(controlledStates!).find(([, panelState]) => panelState === 'maximized')?.[0] || null
     : state.maximizedPanelId
@@ -355,6 +551,20 @@ export function useAgentTerminalPanelState(
   const panelCount = isControlled
     ? Object.keys(controlledStates!).length
     : state.panels.size
+
+  // Focus state
+  const focusedPanelId = isControlled
+    ? null // Focus tracking not yet supported in controlled mode
+    : state.focusedPanelId
+
+  const panelOrder = isControlled
+    ? Object.keys(controlledStates!)
+    : state.panelOrder
+
+  const focusedIndex = useMemo(() => {
+    if (!focusedPanelId || panelOrder.length === 0) return -1
+    return panelOrder.indexOf(focusedPanelId)
+  }, [focusedPanelId, panelOrder])
 
   return {
     minimize,
@@ -369,6 +579,15 @@ export function useAgentTerminalPanelState(
     unregisterPanel,
     isPanelRegistered,
     panelCount,
+    focusNext,
+    focusPrevious,
+    focusPanel,
+    clearFocus,
+    isPanelFocused,
+    focusedPanelId,
+    focusedIndex,
+    panelOrder,
+    setPanelOrder,
   }
 }
 

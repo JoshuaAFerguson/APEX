@@ -1,0 +1,209 @@
+# STRUCTURED CODE REVIEW FINDINGS
+# ParallelAgentTerminalView Component
+# Review Stage Summary
+
+## Files Reviewed
+- packages/web-ui/src/components/agents/ParallelAgentTerminalView.tsx
+- packages/web-ui/src/components/agents/ParallelAgentTerminalView.types.ts
+- packages/web-ui/src/components/agents/ParallelAgentTerminalView.utils.ts
+- packages/web-ui/src/components/agents/__tests__/ParallelAgentTerminalView.test.tsx
+- packages/web-ui/src/lib/utils.ts (extended for grid configs)
+
+## Build Status
+✅ PASSED - npm run build completed without errors
+✅ PASSED - ParallelAgentTerminalView tests: 27/27 passing
+
+## Code Quality Issues (Detailed Findings)
+
+### ISSUE 1: Gap Replacement Logic Uses Non-Global Regex
+FILE: ParallelAgentTerminalView.tsx:153
+CODE: return baseClasses.replace(/gap-\d+/, gapClass)
+SEVERITY: MEDIUM
+TYPE: Bug Risk - Fragile String Manipulation
+
+DETAILS:
+The regex pattern /gap-\d+/ without the 'g' flag will only replace the FIRST occurrence
+of a gap class. While current configs only have one trailing 'gap-2' so this works,
+it's fragile and will fail if configs ever have multiple gap classes.
+
+IMPACT: Medium - Works currently but fragile. If configs are extended with multiple gap classes,
+this will silently fail to replace all gaps.
+
+FIX: Use /gap-\d+/g flag or redesign to not include hardcoded gaps in grid configs
+
+---
+
+### ISSUE 2: DOM Query Selector Lacks Input Validation
+FILE: ParallelAgentTerminalView.tsx:174-175
+CODE: `[data-testid="${testId}"] [data-panel-id="${panelId}"]`
+SEVERITY: MEDIUM
+TYPE: Security - CSS Selector Injection
+
+DETAILS:
+The testId and panelId values are directly interpolated into CSS selectors without escaping.
+If either value contains CSS special characters (e.g., '[', ']', '#', '.', ':', spaces),
+the selector will break or match incorrectly.
+
+ATTACK EXAMPLE:
+testId = "parallel[1]" → selector becomes [data-testid="parallel[1]"] (INVALID CSS)
+panelId = "panel:active" → selector with pseudo-class could match wrong elements
+
+IMPACT: Medium - Could cause focus to fail or focus wrong element. Potential for
+unintended side effects in UI state.
+
+FIX: Escape special characters in selector strings OR use safer DOM query methods:
+- Use CSS.escape() for escaping
+- Or use multiple querySelector calls with simple selectors
+- Or use getAttribute() with Array.from(querySelectorAll('*')) for safer matching
+
+---
+
+### ISSUE 3: Unused Component Props
+FILE: ParallelAgentTerminalView.tsx:67-68
+CODE:
+  displayMode = 'normal',
+  showLoadingSkeleton = false,
+SEVERITY: LOW
+TYPE: Code Quality - Dead Code / API Mismatch
+
+DETAILS:
+Two props are defined in the component signature and type definition but are never
+used in the rendering logic. They are not passed to child components or used for
+any conditional rendering.
+
+Props accepted but unused:
+- displayMode: Should be passed to AgentTerminalPanel to control display density
+- showLoadingSkeleton: Should be used to show loading state during initial connection
+
+IMPACT: Low - But creates confusion for API consumers who see these props and expect
+them to work. Could lead to bug reports or unexpected behavior.
+
+FIX: Either:
+1. Remove from type definition if not needed, OR
+2. Implement the functionality (pass displayMode to panels, use showLoadingSkeleton for loading state)
+
+---
+
+### ISSUE 4: maxHeight Prop Lacks Validation
+FILE: ParallelAgentTerminalView.tsx:161
+CODE: maxHeight: maxHeight === 'auto' ? undefined : maxHeight
+SEVERITY: LOW
+TYPE: Input Validation - No Runtime Validation
+
+DETAILS:
+The maxHeight prop accepts any string but doesn't validate if it's valid CSS.
+Invalid values like "invalid" or "1000%" could be applied to style object,
+potentially breaking layout or causing browser warnings.
+
+IMPACT: Low - Layout could be broken if invalid maxHeight is passed, but
+this is more of a developer error than a security issue.
+
+FIX: Add validation function to check valid CSS length values before applying
+
+---
+
+## Positive Findings
+
+✅ COMPREHENSIVE VALIDATION
+- Panel count limits (1-12) enforced
+- Required fields validation
+- Duplicate ID detection
+- Initial state validation
+- Proper error throwing on validation failures
+
+✅ RESPONSIVE GRID DESIGN
+- Well-organized grid configurations for all panel counts (1-12)
+- Sensible responsive columns: 1 (mobile) → 2 (sm) → 3-6 (lg/xl/2xl)
+- Consistent gap spacing configurable via props
+
+✅ ACCESSIBILITY
+- Proper ARIA labels and roles
+- Screen reader descriptions
+- Focus styling support
+- Keyboard navigation support via imperative API
+
+✅ TEST COVERAGE
+- 27 tests covering:
+  - Basic rendering
+  - Configuration validation
+  - Grid layout behavior
+  - Panel state management
+  - Accessibility features
+  - Imperative ref API
+  - Props forwarding
+  - Performance warnings
+  - Edge cases
+- All tests passing ✓
+
+✅ PERFORMANCE OPTIMIZATION
+- Proper use of useMemo for expensive computations
+- useCallback for event handlers
+- Efficient panel registration/unregistration
+- Validation caching
+
+✅ ERROR HANDLING
+- Validation errors thrown at render time
+- Development warnings for responsive/performance issues
+- Proper handling of empty state
+
+---
+
+## Acceptance Criteria Verification
+
+✅ Renders 1-12 AgentTerminalPanel components
+   - Validation ensures min 1, max 12 panels
+   - Grid configs support all counts
+
+✅ Responsive CSS grid layout
+   - Tailwind grid classes with responsive prefixes
+   - Mobile-first approach with sm/lg/xl/2xl breakpoints
+
+✅ Adapts to screen size
+   - Column count changes: 1 → 2 → 3-4 → 6 based on breakpoints
+   - Proper responsive behavior
+
+✅ Proper gap spacing
+   - Configurable gap prop (sm/md/lg)
+   - Default 'md' (16px)
+   - All configs include gap specifications
+
+✅ Overflow handling
+   - maxHeight prop with overflow-y-auto
+   - Scrollbar styling for high panel counts
+   - Proper container height management
+
+RESULT: All acceptance criteria met ✓
+
+---
+
+## Summary
+
+COMPONENT STATUS: PRODUCTION READY with Required Fixes
+
+The ParallelAgentTerminalView component is well-architected with:
+- Solid validation and error handling
+- Good accessibility support
+- Comprehensive test coverage (27 tests passing)
+- Clean code organization with clear separation of concerns
+- Proper responsive design implementation
+
+Issues Found: 4
+- MEDIUM (2): Gap regex, DOM query selector
+- LOW (2): Unused props, maxHeight validation
+
+All issues are non-critical and can be addressed before or shortly after merge.
+The component meets all acceptance criteria and is ready for review approval.
+
+---
+
+## Recommendation
+
+STATUS: ✅ APPROVE WITH FIXES
+
+Required fixes before merge:
+1. Fix gap replacement regex to use global flag (/gap-\d+/g)
+2. Add CSS selector escaping for testId and panelId in focusPanel function
+3. Implement or remove displayMode and showLoadingSkeleton props
+4. Add maxHeight validation (optional, low priority)
+
+This component is production-ready and can be merged after addressing the above items.

@@ -37,7 +37,7 @@ export function QuickActionButton({
   compact = false,
   className,
 }: QuickActionButtonProps) {
-  const categoryConfig = TEMPLATE_CATEGORY_CONFIG[template.category]
+  const categoryConfig = TEMPLATE_CATEGORY_CONFIG[template.category] || TEMPLATE_CATEGORY_CONFIG.custom
 
   const handleClick = () => {
     if (!loading) {

@@ -1,30 +1,360 @@
-CODE REVIEW FINDINGS - Context Injection API Endpoint
-====================================================
+================================================================================
+                    CODE REVIEW - STRUCTURED FINDINGS
+================================================================================
+Project: APEX
+Component: AgentTerminalPanel Test Suite
+Review Date: 2026-03-23
+Reviewer: Code Reviewer Agent
+Stage: Review (Code Quality Assessment)
 
-packages/api/src/index.ts:254 - MISSING METHOD getStore ON ApexOrchestrator - CRITICAL
-packages/api/src/index.ts:745 - MISSING EXPLICIT HTTP STATUS CODE IN SUCCESS RESPONSE - HIGH
-packages/api/src/index.ts:699-701 - UNVALIDATED SOURCE PARAMETER TYPE - HIGH
-packages/api/src/index.ts:703-705 - UNVALIDATED PRIORITY PARAMETER TYPE - HIGH
-packages/api/src/index.ts:708-717 - RACE CONDITION ON TASK STATUS CHECK - HIGH
-packages/api/src/index.ts:687 - UNVALIDATED TASK ID FROM URL PARAMETERS - HIGH
-packages/api/src/index.ts:736 - UNHANDLED ERRORS FROM BROADCAST FUNCTION - MEDIUM
-packages/api/src/index.ts:684 - NO EXPLICIT PER-ENDPOINT AUTH DECORATOR - MEDIUM
-packages/api/src/index.ts:733 - UNSAFE TYPE CAST BYPASSES TYPE SAFETY - MEDIUM
-packages/api/src/index.ts:716 - ERROR MESSAGE MISSING 'FAILED' STATUS - LOW
-packages/api/src/index.ts:720-745 - NO AUDIT LOGGING FOR SUCCESSFUL CONTEXT INJECTION - LOW
-packages/api/src/index.ts:724 - UNDEFINED SOURCE VALUE IN EVENT PAYLOAD - LOW
-packages/api/src/index.ts:726,732 - DUPLICATE TIMESTAMP CREATION - LOW
-packages/api/src/index.ts:695 - UNCONFIGURABLE 100,000 CHARACTER LIMIT - LOW
+================================================================================
+                              SUMMARY OF FINDINGS
+================================================================================
 
-packages/api/src/services/teams-service.ts:194,261,374 - MULTIPLE TYPESCRIPT TYPE ERRORS - CRITICAL
-packages/api/src/services/slack-app-service.ts:145,333,394 - TYPESCRIPT TYPE ERRORS - CRITICAL
-packages/api/src/services/slack-installation-store.ts:249,258 - TYPESCRIPT TYPE ERRORS - CRITICAL
+Total Issues Found: 10
+  - Critical (Blocking):        1
+  - Medium (Quality/Features):  6  
+  - Low (Code Style):           3
 
-BUILD STATUS: ❌ FAILED - TypeScript compilation errors prevent build
-TEST STATUS: ❌ FAILED - Tests cannot run due to build errors
+Test Coverage Status: INCOMPLETE
+  ✓ Unit Tests:              Partial coverage of states
+  ✓ Integration Tests:        Partial coverage of multi-panel
+  ✓ Accessibility Tests:      Partial coverage of keyboard
+  ✗ Error Resilience Tests:   Missing
+  ✗ Performance Tests:        Missing
+  ✗ Snapshot Tests:           Missing
 
-BLOCKING ISSUES PREVENTING COMPLETION:
-1. TypeScript build failures in api package
-2. HTTP status code missing in success response
-3. Input validation gaps for optional parameters
-4. Race condition vulnerability in task state checking
+Current Status: 🔴 CANNOT RUN
+  - Tests blocked by critical lucide-react mock issue
+  - Vitest fails with "No export is defined" errors
+
+================================================================================
+                            CRITICAL ISSUES (BLOCKING)
+================================================================================
+
+FILE: packages/web-ui/src/components/agents/__tests__/ParallelAgentGrid.integration.test.tsx:68-79
+ISSUE: INCOMPLETE LUCIDE-REACT MOCK EXPORTS
+SEVERITY: HIGH
+STATUS: BLOCKING
+
+Description:
+  vi.mock('lucide-react') defines only subset of icons. Other components
+  attempt to import unmocked icons (e.g., Hash, ChevronUp, MoreHorizontal),
+  causing vitest to fail with "No 'IconName' export is defined" error.
+
+Error Evidence:
+  [vitest] No "Hash" export is defined on the "lucide-react" mock.
+  Did you forget to return it from "vi.mock"?
+
+Current Code:
+  vi.mock('lucide-react', () => ({
+    ChevronDown: () => <div data-testid="chevron-down" />,
+    Minimize2: () => <div data-testid="minimize2" />,
+    // ... only 10 icons, missing others used by codebase
+  }))
+
+Required Fix:
+  Use partial mocking pattern:
+  
+  vi.mock('lucide-react', async (importOriginal) => {
+    const actual = await importOriginal()
+    return {
+      ...actual,
+      // Only override if needed
+    }
+  })
+
+Impact: TESTS CANNOT RUN
+  - All tests that render components using mocked lucide-react fail
+  - Blocks entire test suite execution
+  - Prevents test results from being generated
+
+================================================================================
+                          MEDIUM ISSUES (6 TOTAL)
+================================================================================
+
+ISSUE 2/6: INCOMPLETE KEYBOARD ACCESSIBILITY TEST COVERAGE
+FILE: packages/web-ui/src/components/agents/__tests__/AgentTerminalPanel.keyboard-accessibility.test.tsx
+SEVERITY: MEDIUM
+STATUS: Coverage Gap
+
+Missing Test Scenarios:
+  - Tab key navigation through focusable elements
+  - Tab key wrapping from last to first element
+  - Escape key to close panel
+  - Escape key to restore previous focus
+  - Focus management during panel state transitions
+  - Screen reader announcements for state changes
+  - ARIA live region updates
+  - Keyboard-only workflow completion
+
+Acceptance Criteria Impact:
+  Requirement: "Accessibility tests confirm screen reader support and keyboard navigation"
+  Status: PARTIAL - Only basic ARIA attributes tested, keyboard nav incomplete
+
+Recommendation Priority: HIGH
+  Add test suite for Tab/Escape key behavior before submission
+
+---
+
+ISSUE 3/6: FRAGILE MOCK STATE MANAGEMENT
+FILES: 
+  - packages/web-ui/src/components/agents/__tests__/AgentTerminalPanel.acceptance.test.tsx:11-26
+  - packages/web-ui/src/components/agents/__tests__/ParallelAgentGrid.integration.test.tsx:31-51
+  - packages/web-ui/src/components/agents/__tests__/AgentTerminalPanel.keyboard-accessibility.test.tsx:15-30
+
+SEVERITY: MEDIUM
+STATUS: Code Quality Problem
+
+Problem Description:
+  Global mutable state variables (mockLogs, mockStreamState, etc.) are reset
+  in beforeEach blocks, but resets are incomplete and inconsistent. This causes:
+  - State leakage between tests
+  - Flaky test execution (order-dependent)
+  - Difficult debugging when state unexpectedly changes
+
+Example Code:
+  let mockLogs: AgentLogEntry[] = []
+  let mockStreamState = { state: 'idle', ... }
+  let mockAutoScroll = true
+  let mockError: string | null = null
+  
+  beforeEach(() => {
+    mockLogs = []
+    mockStreamState = { ... }    // ❌ Incomplete reset
+    mockAutoScroll = true        // ✓ Reset
+    mockError = null             // ✓ Reset
+    // ❌ MISSING: Reset mockNewItemsSinceScroll and others
+  })
+
+Failure Scenario:
+  Test 1 sets: mockError = 'Connection timeout'
+  Test 1 cleanup: NOT reset properly
+  Test 2 expects: Fresh state without errors
+  Test 2 fails: Because mockError from Test 1 still set
+
+Recommended Fix:
+  Implement factory function pattern:
+  
+  function createDefaultMockState() {
+    return {
+      mockLogs: [],
+      mockStreamState: { /* all fields */ },
+      mockAutoScroll: true,
+      mockNewItemsSinceScroll: 0,
+      mockError: null,
+    }
+  }
+  
+  beforeEach(() => {
+    const defaults = createDefaultMockState()
+    Object.assign(globalMockState, defaults)
+  })
+
+---
+
+ISSUE 4/6: MISSING ERROR RESILIENCE TEST COVERAGE  
+FILE: packages/web-ui/src/components/agents/__tests__/AgentTerminalPanel.acceptance.test.tsx:469-480
+SEVERITY: MEDIUM
+STATUS: Coverage Gap
+
+Current Coverage:
+  ✓ Shows disconnection overlay
+  ✓ Shows error state message
+  ✓ Provides reconnect button
+  
+Missing Coverage:
+  ✗ Network timeout handling
+  ✗ Partial message delivery (incomplete JSON/log)
+  ✗ Connection reset while streaming
+  ✗ Multiple rapid reconnection attempts (backoff logic)
+  ✗ Error recovery and state persistence
+  ✗ Connection lost during active streaming
+  ✗ Handle socket timeout vs network timeout
+  
+Test Cases Needed:
+  it('should retry after network timeout', () => { })
+  it('should handle incomplete message gracefully', () => { })
+  it('should limit reconnection attempts with backoff', () => { })
+  it('should preserve logs on connection reset', () => { })
+  it('should recover error state when reconnected', () => { })
+
+Impact: Component may have latent error-handling bugs not caught by tests
+
+---
+
+ISSUE 5/6: OVERLY-SIMPLIFIED COMPONENT MOCKS
+FILES: All test files
+SEVERITY: MEDIUM  
+STATUS: Code Quality Problem
+
+Example - AgentTerminalPanelHeader Mock:
+  vi.mock('../AgentTerminalPanelHeader', () => ({
+    AgentTerminalPanelHeader: ({ title, agentId }: any) => (
+      <div data-testid="header">
+        <span>{title}</span>
+      </div>
+    ),
+  }))
+
+Problems:
+  ❌ Actual header component logic is never tested
+  ❌ Props passing bugs not caught
+  ❌ Type safety lost (using 'any')
+  ❌ If real component has bug, tests won't detect it
+  ❌ Integration gaps not caught
+
+Better Approach:
+  For unit tests: Use partial import
+  For integration tests: Don't mock - test real components
+
+  vi.mock('../AgentTerminalPanelHeader', async (importOriginal) => {
+    const actual = await importOriginal()
+    return { ...actual }
+  })
+
+---
+
+ISSUE 6/6: FRAGILE ANIMATION TEST ASSERTIONS
+FILE: packages/web-ui/src/components/agents/__tests__/AgentTerminalPanel.animations.fixed.test.tsx:200-230
+SEVERITY: MEDIUM
+STATUS: Code Quality Problem
+
+Problems:
+
+1. Tailwind Class Notation Issue:
+   expect(element).toHaveClass('transition-[height]')
+   - Bracket notation classes may be PostCSS-transformed
+   - Actual class name depends on Tailwind build process
+   - May be formatted as 'transition-[height]' or differently
+   
+2. Missing Timing Control:
+   - No vi.useFakeTimers() for deterministic testing
+   - Animation tests may be flaky (timing-dependent)
+   - Slow test execution (waits for real animations)
+   
+3. Missing Sync Verification:
+   Acceptance Criteria: "Animation tests verify transition timing and content visibility sync"
+   Status: NOT MET
+   - No test verifies logs appear/disappear in sync with animation
+   - No verification that content becomes visible/hidden properly
+   - Only checks class presence, not actual animation behavior
+
+Recommended Fix:
+  it('animates height and content visibility together', async () => {
+    vi.useFakeTimers()
+    const { rerender } = render(<AgentTerminalPanel {...} panelState="normal" />)
+    
+    rerender(<AgentTerminalPanel {...} panelState="minimized" />)
+    
+    // Logs still in DOM during animation
+    expect(screen.getByTestId('logs-container')).toBeInTheDocument()
+    
+    // After animation (300ms), content should be hidden
+    vi.advanceTimersByTime(300)
+    const content = screen.getByTestId('logs-container')
+    expect(content).toHaveStyle('opacity: 0')
+    
+    vi.useRealTimers()
+  })
+
+================================================================================
+                             LOW ISSUES (3 TOTAL)
+================================================================================
+
+ISSUE 7/10: MISSING TEST ISOLATION FOR ANIMATION TESTS
+FILE: packages/web-ui/src/components/agents/__tests__/AgentTerminalPanel.animations.fixed.test.tsx
+SEVERITY: LOW
+STATUS: Code Quality
+
+Issue: Animation tests don't use vi.useFakeTimers()
+Impact: Flaky tests, slow execution, non-deterministic results
+
+Recommendation: Add timer control to beforeEach
+
+---
+
+ISSUE 8/10: NO SNAPSHOT TESTS FOR ACCESSIBILITY
+SEVERITY: LOW
+STATUS: Coverage Gap
+
+Missing: Snapshot tests for ARIA attributes, roles, keyboard handlers
+Benefit: Prevents accidental removal of accessibility features
+
+Recommendation: Add snapshot tests for each panel state
+
+---
+
+ISSUE 9/10: INCONSISTENT TEST FILE NAMING
+SEVERITY: LOW
+STATUS: Code Style
+
+Current: Mixed patterns (acceptance, animations.fixed, keyboard-accessibility)
+Recommendation: Standardize naming convention
+
+================================================================================
+                         ACCEPTANCE CRITERIA ASSESSMENT
+================================================================================
+
+AC1: "Unit tests cover all panel states and callback props"
+  Status: PARTIAL ⚠️
+  Coverage: States covered, but callback props need verification
+  Missing: Comprehensive callback sequencing tests
+  
+AC2: "Integration tests verify multi-panel interactions"  
+  Status: PARTIAL ⚠️
+  Coverage: Grid layout tested, but interactions incomplete
+  Missing: Event isolation, synchronization tests
+  
+AC3: "Accessibility tests confirm screen reader support and keyboard navigation"
+  Status: PARTIAL ⚠️
+  Coverage: ARIA attributes tested, keyboard nav incomplete
+  Missing: Tab/Escape key tests, screen reader testing, focus traps
+  
+AC4: "Animation tests verify transition timing and content visibility sync"
+  Status: PARTIAL ⚠️
+  Coverage: Animation structure exists, sync not verified
+  Missing: Content visibility sync, no fake timers, fragile assertions
+
+Overall: ACCEPTANCE CRITERIA NOT FULLY MET
+Reason: Critical blocking issue + medium quality gaps + coverage gaps
+
+================================================================================
+                              NEXT STEPS REQUIRED
+================================================================================
+
+PRIORITY 1 - BLOCKING (Must Fix Before Any Tests Can Run):
+  [ ] Fix lucide-react mock using partial mocking with importOriginal()
+  [ ] Verify tests can execute: npm run test
+  [ ] Ensure NO "No export is defined" errors
+
+PRIORITY 2 - BEFORE SUBMISSION (Code Quality):
+  [ ] Fix mock state management to use factory functions
+  [ ] Add Tab and Escape key test coverage
+  [ ] Add error resilience test scenarios
+  [ ] Remove flaky animation test assertions
+  [ ] Add fake timer control to animation tests
+
+PRIORITY 3 - FUTURE (Test Quality):
+  [ ] Replace overly-simplified component mocks
+  [ ] Add snapshot tests for accessibility
+  [ ] Standardize test file naming
+  [ ] Add performance regression tests
+
+================================================================================
+                              REVIEWER SIGNATURE
+================================================================================
+
+Review Status: COMPLETE
+Issues Documented: 10 (1 critical, 6 medium, 3 low)
+Test Execution Status: 🔴 BLOCKED BY CRITICAL ISSUE
+
+Recommendation: 
+  Do NOT merge until Priority 1 critical issue is fixed.
+  Tests cannot run in current state.
+
+Reviewed By: Code Reviewer Agent
+Date: 2026-03-23
+Time: 19:32:XX (Review Stage)
+
+================================================================================
