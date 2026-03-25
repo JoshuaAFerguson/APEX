@@ -122,6 +122,7 @@ interface WebSocketClient {
 }
 
 const clients = new Map<string, Set<WebSocketClient>>();
+const globalClients = new Set<WebSocketClient>();
 
 /**
  * Configuration options for starting the APEX API server.
@@ -2145,8 +2146,12 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
     (socket: any, request: any) => {
       app.log.info('Global WebSocket client connected')
 
-      // Send current tasks state immediately
-      orchestrator.listTasks({}).then((tasks: Task[]) => {
+      // Register this client for global broadcasts
+      const client: WebSocketClient = { socket };
+      globalClients.add(client);
+
+      // Send current tasks state immediately (lightweight, limited)
+      orchestrator.listTasks({ limit: 50, lightweight: true } as any).then((tasks: Task[]) => {
         socket.send(
           JSON.stringify({
             type: 'task:state',
@@ -2154,7 +2159,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
             timestamp: new Date(),
           })
         );
-      }).catch((error) => {
+      }).catch((error: any) => {
         app.log.error('Failed to send initial tasks state:', error);
       });
 
@@ -2181,8 +2186,9 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
         }
       });
 
-      // Handle disconnect
+      // Handle disconnect — remove from global clients
       socket.on('close', () => {
+        globalClients.delete(client);
         app.log.info('Global WebSocket client disconnected');
       });
 
@@ -2338,17 +2344,26 @@ function assessDaemonHealth(metrics: HealthMetrics): boolean {
  * Broadcast an event to all connected clients for a task with event filtering
  */
 function broadcast(taskId: string, event: ApexEvent): void {
-  const taskClients = clients.get(taskId);
-  if (!taskClients) return;
-
   const message = safeSerialize(event);
-  for (const client of taskClients) {
-    // Check if client has event filters and if this event should be sent
-    if (client.eventFilters && !client.eventFilters.has(event.type)) {
-      continue; // Skip this client - event type not in their filter list
-    }
 
-    // Send message if socket is open
+  // Send to task-specific clients
+  const taskClients = clients.get(taskId);
+  if (taskClients) {
+    for (const client of taskClients) {
+      if (client.eventFilters && !client.eventFilters.has(event.type)) {
+        continue;
+      }
+      if (client.socket.readyState === WebSocket.OPEN) {
+        client.socket.send(message);
+      }
+    }
+  }
+
+  // Send to global clients (dashboard)
+  for (const client of globalClients) {
+    if (client.eventFilters && !client.eventFilters.has(event.type)) {
+      continue;
+    }
     if (client.socket.readyState === WebSocket.OPEN) {
       client.socket.send(message);
     }
