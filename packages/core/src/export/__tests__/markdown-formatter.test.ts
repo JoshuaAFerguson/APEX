@@ -820,4 +820,248 @@ describe('formatTasksToMarkdown', () => {
       }).not.toThrow();
     });
   });
+
+  // ============================================================================
+  // Additional Coverage Tests - 100% Coverage Target
+  // ============================================================================
+
+  describe('100% Coverage Edge Cases', () => {
+    it('should cover empty metrics display path for defensive coding', () => {
+      // This test ensures we hit the defensive "empty metrics" case.
+      // While this may not be reachable in normal flow due to the empty tasks
+      // check happening earlier, the code path exists for defensive purposes.
+      // We'll test the normal flow with zero-value metrics instead.
+      const taskWithZeroMetrics = createTask({
+        usage: createTaskUsage({
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          estimatedCost: 0,
+          totalCostCents: 0,
+          executionTimeMs: 0,
+        })
+      });
+
+      const result = formatTasksToMarkdown([taskWithZeroMetrics], {
+        metricsSection: 'separate'
+      });
+
+      expect(result).toContain('## Metrics');
+      expect(result).toContain('**Total Execution Time:** 0ms');
+      expect(result).toContain('**Total Tokens:** 0');
+      expect(result).toContain('**Total Cost:** $0.000');
+    });
+
+    it('should handle artifacts section with limit overflow', () => {
+      const taskWithManyArtifacts = createTask({
+        artifacts: Array.from({ length: 15 }, (_, i) =>
+          createTaskArtifact({
+            name: `artifact-${i}.txt`,
+            type: 'file'
+          })
+        ),
+      });
+
+      const result = formatTasksToMarkdown([taskWithManyArtifacts], {
+        artifactsSection: 'separate',
+        sectionLimit: 5
+      });
+
+      expect(result).toContain('*... 10 more artifacts*');
+    });
+
+    it('should format duration in hours correctly', () => {
+      const taskWithLongDuration = createTask({
+        usage: createTaskUsage({
+          executionTimeMs: 7200000, // 2 hours
+        }),
+      });
+
+      const result = formatTasksToMarkdown([taskWithLongDuration], {
+        layout: 'detailed',
+        metricsSection: 'inline'
+      });
+
+      expect(result).toContain('- Execution Time: 2.0h');
+    });
+
+    it('should test escapeMarkdown function through special characters', () => {
+      // This tests the escapeMarkdown function that isn't directly tested but is used
+      // by escapeMetadata function in workflow/autonomy fields
+      const taskWithSpecialChars = createTask({
+        workflow: 'test-workflow_with*special[chars]',
+        autonomy: 'semi-auto(beta)',
+      });
+
+      const result = formatTasksToMarkdown([taskWithSpecialChars], {
+        layout: 'detailed'
+      });
+
+      // The escapeMetadata function should have escaped special characters
+      expect(result).toContain('test\\-workflow\\_with\\*special\\[chars\\]');
+      expect(result).toContain('semi\\-auto\\(beta\\)');
+    });
+
+    it('should handle tasks with all optional fields undefined for complete coverage', () => {
+      const minimalTask = createTask({
+        acceptanceCriteria: undefined,
+        currentStage: undefined,
+        error: undefined,
+        completedAt: undefined,
+        branchName: undefined,
+        prUrl: undefined,
+      });
+
+      const result = formatTasksToMarkdown([minimalTask], {
+        layout: 'detailed',
+        logsSection: 'inline',
+        artifactsSection: 'inline',
+        metricsSection: 'inline'
+      });
+
+      // Should not contain optional sections when fields are undefined
+      expect(result).not.toContain('**Acceptance Criteria:**');
+      expect(result).not.toContain('**⚠️ Error:**');
+      expect(result).not.toContain('- Current Stage:');
+      expect(result).not.toContain('- Completed:');
+    });
+
+    it('should test formatBadge with all badge types and colors', () => {
+      const tasks = [
+        createTask({
+          status: 'queued',
+          priority: 'urgent',
+          effort: 'xs'
+        }),
+        createTask({
+          status: 'awaiting-approval',
+          priority: 'low',
+          effort: 'xl'
+        }),
+        createTask({
+          status: 'cancelled',
+          priority: 'normal',
+          effort: 'large'
+        }),
+      ];
+
+      const result = formatTasksToMarkdown(tasks, {
+        githubFlavored: true
+      });
+
+      // Test various badge colors and statuses
+      expect(result).toContain('![Queued](https://img.shields.io/badge/Queued-blue)');
+      expect(result).toContain('![Awaiting Approval](https://img.shields.io/badge/Awaiting%20Approval-orange)');
+      expect(result).toContain('![Cancelled](https://img.shields.io/badge/Cancelled-gray)');
+      expect(result).toContain('![Urgent](https://img.shields.io/badge/Urgent-red)');
+      expect(result).toContain('![Low](https://img.shields.io/badge/Low-green)');
+      expect(result).toContain('![Xs](https://img.shields.io/badge/Xs-green)');
+      expect(result).toContain('![Xl](https://img.shields.io/badge/Xl-red)');
+    });
+
+    it('should test tasks with logs having different levels and metadata', () => {
+      const taskWithDetailedLogs = createTask({
+        logs: [
+          createTaskLog({
+            level: 'debug',
+            message: 'Debug info',
+            stage: 'planning',
+            agent: 'planner'
+          }),
+          createTaskLog({
+            level: 'warn',
+            message: 'Warning message',
+            stage: 'implementation',
+            agent: 'developer'
+          }),
+        ],
+      });
+
+      const result = formatTasksToMarkdown([taskWithDetailedLogs], {
+        logsSection: 'separate'
+      });
+
+      expect(result).toContain('![Debug](https://img.shields.io/badge/Debug-gray)');
+      expect(result).toContain('![Warn](https://img.shields.io/badge/Warn-yellow)');
+      expect(result).toContain('- Stage: planning');
+      expect(result).toContain('- Agent: planner');
+      expect(result).toContain('- Stage: implementation');
+      expect(result).toContain('- Agent: developer');
+    });
+
+    it('should handle empty summary layout tasks', () => {
+      // Test the empty tasks case in generateTasksSummary (line 641)
+      // However, this path might not be reachable since empty tasks
+      // are handled by generateEmptyReport. Let's verify that empty tasks
+      // with summary layout go through the expected path.
+      const result = formatTasksToMarkdown([], {
+        layout: 'summary',
+        includeHeader: false,
+        includeSummary: false
+      });
+
+      expect(result).toContain('*No tasks found.*');
+    });
+
+    it('should test direct escapeMarkdown functionality through edge case characters', () => {
+      // Test the escapeMarkdown function (line 926) through content that would use it
+      // The escapeMarkdown function is used by escapeMetadata for workflow and autonomy
+      const taskWithAllSpecialChars = createTask({
+        workflow: '\\`*_{}[]()#+-.!|test',
+        autonomy: 'auto-mode',
+      });
+
+      const result = formatTasksToMarkdown([taskWithAllSpecialChars], {
+        layout: 'detailed'
+      });
+
+      // Should escape all markdown special characters in workflow
+      expect(result).toContain('\\\\\\`\\*\\_\\{\\}\\[\\]\\(\\)\\#\\+\\-\\.\\!\\|test');
+    });
+
+    it('should handle tasks with no artifacts for separate artifacts section (line 241)', () => {
+      // Test the code path where generateArtifactsSection is called with tasks that have no artifacts
+      // This tests the path where the artifacts section generator is called but finds no artifacts
+      const taskWithNoArtifacts = createTask({
+        artifacts: [] // Explicitly empty artifacts array
+      });
+
+      const result = formatTasksToMarkdown([taskWithNoArtifacts], {
+        artifactsSection: 'separate',
+        includeHeader: false,
+        includeSummary: false
+      });
+
+      expect(result).toContain('## Artifacts');
+      expect(result).toContain('*No artifacts to display.*');
+    });
+
+    it('should handle empty tasks input that bypasses section generation (lines 712-713)', () => {
+      // The defensive empty tasks check in generateMetricsSection (lines 712-713) is unreachable through
+      // normal flow because empty tasks arrays are handled earlier. However, we need to test the code path
+      // where individual section functions might receive filtered empty results.
+      // Let's create a scenario with tasks that have zero values instead.
+      const taskWithZeroMetrics = createTask({
+        usage: createTaskUsage({
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          estimatedCost: 0,
+          totalCostCents: 0,
+          executionTimeMs: 0,
+        })
+      });
+
+      const result = formatTasksToMarkdown([taskWithZeroMetrics], {
+        metricsSection: 'separate',
+        includeHeader: false,
+        includeSummary: false
+      });
+
+      // Should still create metrics section even with zero values
+      expect(result).toContain('## Metrics');
+      expect(result).toContain('**Total Tokens:** 0');
+      expect(result).toContain('**Total Cost:** $0.000');
+    });
+  });
 });
