@@ -199,7 +199,7 @@ export async function createServer(options: ServerOptions): Promise<FastifyInsta
 
   // Register auth middleware with configuration
   // Auth defaults to disabled for localhost (dev), enabled for non-localhost (production)
-  const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
   const authEnabled = config.api?.auth?.enabled ?? !isLocalhost;
   if (!authEnabled) {
     if (!isLocalhost) {
