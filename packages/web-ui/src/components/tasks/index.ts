@@ -34,3 +34,10 @@ export type { TaskDependencyGraphProps } from './TaskDependencyGraph'
 
 export { ExecutionTimeline } from './ExecutionTimeline'
 export type { ExecutionTimelineProps, ExecutionStage, ExecutionStageStatus } from './ExecutionTimeline'
+
+export { TaskListWithExport } from './TaskListWithExport'
+export type { TaskListWithExportProps } from './TaskListWithExport'
+
+export { BulkActionToolbar, CompactBulkActionToolbar } from './BulkActionToolbar'
+export { BulkSelectionProvider } from './BulkSelectionContext'
+export { ExportDialog } from '../export/ExportDialog'

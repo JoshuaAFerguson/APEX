@@ -220,6 +220,8 @@ export interface BulkActionToolbarProps {
   onBulkRetry: (taskIds: string[]) => Promise<void>
   /** Callback for bulk delete operation */
   onBulkDelete: (taskIds: string[]) => Promise<void>
+  /** Callback for bulk export operation */
+  onBulkExport?: (taskIds: string[]) => void
   /** Current operation progress */
   progress?: BulkOperationProgress | null
   /** Whether any operation is in progress */
@@ -335,6 +337,7 @@ export const BULK_TEST_IDS = {
   cancelButton: 'bulk-cancel-button',
   retryButton: 'bulk-retry-button',
   deleteButton: 'bulk-delete-button',
+  exportButton: 'bulk-export-button',
   progressBar: 'bulk-operation-progress',
   confirmationDialog: 'bulk-confirmation-dialog',
   confirmButton: 'bulk-confirm-button',
@@ -351,6 +354,7 @@ export const BULK_ARIA_LABELS = {
   cancelSelected: (count: number) => `Cancel ${count} selected task${count !== 1 ? 's' : ''}`,
   retrySelected: (count: number) => `Retry ${count} selected task${count !== 1 ? 's' : ''}`,
   deleteSelected: (count: number) => `Delete ${count} selected task${count !== 1 ? 's' : ''}`,
+  exportSelected: (count: number) => `Export ${count} selected task${count !== 1 ? 's' : ''}`,
   taskSelection: (description: string, selected: boolean) =>
     `${selected ? 'Deselect' : 'Select'} task: ${description}`,
   operationProgress: (completed: number, total: number) =>

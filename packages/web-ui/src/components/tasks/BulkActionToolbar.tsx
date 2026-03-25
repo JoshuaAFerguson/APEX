@@ -23,6 +23,7 @@ import {
   XCircle,
   RotateCcw,
   Trash2,
+  Download,
 } from 'lucide-react'
 
 /**
@@ -65,6 +66,7 @@ export function BulkActionToolbar({
   onBulkCancel,
   onBulkRetry,
   onBulkDelete,
+  onBulkExport,
   progress,
   isOperating = false,
   compact = false,
@@ -123,6 +125,14 @@ export function BulkActionToolbar({
     }
   }
 
+  // Handle bulk export
+  const handleBulkExport = () => {
+    if (onBulkExport && selectedCount > 0) {
+      const selectedTaskIdsArray = Array.from(selectedTaskIds)
+      onBulkExport(selectedTaskIdsArray)
+    }
+  }
+
   // Don't show toolbar if no tasks are selected and not operating
   if (selectedCount === 0 && !isOperating) {
     return null
@@ -173,6 +183,27 @@ export function BulkActionToolbar({
 
       {/* Right side - Action buttons */}
       <div className="flex items-center gap-2">
+        {/* Export Button */}
+        {onBulkExport && (
+          <Button
+            variant="secondary"
+            size={compact ? 'sm' : 'md'}
+            disabled={selectedCount === 0 || isOperating}
+            onClick={handleBulkExport}
+            data-testid={BULK_TEST_IDS.exportButton}
+            aria-label={BULK_ARIA_LABELS.exportSelected(selectedCount)}
+            className="gap-1 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600"
+          >
+            <Download className="w-4 h-4" />
+            {!compact && 'Export'}
+            {selectedCount > 0 && (
+              <span className="px-1.5 py-0.5 text-xs bg-blue-500/20 text-blue-600 rounded">
+                {selectedCount}
+              </span>
+            )}
+          </Button>
+        )}
+
         {/* Cancel Button */}
         <Button
           variant="secondary"

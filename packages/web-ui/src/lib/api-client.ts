@@ -32,6 +32,10 @@ import type {
   ChangelogResponse,
   taskToChangelogEntry,
 } from '@/types/changelog'
+import type {
+  ExportDialogOptions,
+  ExportDialogResult,
+} from '@/types/export-dialog'
 import { getApiUrl } from './config'
 
 /**
@@ -749,6 +753,80 @@ export class ApexApiClient {
       total: data.total,
       hasMore: data.offset + data.count < data.total,
       workflows,
+    }
+  }
+
+  /**
+   * Export tasks based on the provided options
+   * @param options - Export configuration including format, filters, and task selection
+   * @returns Export result with content and metadata
+   */
+  async exportTasks(options: ExportDialogOptions): Promise<ExportDialogResult> {
+    const params = new URLSearchParams()
+
+    // Set format
+    params.set('format', options.format)
+
+    // Date range filters
+    if (options.dateRange.startDate) {
+      params.set('startDate', options.dateRange.startDate.toISOString())
+    }
+    if (options.dateRange.endDate) {
+      params.set('endDate', options.dateRange.endDate.toISOString())
+    }
+
+    // Task selection filters
+    if (options.filterByTasks && options.selectedTaskIds.length > 0) {
+      params.set('taskIds', options.selectedTaskIds.join(','))
+    }
+
+    // Archive/trash status
+    if (options.includeArchived) {
+      params.set('includeArchived', 'true')
+    }
+    if (options.includeTrashed) {
+      params.set('includeTrashed', 'true')
+    }
+
+    const url = `/tasks/export${params.toString() ? `?${params.toString()}` : ''}`
+    const response = await this.fetch(url)
+
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      // If we get JSON back, it's likely an error response
+      const errorData = await response.json()
+      throw new Error(errorData.message || 'Export failed')
+    }
+
+    // Get content as text for all formats
+    const content = await response.text()
+
+    // Extract filename from Content-Disposition header if available
+    const contentDisposition = response.headers.get('content-disposition')
+    let filename = 'apex-tasks-export'
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="([^"]+)"/)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
+      }
+    } else {
+      // Generate filename based on format
+      const { generateExportFilename } = await import('@/types/export-dialog')
+      filename = generateExportFilename(options.format)
+    }
+
+    // Get MIME type
+    const mimeType = response.headers.get('content-type') || 'application/octet-stream'
+
+    // Extract task count from response headers if available
+    const taskCountHeader = response.headers.get('x-task-count')
+    const taskCount = taskCountHeader ? parseInt(taskCountHeader, 10) : 0
+
+    return {
+      success: true,
+      filename,
+      content,
+      mimeType,
+      taskCount,
     }
   }
 
