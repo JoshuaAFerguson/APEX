@@ -108,3 +108,4 @@ undefined/
 
 # VeriSwarm agent credentials (do not commit)
 .apex/veriswarm.json
+.serena/
